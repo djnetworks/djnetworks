@@ -10,14 +10,17 @@ Two habits worth keeping throughout:
 
 ---
 
-## 0 · Install
+## 0 · Open the project
 
-Shell, not a prompt:
+The repo already lives in `~/Documents/Dj-Networks`. Add only that folder in Claude Code.
 
 ```bash
-tar -xzf "$HOME/Downloads/Dj Niraj/dj-networks-scaffold.tar.gz" -C ~
-cd ~/dj-networks && claude
+cd ~/Documents/Dj-Networks && claude
 ```
+
+`reference/` holds the source material: the three product flyers, the old planning workbook the
+taxonomy came from, the MIS requirement PDF, and the original context document. It is input, not
+code — nothing there is authoritative over `docs/`.
 
 ---
 

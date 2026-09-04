@@ -13,6 +13,12 @@ Schema drafted, nothing in production. **The catalogue is empty** — hundreds o
 physically, none are listed. Bulk import through the Google Sheet is the intended path, and it
 matters more than any screen in the application.
 
+## Layout
+
+`docs/` is authoritative. `reference/` is source material — flyers, the old planning
+workbook the taxonomy was seeded from, the MIS requirement document. Read it for context, never
+as a spec: two of its assumptions have already been contradicted by how the business really works.
+
 ## Setup
 
 ```bash
