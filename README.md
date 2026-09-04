@@ -1,0 +1,34 @@
+# DJ Network's — Rental System
+
+Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
+
+- **Start here:** `CLAUDE.md` — the rules that are not negotiable, and why each one exists.
+- **The design:** `docs/structure.md` — 15 tables, 12 forms, the derived views.
+- **What was decided and what it cost:** `docs/decisions.md`
+- **What is still unanswered:** `docs/open-questions.md`
+
+## Status
+
+Schema drafted, nothing in production. **The catalogue is empty** — hundreds of items exist
+physically, none are listed. Bulk import through the Google Sheet is the intended path, and it
+matters more than any screen in the application.
+
+## Setup
+
+```bash
+supabase link --project-ref ghylakhhsdvnkopmjteo
+supabase db push
+```
+
+## Agents
+
+| Agent | Use it for |
+|---|---|
+| `migration-writer` | any schema change |
+| `logic-verifier` | availability, returns, day counting, ledger — asserts on numbers |
+| `guardrail-reviewer` | reviewing a diff against bugs that have already shipped here |
+| `ui-reviewer` | loading, empty and error states, navigation, phone flows |
+
+## Skills
+
+`djn-architecture` (where logic belongs) · `djn-deploy` (shipping) · `djn-sheet-sync` (the Sheet link)
