@@ -12,7 +12,7 @@ change to a decision already made — each one records what it cost, and most we
 
 ## Stack
 
-- **Supabase** (Postgres + Auth + Edge Functions) — project ref `hkzgxsgokqphthdmbras`, region `ap-southeast-2`
+- **Supabase** (Postgres + Auth + Edge Functions) — project ref `hjidocpqcrfbjucvqggu`, region `ap-south-1`
 - **Static HTML frontend**, no build step, same pattern as the Maitri exhibition app
 - **Google Sheets** two-way link: read-only mirror out, bulk catalogue import in
 
@@ -91,7 +91,7 @@ Two agents with write access to one database produces a schema that no longer ma
 migration history. Do not apply ad-hoc DDL from anywhere else.
 
 **There is no second pair of eyes on this database any more.** The Cowork chat's Supabase connector
-is bound to the OLD account and cannot reach project `hkzgxsgokqphthdmbras` at all — not to write,
+is bound to the OLD account and cannot reach project `hjidocpqcrfbjucvqggu` at all — not to write,
 not to read, not to check a number. It used to be the independent read-only session that could
 confirm a view returned what this repo claimed it returned. It cannot do that now.
 

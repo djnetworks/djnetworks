@@ -10,10 +10,11 @@ Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 
 ## Status
 
-Ten migrations (`0001`-`0010`) and a development fixture (`supabase/seed/dev_seed.sql`) exist and
-were verified against the previous Supabase project. **The project has since moved to a new account
-— ref `hkzgxsgokqphthdmbras`, region `ap-southeast-2` — and that database is still empty.** Until it
-is replayed, nothing above is live anywhere. No screen exists yet.
+Ten migrations (`0001`-`0010`) are applied and a development fixture
+(`supabase/seed/dev_seed.sql`) is loaded, on Supabase project `hjidocpqcrfbjucvqggu` in
+`ap-south-1` (Mumbai), org `djnetworks`. Verified against that database: 16 tables, 9 views,
+14 functions, RLS on every table, `security_invoker` on every view, `search_path` pinned on every
+function, zero security advisor findings. No screen exists yet.
 
 **The catalogue is empty** — hundreds of items exist physically, none are listed. Bulk import through
 the Google Sheet is the intended path, and it matters more than any screen in the application. The
@@ -43,7 +44,7 @@ as a spec: two of its assumptions have already been contradicted by how the busi
 ## Setup
 
 ```bash
-supabase link --project-ref hkzgxsgokqphthdmbras
+supabase link --project-ref hjidocpqcrfbjucvqggu
 supabase db push
 ```
 

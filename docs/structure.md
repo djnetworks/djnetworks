@@ -25,14 +25,22 @@ system exports.
 **Transactions** — `rental_order`, `order_line`, `order_charge`, `movement`, `repair_job`,
 `ledger_entry`, `product_image`
 
-**Derived views** — `v_unit_location`, `v_unit_status`, `v_order_outstanding`, `v_pool_stock`,
-`v_product_stock`, `v_customer_balance`, `v_unit_utilisation`, `v_product_roi`, and the function
-`fn_availability(product, from, to)`
+**Derived views (9)** — `v_unit_location`, `v_unit_status`, `v_order_outstanding`,
+`v_order_fulfilment`, `v_pool_stock`, `v_product_stock`, `v_customer_balance`, `v_unit_utilisation`,
+`v_product_roi`, and the function `fn_availability(product, from, to)`
 
 `v_pool_stock` is the one place that knows what pooled stock is; `v_product_stock` and
 `fn_availability` read it rather than re-deriving quantities. `v_order_outstanding` replaced
 `v_order_outstanding_units` in `0008` — it reports pieces *and* quantities, because a cable that
 never came back is as outstanding as a speaker (rule 13).
+
+`v_order_fulfilment` arrived in `0010`, when `rental_order.status` was narrowed to the three things
+a person actually decides — `confirmed`, `closed`, `cancelled`. How much has gone out and how much
+has come back is derived from movements, never stored: it is two quantities, not one label, and an
+enum holding both would drift the way a `current_location` column drifts. The view exposes
+`qty_ordered`, `qty_dispatched`, `qty_returned`, `qty_outstanding` and `qty_undispatched` first, and
+a convenience `fulfilment_state` label computed from them — because an order with 4 ordered, 2 gone
+and 1 back is genuinely both partly dispatched and partly returned, and no single label says so.
 
 The three-tier product model matters and is easy to get wrong:
 

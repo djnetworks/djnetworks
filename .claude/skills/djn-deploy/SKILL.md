@@ -5,7 +5,7 @@ description: Deploy changes to the DJ Network's rental system — migrations, Ed
 
 # Deploying DJ Network's
 
-Project ref `hkzgxsgokqphthdmbras`, region `ap-southeast-2`.
+Project ref `hjidocpqcrfbjucvqggu`, region `ap-south-1`.
 
 ## Order of operations
 
@@ -19,7 +19,7 @@ Always in this order. Skipping it produces a frontend calling a view that does n
 ## Migrations
 
 ```bash
-supabase link --project-ref hkzgxsgokqphthdmbras
+supabase link --project-ref hjidocpqcrfbjucvqggu
 supabase db push
 ```
 

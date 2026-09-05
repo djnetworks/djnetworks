@@ -29,7 +29,7 @@ code — nothing there is authoritative over `docs/`.
 ```
 Read CLAUDE.md, docs/structure.md and docs/decisions.md before doing anything.
 
-Link this repo to Supabase project hkzgxsgokqphthdmbras and apply the six migrations in
+Link this repo to Supabase project hjidocpqcrfbjucvqggu and apply the six migrations in
 supabase/migrations/. They have never been run — expect errors and fix them by editing the
 migration files (nothing is applied yet, so editing them now is correct; once applied, they
 are frozen).
