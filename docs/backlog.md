@@ -54,6 +54,41 @@ monotonic tiebreak the table does not currently have: a `bigserial` sequence col
 ordered last. Note this also silently affects `v_order_outstanding`, `v_product_stock` and rule 9,
 all of which read unit position through this view.
 
+**A sub-hired line reserves his own stock.** `decisions.md` says of sub-hire, in as many words:
+*"No inventory impact."* It has one. `fn_availability`'s committed calculation does not filter on
+`is_subhired`, so a line marked as coming from a vendor still consumes his own fleet. Measured on the
+seeded database: SPK-15 in a d+1..d+3 window reads `committed 2 / available 2`; add a line for 2 more
+SPK-15 flagged `is_subhired = true` with a vendor attached, and it reads `committed 4 / available 0`.
+Two of his own speakers are now reserved against gear that is arriving from Shreeji. The screen will
+refuse a real booking he could have taken. `v_product_roi` gets this right — it excludes sub-hired
+lines from revenue — so the flag is honoured on the money side and ignored on the inventory side.
+Fix is one predicate in the committed CTE, but it changes availability numbers, so it wants its own
+migration and a re-run of the acceptance test.
+
+**`pinned_unit_id` is written and read by nothing.** The column exists on `order_line` with a foreign
+key and no other reader anywhere in the schema — no view, no function, no constraint. Measured: the
+same piece can be pinned to two overlapping orders and both inserts are accepted, and a piece
+belonging to a completely different product can be pinned to a line (an AMP-2K piece pinned to a
+SPK-15 line was accepted). `decisions.md` describes pinning as the escape hatch for "when there is a
+reason to" allocate a specific box; today it records an intention that nothing acts on and nothing
+validates. Either enforce it at dispatch, or drop the column so it stops promising something.
+
+**A deposit can be refunded beyond what is held, silently.** `deposit_in` 1000 followed by
+`deposit_out` 4000 leaves `v_customer_balance.deposit_held` at **-3000.00** with no error and no
+flag. Rule 6 survives — `receivable` was unaffected at 3000.00, so the two numbers never blend — but
+a negative liability is not a state the business can be in, and on the portal it reads as the
+company owing the customer money it never took. Wants a guard, or at minimum a flag column the way
+`v_pool_stock.has_ledger_error` works.
+
+**Lost units stay in the ROI cost denominator; retired units do not.** `v_product_roi`'s cost CTE
+filters `where u.lifecycle <> 'retired'`, so a piece marked `lost` keeps contributing its purchase
+cost. Measured on MIC-BLX: `purchase_cost` 126500.00 with one piece retired; mark another piece lost
+and it stays 126500.00, while `v_product_stock.units_on_hand` and `fn_availability` both correctly
+drop from 4 to 3. Whichever way it should go, the two lifecycles being treated differently is
+undocumented and neither migration comment explains it. Note the direction: including a lost box
+makes ROI look *worse*, not better, so this understates rather than flatters — but it means retired
+and lost gear answer the same question differently.
+
 **`from_kind` / `to_kind` are not validated against `movement_type`.** This is the price of `0008`'s
 ledger model and it is written into that migration. A dispatch of 12 recorded with `to_kind = 'none'`
 takes both on-hand and owned from 185 to 173, leaves `qty_at_customer` at 0, produces no outstanding
@@ -118,6 +153,13 @@ deleted. Harmless, but they read as live paths to anyone tracing what a delete w
 ---
 
 ## Housekeeping
+
+**Nothing answers "where was this piece on date X".** Every position view is current-state only —
+`v_unit_location` takes the last movement, full stop. Reconstructing a past position means querying
+`movement` by hand with `order by moved_on desc, created_at desc limit 1`, which is what verification
+had to do to prove a piece was on the shelf between two hires. Fine for now: no report needs it, and
+utilisation counts spans rather than sampling dates. It becomes real the first time someone asks what
+was available last Tuesday, or wants to audit a disputed hire.
 
 **`product.updated_at` has no maintaining trigger.** Only `0006`'s image sync ever sets it, so the
 column is stale everywhere else and cannot be used to detect edits — which the Sheet mirror will
