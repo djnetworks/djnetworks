@@ -3,15 +3,17 @@
 Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 
 - **Start here:** `CLAUDE.md` — the rules that are not negotiable, and why each one exists.
-- **The design:** `docs/structure.md` — 15 tables, 12 forms, the derived views.
+- **The design:** `docs/structure.md` — 16 tables, 12 forms, the derived views.
 - **What was decided and what it cost:** `docs/decisions.md`
 - **What is still unanswered:** `docs/open-questions.md`
+- **Found and not fixed:** `docs/backlog.md`
 
 ## Status
 
-Schema drafted, nothing in production. **The catalogue is empty** — hundreds of items exist
-physically, none are listed. Bulk import through the Google Sheet is the intended path, and it
-matters more than any screen in the application.
+Schema applied — migrations `0001`-`0008` are live on the Supabase project, and no screen exists
+yet. **The catalogue is empty** — hundreds of items exist physically, none are listed. Bulk import
+through the Google Sheet is the intended path, and it matters more than any screen in the
+application.
 
 ## Layout
 

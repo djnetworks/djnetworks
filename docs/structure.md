@@ -25,9 +25,14 @@ system exports.
 **Transactions** — `rental_order`, `order_line`, `order_charge`, `movement`, `repair_job`,
 `ledger_entry`, `product_image`
 
-**Derived views** — `v_unit_location`, `v_unit_status`, `v_order_outstanding_units`,
+**Derived views** — `v_unit_location`, `v_unit_status`, `v_order_outstanding`, `v_pool_stock`,
 `v_product_stock`, `v_customer_balance`, `v_unit_utilisation`, `v_product_roi`, and the function
 `fn_availability(product, from, to)`
+
+`v_pool_stock` is the one place that knows what pooled stock is; `v_product_stock` and
+`fn_availability` read it rather than re-deriving quantities. `v_order_outstanding` replaced
+`v_order_outstanding_units` in `0008` — it reports pieces *and* quantities, because a cable that
+never came back is as outstanding as a speaker (rule 13).
 
 The three-tier product model matters and is easy to get wrong:
 

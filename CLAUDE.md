@@ -63,6 +63,15 @@ These are not style preferences. Each one exists because breaking it has already
 
 12. **History is never deleted.** Orders are cancelled, not removed. Units are retired, not deleted.
 
+13. **Every path that touches inventory handles all three tracking modes.** A view, a query or a
+    screen that assumes `unit_id` is present will lie about cables. Pooled and consumable products
+    have no numbered pieces, so anything joining `v_unit_status` finds nothing and reports *zero*
+    rather than reporting *nothing* — a confident wrong number, which is the worst kind. Migration
+    `0008` exists because four places had this same bug at once: `fn_availability`,
+    `v_product_stock`, `v_order_outstanding_units`, and a shrinkage path that did not exist at all.
+    They were one design flaw, not four — `unit` was built first and `pool` was bolted on beside it.
+    Read pooled quantities through `v_pool_stock` and never re-derive them somewhere else.
+
 ---
 
 ## Who applies schema changes

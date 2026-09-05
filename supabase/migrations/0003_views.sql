@@ -6,11 +6,24 @@
 -- be believed.
 
 -- ---------------------------------------------------------------------------
+-- Every view below is declared security_invoker, and that is not optional.
+--
+-- A view runs with its OWNER's rights by default. The owner here is `postgres`, which on
+-- Supabase carries BYPASSRLS, and Supabase separately grants SELECT on everything in `public`
+-- to `anon`. Left at the default, these views hand anonymous traffic every customer balance,
+-- every deposit held and the whole fleet — walking straight past the row level security that
+-- 0004 puts on the base tables, which is the exact opposite of what 0004 says it does.
+-- security_invoker makes each view read as its caller, so the operator_all policy decides.
+-- v_unit_status reads v_unit_location, so the inner view needs the setting too: the chain is
+-- only as tight as its loosest link.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
 -- Where is every unit right now.
 -- Rule 1: current location is the destination of the last movement, full stop.
 -- ---------------------------------------------------------------------------
 
-create or replace view v_unit_location as
+create or replace view v_unit_location with (security_invoker = on) as
 select distinct on (m.unit_id)
   m.unit_id,
   m.id            as last_movement_id,
@@ -33,7 +46,7 @@ order by m.unit_id, m.moved_on desc, m.created_at desc;
 -- alongside rather than folded in.
 -- ---------------------------------------------------------------------------
 
-create or replace view v_unit_status as
+create or replace view v_unit_status with (security_invoker = on) as
 select
   u.id            as unit_id,
   u.product_id,
@@ -65,7 +78,7 @@ left join v_unit_location l on l.unit_id = u.id;
 -- Rule 9: an order cannot close while this returns anything for it.
 -- ---------------------------------------------------------------------------
 
-create or replace view v_order_outstanding_units as
+create or replace view v_order_outstanding_units with (security_invoker = on) as
 select
   o.id                  as order_id,
   o.order_no,
@@ -86,7 +99,7 @@ where o.status not in ('cancelled');
 -- What is physically on hand, per product.
 -- ---------------------------------------------------------------------------
 
-create or replace view v_product_stock as
+create or replace view v_product_stock with (security_invoker = on) as
 select
   p.id  as product_id,
   p.short_code,
@@ -132,13 +145,21 @@ returns table (
 language sql
 stable
 as $$
+  -- The CTE is committed_qty, not committed, because `committed` is also one of the RETURNS
+  -- TABLE output columns and those are in scope inside the body as parameters. A real range
+  -- table entry does win over a parameter here, so the shorter name resolved correctly, but it
+  -- reads like a bug and invites a "fix" from whoever edits this next. Both CTEs are unfiltered
+  -- aggregates with no GROUP BY, so each returns exactly one row even when the product has no
+  -- units and no lines — that is what makes the cross join below return (id, 0, 0, 0) rather
+  -- than no row at all. count(*) cannot be null and the sum is coalesced, so neither can the
+  -- answer be null.
   with on_hand as (
     select count(*)::int as n
     from v_unit_status s
     where s.product_id = p_product_id
       and s.status = 'available'
   ),
-  committed as (
+  committed_qty as (
     select coalesce(sum(ol.qty), 0)::int as n
     from order_line ol
     join rental_order o on o.id = ol.order_id
@@ -152,9 +173,9 @@ as $$
   select
     p_product_id,
     on_hand.n,
-    committed.n,
-    (on_hand.n - committed.n)
-  from on_hand, committed;
+    committed_qty.n,
+    (on_hand.n - committed_qty.n)
+  from on_hand, committed_qty;
 $$;
 
 comment on function fn_availability is
@@ -165,7 +186,7 @@ comment on function fn_availability is
 -- Rule 6: receivable and deposit held are two numbers and are never merged.
 -- ---------------------------------------------------------------------------
 
-create or replace view v_customer_balance as
+create or replace view v_customer_balance with (security_invoker = on) as
 select
   c.id as customer_id,
   c.name,
@@ -202,7 +223,7 @@ group by c.id, c.name, c.business_name;
 -- Days out is counted from actual dispatch and return movements, never from planned dates.
 -- ---------------------------------------------------------------------------
 
-create or replace view v_unit_utilisation as
+create or replace view v_unit_utilisation with (security_invoker = on) as
 with spans as (
   select
     d.unit_id,
@@ -248,7 +269,7 @@ group by u.id, u.product_id, u.piece_no, o.owned_from;
 -- including them would flatter heavy gear, which travels most.
 -- ---------------------------------------------------------------------------
 
-create or replace view v_product_roi as
+create or replace view v_product_roi with (security_invoker = on) as
 with revenue as (
   select ol.product_id, coalesce(sum(ol.line_total), 0) as rental_revenue
   from order_line ol

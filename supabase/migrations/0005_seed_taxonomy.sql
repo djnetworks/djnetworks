@@ -1,5 +1,5 @@
 -- 0005_seed_taxonomy.sql
--- 26 categories, 187 subcategories.
+-- 27 categories, 187 subcategories.
 --
 -- PROVENANCE: this taxonomy was drafted in an earlier planning session, NOT by the business
 -- owner. It is a starting point, not a validated list. Before intake begins he must walk it and

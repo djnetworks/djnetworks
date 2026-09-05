@@ -95,14 +95,21 @@ on conflict (key) do nothing;
 --
 -- PLACEHOLDER PERCENTAGES. The tier boundaries came from an earlier planning document, not
 -- from the owner. The percentages below are invented and must be replaced before go-live.
+--
+-- Seeded under `where not exists`, not `on conflict do nothing`. discount_tier is keyed on a
+-- generated uuid and has no unique constraint on the day bands, so a conflict can never fire
+-- and the ON CONFLICT clause was silently doing nothing at all — a second run would have laid
+-- down four more overlapping tiers and the ladder would quietly price the same hire twice.
 -- ---------------------------------------------------------------------------
 
-insert into discount_tier (min_days, max_days, discount_pct) values
-  (1, 1,    0),
-  (2, 3,    0),
-  (4, 7,    0),
-  (8, null, 0)
-on conflict do nothing;
+insert into discount_tier (min_days, max_days, discount_pct)
+select * from (values
+  (1, 1,          0),
+  (2, 3,          0),
+  (4, 7,          0),
+  (8, null::int,  0)
+) as seed(min_days, max_days, discount_pct)
+where not exists (select 1 from discount_tier);
 
 -- ---------------------------------------------------------------------------
 -- Starting locations. Names to be confirmed with the owner.

@@ -8,6 +8,17 @@
 -- All three land in the same bucket and the same table. There is no "external URL" mode where
 -- the image lives on somebody else's server: a WhatsApp or Drive link will rot, and the customer
 -- portal would then show a broken product.
+--
+-- APPLY-TIME WARNING, deliberately not worked around. storage.objects and storage.buckets are
+-- owned by supabase_storage_admin, not by postgres. On most hosted projects postgres is a
+-- member of that role and the four statements below succeed; on some they fail with
+-- "must be owner of table objects" or a permission denied on storage.buckets. The migration
+-- runs as one transaction, so if the storage block fails NOTHING in this file lands — the
+-- product_image table below will be missing too, and the failure will look like it came from
+-- the wrong place. If that happens: create the bucket and its two policies once from the
+-- Dashboard (Storage → Buckets, then Storage → Policies, which run as the storage admin), then
+-- re-run this migration. The statements are all if-exists / on-conflict guarded, so the second
+-- run is a no-op over whatever the Dashboard already created.
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -63,11 +74,29 @@ create policy operator_all on product_image
   for all to authenticated using (true) with check (true);
 
 -- Keep product.image_url pointing at the primary image so list views need no join.
+--
+-- The branch on TG_OP is doing real work, not being tidy. NEW is null on a delete and OLD is
+-- null on an insert, so a single coalesce reads correctly for those two — but it reads only
+-- ONE product, and an update that moves an image from one product to another touches two. The
+-- product that lost the image would keep an image_url pointing at a photo that now belongs to
+-- somebody else, and every list and portal page would show the wrong box for that product. So
+-- both ends of an update are collected and both are resynced. Naming the row variables per
+-- operation also means this does not depend on the reader knowing the null-vs-unassigned rule.
 create or replace function fn_sync_primary_product_image()
 returns trigger
 language plpgsql
 as $$
+declare
+  v_affected uuid[];
 begin
+  if tg_op = 'INSERT' then
+    v_affected := array[new.product_id];
+  elsif tg_op = 'UPDATE' then
+    v_affected := array[new.product_id, old.product_id];
+  else  -- DELETE
+    v_affected := array[old.product_id];
+  end if;
+
   update product p
      set image_url = (
            select i.storage_path
@@ -76,7 +105,7 @@ begin
            limit 1
          ),
          updated_at = now()
-   where p.id = coalesce(new.product_id, old.product_id);
+   where p.id = any (v_affected);
   return null;
 end $$;
 

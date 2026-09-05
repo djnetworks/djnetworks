@@ -58,7 +58,55 @@ Do not commit .env or any key. Confirm .gitignore covers it before pushing.
 
 ---
 
-## 3 · Seed realistic test data
+## 3 · Harden the schema — migration 0007
+
+Bootstrapping surfaced four things worth fixing before any data exists. Do them now: the first is a
+live hole in rule 12, and the second makes the availability screen lie the moment a cable goes on an
+order.
+
+```
+Write migration 0007 fixing four things you found. Use the migration-writer agent. Do not touch
+0001-0006 — they are applied and frozen.
+
+1. Block DELETE on rental_order and on unit, the same way movement is guarded. History is
+   cancelled or retired, never removed (CLAUDE.md rule 12). Right now a confirmed but
+   undispatched order can be hard-deleted, its lines and charges cascade away and its ledger
+   entries orphan to order_id = null. Every order passes through that state.
+
+2. Make fn_availability handle all three tracking modes. It currently returns 0 forever for
+   pool and consumable products, which means the screen will lie the moment cables go on an
+   order. Branch on product.tracking_mode:
+     - unit       : current logic, unchanged
+     - pool       : pool_qty, less net quantity currently out (dispatch qty minus return qty),
+                    less quantity committed on overlapping confirmed orders
+     - consumable : pool_qty less total quantity issued. No date overlap logic — consumables
+                    are never expected back, so there is nothing to return and nothing to
+                    reserve against a future date.
+   Keep the same return shape so existing callers do not break.
+
+3. Fix movement_unit_or_qty. It is a tautology — qty is already NOT NULL CHECK (qty >= 1), so
+   it can never fail and does not enforce what its comment claims. Either make it enforce the
+   real invariant (unit-tracked movements carry a unit_id, pooled ones do not) or drop it and
+   remove the misleading comment. Tell me which you chose and why. A constraint that cannot
+   fail while claiming to enforce something is worse than no constraint.
+
+4. Set search_path = public, pg_temp on all three functions to clear the advisor warnings.
+
+Then: fix the README table count (it says 15, there are 16 — product_image arrived in 0006),
+and renumber docs/claude-code-prompts.md so this becomes prompt 3 and seeding becomes prompt 4.
+
+Verify by hand afterwards, with numbers:
+- prove DELETE is refused on both tables, with a probe that rolls itself back
+- prove fn_availability returns a sensible non-zero figure for a pool product with pool_qty set
+- re-run get_advisors and show me that security is clean
+
+Done when: 0007 is applied, all four are demonstrated with actual output, and the security
+advisor shows no findings.
+```
+
+---
+
+## 4 · Seed realistic test data
 
 Do this *before* any screen. Every screen you build after this will be built against data that
 exercises the logic, instead of an empty table.
@@ -87,7 +135,7 @@ unit proving it reads 'out'.
 
 ---
 
-## 4 · Verify the logic before building anything on it
+## 5 · Verify the logic before building anything on it
 
 ```
 Run the logic-verifier agent against the seeded database. Work through every scenario in its
@@ -104,7 +152,7 @@ If any scenario cannot be constructed, say so rather than marking it green.
 
 ---
 
-## 5 · Product and unit screens
+## 6 · Product and unit screens
 
 ```
 Build web/products.html and web/product.html — the product master list and detail/edit form,
@@ -130,7 +178,7 @@ as available at the location I picked.
 
 ---
 
-## 6 · The catalogue import lane
+## 7 · The catalogue import lane
 
 This is the highest-value thing in the whole project. Hundreds of items, no list, three previous
 builds dead at exactly this point.
@@ -164,7 +212,7 @@ with their units created plus a clear list of the 3 failures and why.
 
 ---
 
-## 7 · Orders and availability
+## 8 · Orders and availability
 
 ```
 Build the order screen per docs/structure.md form 6.
@@ -190,7 +238,7 @@ reason, and see the override recorded on the order.
 
 ---
 
-## 8 · Dispatch and return
+## 9 · Dispatch and return
 
 The two screens the whole system lives or dies on.
 
@@ -218,7 +266,7 @@ Return:
 - return location may differ from where it left
 - damage proposes a deduction from the deposit; excess becomes an order_charge
 - a lost unit proposes its own purchase_cost, editable
-- the order cannot be closed while v_order_outstanding_units returns anything for it
+- the order cannot be closed while v_order_outstanding returns anything for it, pooled stock included
 
 Offline: queue both forms in IndexedDB, show pending entries clearly, sync on reconnect, and
 survive a page refresh without losing the queue.
@@ -231,7 +279,7 @@ availability after its return date has passed.
 
 ---
 
-## 9 · Ledger, payments, portal
+## 10 · Ledger, payments, portal
 
 ```
 Build the customer ledger and payments screen (form 11), then the customer portal (form 12).
@@ -254,7 +302,7 @@ Run guardrail-reviewer specifically on the portal data access before you conside
 
 ---
 
-## 10 · Sheet mirror and analysis
+## 11 · Sheet mirror and analysis
 
 ```
 Build the read-only Google Sheet mirror per the djn-sheet-sync skill, then the analysis screen
