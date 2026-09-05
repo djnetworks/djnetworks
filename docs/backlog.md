@@ -96,6 +96,12 @@ deleted. Harmless, but they read as live paths to anyone tracing what a delete w
 column is stale everywhere else and cannot be used to detect edits — which the Sheet mirror will
 eventually want.
 
+**A from-scratch replay onto an existing database fails at `0003`.** `0003_views.sql:117` errors with
+*cannot change data type of view column "units_active" from integer to bigint*, because `0008`
+recreated `v_product_stock` with `int`. Normal pushes are unaffected — each file applies once — and a
+clean-slate replay is fine. It only bites re-running the whole series over a database that already
+has `0008`, which is what a "reset and replay" would do.
+
 **Four unindexed foreign keys**, flagged INFO by the performance advisor:
 `movement.repair_job_id`, `order_line.pinned_unit_id`, `order_line.subhire_vendor_id`,
 `repair_job.vendor_id`. Meaningless at zero rows; revisit once there is traffic.
