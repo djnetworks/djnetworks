@@ -12,9 +12,18 @@ change to a decision already made — each one records what it cost, and most we
 
 ## Stack
 
-- **Supabase** (Postgres + Auth + Edge Functions) — project ref `ghylakhhsdvnkopmjteo`, region `ap-south-1`
+- **Supabase** (Postgres + Auth + Edge Functions) — project ref `hkzgxsgokqphthdmbras`, region `ap-southeast-2`
 - **Static HTML frontend**, no build step, same pattern as the Maitri exhibition app
 - **Google Sheets** two-way link: read-only mirror out, bulk catalogue import in
+
+**The publishable key is public, and RLS is the only thing behind it.** Supabase now issues a
+`sb_publishable_...` key rather than an anon JWT. It ships inside the static frontend, so anyone who
+opens the page source has it — it is not a secret and there is no version of this system where it
+becomes one. Every protection this database has is a row level security policy. That is the reason
+the portal is built on a `security definer` function keyed on a per-customer token and never on
+anonymous table access: opening anon SELECT on any table to make a screen work publishes that table
+to the internet. The real key lives in `.env`, which is gitignored; `.env.example` carries the shape
+only.
 
 ---
 
@@ -78,12 +87,29 @@ These are not style preferences. Each one exists because breaking it has already
 
 **Only this repo.** Migrations live in `supabase/migrations/` and are applied from here.
 
-A Cowork chat also has the Supabase connection, but it is **read-only** for that session: querying
-data, checking a view returns the right numbers, running analysis. If a schema change is needed
-there, it is written as a migration file in this repo and applied from here.
-
 Two agents with write access to one database produces a schema that no longer matches its own
 migration history. Do not apply ad-hoc DDL from anywhere else.
+
+**There is no second pair of eyes on this database any more.** The Cowork chat's Supabase connector
+is bound to the OLD account and cannot reach project `hkzgxsgokqphthdmbras` at all — not to write,
+not to read, not to check a number. It used to be the independent read-only session that could
+confirm a view returned what this repo claimed it returned. It cannot do that now.
+
+So all schema work and all verification happen in one place, which means **whoever writes the
+migration is also the only one who checks it.** That changes what a passing test is worth. A clean
+run now proves only that the code agrees with itself — the same assumption that produced the wrong
+answer will produce the wrong assertion, and there is nobody holding a different copy of the truth.
+
+The mitigations, and they are weaker than a second session:
+- Assert on **numbers**, never on the absence of an error. A previous workbook recalculated with
+  zero errors while silently reading the wrong rows.
+- Verify against a **throwaway local replay** of the migrations, not only against the live database,
+  so at least the two are independently constructed.
+- Prefer probes that **roll themselves back** and state the expected value before reading the actual
+  one, so a wrong expectation is visible rather than absorbed.
+- When a result matters, reconstruct it a **second way** — hand-count the rows the view aggregates.
+- Treat `guardrail-reviewer` and `logic-verifier` as the substitute for the second session, and give
+  them the failure to hunt for rather than asking whether the code looks right.
 
 ---
 
