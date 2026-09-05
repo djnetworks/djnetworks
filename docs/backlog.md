@@ -40,6 +40,20 @@ all still undecided, and the guard deliberately assumes none of them.
 
 ## Correctness, ranked by what it costs when it fires
 
+**A same-day dispatch and return written in one transaction makes `v_unit_status` arbitrary.**
+`v_unit_location` picks a unit's current position with `distinct on (unit_id) ... order by moved_on
+desc, created_at desc`. `created_at` defaults to `now()`, which is transaction-scoped, so every
+movement written in one transaction shares a timestamp — and when `moved_on` matches too, the
+tiebreak has nothing left to break and the winner is arbitrary. Measured: a piece dispatched and
+returned on the same day in one transaction reads `out` while it sits in the godown; the same tie
+can resolve the other way and report a piece `available` while it is at a wedding, which is rule 2's
+six-out-five-back bug arriving through a new door. Reachable in production because `structure.md`
+form 7 queues dispatch offline and syncs — a flush lands both rows in one transaction. Separate
+transactions are safe (timestamps differ), which is why it has not shown up before. Fix needs a
+monotonic tiebreak the table does not currently have: a `bigserial` sequence column on `movement`,
+ordered last. Note this also silently affects `v_order_outstanding`, `v_product_stock` and rule 9,
+all of which read unit position through this view.
+
 **`from_kind` / `to_kind` are not validated against `movement_type`.** This is the price of `0008`'s
 ledger model and it is written into that migration. A dispatch of 12 recorded with `to_kind = 'none'`
 takes both on-hand and owned from 185 to 173, leaves `qty_at_customer` at 0, produces no outstanding
@@ -70,6 +84,19 @@ Wants a trigger refusing the flip while `unit` rows exist.
 column exist, `decisions.md` describes them as the recorded escape hatch for same-day turnaround,
 and `fn_availability` has never consulted either. If the frontend implements the override in
 JavaScript, the screen and the database will disagree about what is bookable.
+
+**An order can be born `closed`.** `0009`'s rule 9 guard is a `before update` trigger, so
+`insert ... status = 'closed'` followed by dispatching against it produces a closed order with gear
+at a customer. Pre-existing; `0010` is what made it visible. `supabase/seed/dev_seed.sql` routes
+around it deliberately — it inserts `confirmed` and updates to `closed` after the returns — so the
+fixture exercises the guard rather than dodging it. Fix is an insert branch on that trigger.
+
+**`v_pool_stock` counts consumed stock as still owned and still at the customer.** Fog fluid issued
+9 of 24 reads `qty_owned = 24` and `qty_at_customer = 9` — the litres were burned, not held, and
+nobody is going to telephone the customer about them. Harmless where it matters (`qty_on_hand` is
+right at 15, and `v_order_outstanding` correctly reports 0 for consumables, so rule 9 does not block
+the order), but the two columns read as nonsense on a screen. Noted in `0008` and `0010`'s comments;
+the honest fix is either separate columns for consumables or suppressing those two for that mode.
 
 **A negative pooled outstanding is invisible in `v_order_outstanding`.** The `> 0` filter is correct
 per spec, but it means an over-return (25 dispatched, 30 returned) shows nothing there. It surfaces
