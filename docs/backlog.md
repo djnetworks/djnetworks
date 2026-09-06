@@ -60,40 +60,39 @@ monotonic tiebreak the table does not currently have: a `bigserial` sequence col
 ordered last. Note this also silently affects `v_order_outstanding`, `v_product_stock` and rule 9,
 all of which read unit position through this view.
 
-**A sub-hired line reserves his own stock.** `decisions.md` says of sub-hire, in as many words:
-*"No inventory impact."* It has one. `fn_availability`'s committed calculation does not filter on
-`is_subhired`, so a line marked as coming from a vendor still consumes his own fleet. Measured on the
-seeded database: SPK-15 in a d+1..d+3 window reads `committed 2 / available 2`; add a line for 2 more
-SPK-15 flagged `is_subhired = true` with a vendor attached, and it reads `committed 4 / available 0`.
-Two of his own speakers are now reserved against gear that is arriving from Shreeji. The screen will
-refuse a real booking he could have taken. `v_product_roi` gets this right — it excludes sub-hired
-lines from revenue — so the flag is honoured on the money side and ignored on the inventory side.
-Fix is one predicate in the committed CTE, but it changes availability numbers, so it wants its own
-migration and a re-run of the acceptance test.
+**Prompt 8 (dispatch) — the pin is validated but not yet honoured.** `0011` made
+`order_line.pinned_unit_id` trustworthy: a pinned piece must belong to the line's product, and one
+box cannot be pinned to two overlapping orders (nor twice on one order), enforced on the line and
+again when an order's dates move. What it deliberately did NOT do is make anything *act* on the pin.
+`fn_availability` still ignores it, correctly — pinning constrains WHICH piece goes, not HOW MANY
+are free, so the aggregate is genuinely unaffected and teaching availability about pins would only
+let a pin double-count against its own line. Honouring it belongs to the dispatch screen: offer the
+pinned piece first, and say so plainly when it is not on the shelf. Until that exists, a pin is a
+recorded intention that no screen reads.
 
-**`pinned_unit_id` is written and read by nothing.** The column exists on `order_line` with a foreign
-key and no other reader anywhere in the schema — no view, no function, no constraint. Measured: the
-same piece can be pinned to two overlapping orders and both inserts are accepted, and a piece
-belonging to a completely different product can be pinned to a line (an AMP-2K piece pinned to a
-SPK-15 line was accepted). `decisions.md` describes pinning as the escape hatch for "when there is a
-reason to" allocate a specific box; today it records an intention that nothing acts on and nothing
-validates. Either enforce it at dispatch, or drop the column so it stops promising something.
+**Prompt 11 (payments and ledger) — a deposit can be refunded beyond what is held.**
+`deposit_in` 1000 followed by `deposit_out` 4000 leaves `v_customer_balance.deposit_held` at
+**-3000.00** with no error and no flag. Rule 6 survives — `receivable` was unaffected at 3000.00, so
+the two numbers never blend — but a negative liability is not a state the business can be in, and on
+the portal it reads as the company owing the customer money it never took. Deliberately left to the
+payments screen rather than fixed in the schema: that is where the number is typed, where the
+operator can see what is already held, and where refusing is a sentence rather than a stack trace. A
+database guard would be the fallback if the screen ever writes ledger rows some other way.
 
-**A deposit can be refunded beyond what is held, silently.** `deposit_in` 1000 followed by
-`deposit_out` 4000 leaves `v_customer_balance.deposit_held` at **-3000.00** with no error and no
-flag. Rule 6 survives — `receivable` was unaffected at 3000.00, so the two numbers never blend — but
-a negative liability is not a state the business can be in, and on the portal it reads as the
-company owing the customer money it never took. Wants a guard, or at minimum a flag column the way
-`v_pool_stock.has_ledger_error` works.
+**BLOCKED ON A DECISION — lost units stay in the ROI cost denominator; retired units do
+not.** `v_product_roi`'s cost CTE filters `where u.lifecycle <> 'retired'`, so a piece marked `lost`
+keeps contributing its purchase cost. Measured on MIC-BLX: `purchase_cost` 126500.00 with one piece
+retired; mark another piece lost and it stays 126500.00, while `v_product_stock.units_on_hand` and
+`fn_availability` both correctly drop from 4 to 3. Including a lost box makes ROI look *worse*, not
+better, so this understates rather than flatters — but two lifecycles answering the same question
+differently is undocumented, and `v_product_roi` was deliberately not touched.
 
-**Lost units stay in the ROI cost denominator; retired units do not.** `v_product_roi`'s cost CTE
-filters `where u.lifecycle <> 'retired'`, so a piece marked `lost` keeps contributing its purchase
-cost. Measured on MIC-BLX: `purchase_cost` 126500.00 with one piece retired; mark another piece lost
-and it stays 126500.00, while `v_product_stock.units_on_hand` and `fn_availability` both correctly
-drop from 4 to 3. Whichever way it should go, the two lifecycles being treated differently is
-undocumented and neither migration comment explains it. Note the direction: including a lost box
-makes ROI look *worse*, not better, so this understates rather than flatters — but it means retired
-and lost gear answer the same question differently.
+**The question for the owner is what that report means.** *Lifetime return* — everything ever bought
+stays in the denominator, so the number answers "was buying this kind of gear a good idea", and
+retired pieces should be put back in. *Current-fleet return* — only what he still owns counts, so
+the number answers "is what I have now earning", and lost pieces should come out alongside retired
+ones. Both are defensible and they give different answers; the fix is opposite depending on which he
+means. Do not guess.
 
 **`from_kind` / `to_kind` are not validated against `movement_type`.** This is the price of `0008`'s
 ledger model and it is written into that migration. A dispatch of 12 recorded with `to_kind = 'none'`
