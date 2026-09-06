@@ -28,6 +28,12 @@
 -- anchored to fixed or future dates never exercises the status logic at all, and that
 -- has already wasted real time on this project — see CLAUDE.md's verification standard.
 --
+-- THE FIXTURE AGES. Dates are computed from current_date at the moment this file runs and are then
+-- frozen as data, so the scenarios drift one day further from "now" with every day that passes. The
+-- overdue order is three days late on the day you seed and a fortnight late a fortnight later. That
+-- is the correct behaviour and far better than hard-coded dates, which never exercise the status
+-- logic at all — but re-run this file when the offsets stop resembling a real week's trading.
+--
 -- NO UNIT HAS TWO MOVEMENTS ON THE SAME DAY, and that is not an accident.
 -- v_unit_location picks a piece's current position with
 --     distinct on (unit_id) ... order by moved_on desc, created_at desc

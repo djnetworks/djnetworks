@@ -7,6 +7,12 @@ here blocks seeding or screens.
 Each line is the concrete failure, not the tidy description of it. Anything `guardrail-reviewer`
 turns up from here lands in this file and waits.
 
+Every measured finding below was re-confirmed on **2026-09-06 against the current Mumbai database**
+(`hjidocpqcrfbjucvqggu`), after the schema was replayed there from scratch. The numbers reproduced
+identically to the retired project, which is the only evidence available that the replay carried
+behaviour across and not merely row counts — the Cowork session that used to hold a second copy of
+the truth can no longer read this database at all.
+
 ---
 
 ## Decisions the owner has to make first
