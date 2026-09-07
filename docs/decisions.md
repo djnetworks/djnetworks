@@ -173,3 +173,23 @@ took two minutes was answered from memory instead.
 **Cost:** two screens can now start a booking-shaped thing. Kept honest by `ask.html` never writing:
 `orders.html` is still the only place an order is created, and it regenerates every rate from the
 current rate card rather than accepting one across the URL (rule 5).
+
+### Permissions are granular in the database and grouped in the UI
+Eleven keys on the operator row, one `fn_has_permission()` called by every policy. Grouping into
+module toggles is the Team screen's job (Pass G); nobody should tick eleven boxes.
+**Why granular:** the two people who will hold accounts are the owner and the man who carries the
+boxes, and the interesting line between them is not a role — it is that he may record a return and
+must not be able to undo one.
+**Cost:** eleven keys is eleven things to get right on every new table, so the migration asserts
+that no RLS table is missing from the map rather than trusting anybody to remember.
+
+### The gated report views return nothing, not zero
+`v_customer_balance` and the two report views are revoked from `authenticated` and read through
+`_visible` wrappers that carry the permission test.
+**Why not just let RLS empty the ledger:** `v_customer_balance` left-joins it, so a staff member
+without `ledger.view` would have seen every customer at ₹0.00. That is a wrong number stated
+confidently, which this system treats as worse than a refusal.
+**Cost:** one extra object per gated view, and the ungated `v_customer_balance` must stay for
+`fn_portal_snapshot` — a permission predicate inside it evaluates `auth.uid()` as NULL on an anon
+portal request and would break the customer portal for everybody.
+

@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DJ Network's — Rental System</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-2" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-2" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-2">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-2">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-2">
-<link rel="stylesheet" href="style.css?v=2026-09-08-2">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
+<link rel="stylesheet" href="style.css?v=2026-09-08-3">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-2" defer></script>
-<script src="boot.js?v=2026-09-08-2" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
+<script src="boot.js?v=2026-09-08-3" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -33,12 +33,46 @@
 
 <script type="module">
 import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, todayLocal,
-         initOffline, revealActiveTab, jobLine, waLink, waMessage }
-  from './app.js?v=2026-09-08-2';
+         initOffline, revealActiveTab, jobLine, waLink, waMessage, loadPermissions, can }
+  from './app.js?v=2026-09-08-3';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-3';
 
 $('#chrome').innerHTML = chrome('index.html');
 revealActiveTab();
 initOffline();
+
+// ---------------------------------------------------------------------------
+// IS THE FRONT DOOR SHUT?
+//
+// Invite-only is half a migration and half a project setting, and the setting is the half that
+// lives outside this repo — it cannot be turned on from SQL, so it cannot be turned on by a
+// migration, so it is exactly the kind of thing that gets meant and never done.
+//
+// 0021 already makes a self-registered stranger harmless: no operator row means fn_is_operator()
+// is false, which means zero rows from every table and a refusal on every write. That is the real
+// protection and it is measured. This is the second lock, and the app nags for it rather than
+// assuming somebody remembered — shown only to whoever manages the team, because they are the only
+// person who can act on it.
+// ---------------------------------------------------------------------------
+async function checkSignupIsClosed() {
+  if (!can('admin.team')) return;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_PUBLISHABLE_KEY } });
+    if (!r.ok) return;
+    const s = await r.json();
+    if (s.disable_signup === false) {
+      const el = document.createElement('div');
+      el.className = 'note note--bad';
+      el.style.margin = '0 0 14px';
+      el.innerHTML = 'Anyone can still create an account on this project. They would read nothing '
+        + 'and write nothing \u2014 every table checks the operator list \u2014 but the front door '
+        + 'should be shut too. Supabase dashboard \u2192 Authentication \u2192 Sign In / Providers '
+        + '\u2192 Email \u2192 turn off <strong>Allow new users to sign up</strong>. '
+        + 'People are added by invitation.';
+      $('#app')?.prepend(el);
+    }
+  } catch { /* offline, or the settings endpoint is unreachable: not worth an error */ }
+}
 
 // ---------------------------------------------------------------------------
 // TODAY.
@@ -56,6 +90,7 @@ initOffline();
 // ---------------------------------------------------------------------------
 
 requireSession(async () => {
+  await loadPermissions();
   const app = $('#app');
   app.innerHTML = `<h1>Today</h1>
     <p class="sub" id="sub">${esc(fmtDate(todayLocal()))}</p>
@@ -227,6 +262,7 @@ requireSession(async () => {
     }
     $('#extra').innerHTML = html;
     $('#sub').textContent = `${fmtDate(today)} · ${going.length} to load, ${backToday.length} due back, ${lateOrders.length} late`;
+    checkSignupIsClosed();
   } catch (err) {
     $('#day').innerHTML = errorBlock(err, 'retry-home');
     $('#retry-home')?.addEventListener('click', () => location.reload());

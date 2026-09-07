@@ -72,6 +72,42 @@ export const trackLabel = m => ({
 }[m] ?? m);
 
 // ---------------------------------------------------------------------------
+// PERMISSIONS, IN THE CLIENT.
+//
+// READ THIS BEFORE USING IT: what is below is CONVENIENCE, NOT THE BOUNDARY. Every key is enforced
+// by row level security in 0021, on every table, through one function; hiding a button here only
+// spares somebody the discomfort of being refused. If this file were edited in a browser's console
+// to return true for everything, the database would refuse exactly as much as it does now — and
+// that is the property that matters. Never move a check out of a policy and into here.
+//
+// The permissions come from the operator's own row, which they may read and nobody holding a
+// browser session may write.
+// ---------------------------------------------------------------------------
+
+let PERMS = null;
+
+export async function loadPermissions() {
+  if (PERMS) return PERMS;
+  const { data, error } = await sb.from('operator')
+    .select('permissions,display_name,active').maybeSingle();
+  // A failure here must not read as "you may do everything". An empty object denies every key,
+  // which is the safe direction and matches what the database would do anyway.
+  PERMS = (error || !data || data.active === false) ? {} : (data.permissions ?? {});
+  return PERMS;
+}
+
+/** True if this operator holds the key. Absent means denied — no wildcard, no implication. */
+export const can = key => PERMS?.[key] === true;
+
+/** The operator's name for the top bar, once loadPermissions() has run. */
+export let operatorName = '';
+export async function whoAmI() {
+  const { data } = await sb.from('operator').select('display_name').maybeSingle();
+  operatorName = data?.display_name ?? '';
+  return operatorName;
+}
+
+// ---------------------------------------------------------------------------
 // THE CUSTOMER PICKER.
 //
 // Both screens that choose a customer used a plain <select> listing every customer. That is fine at

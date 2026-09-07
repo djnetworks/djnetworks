@@ -413,3 +413,19 @@ predictable from data already on screen. Two guards when it is built, both from 
 a payment chaser when `receivable <= 0` (a credit balance is reachable since `0018`), and never
 blend deposit held into what is owed.
 
+**Self-registration is still open on the project, and only the app nags about it.** `disable_signup`
+is `false`. `0021` makes it harmless — measured: a signed-in account with no `operator` row reads 0
+rows from all 17 tables and is refused on every write — but the front door should be shut as well as
+guarded. It is a Management-API setting, not SQL, so no migration can do it: Supabase dashboard →
+Authentication → Sign In / Providers → Email → turn off *Allow new users to sign up*. The Today
+screen shows a warning to whoever holds `admin.team` until it is done.
+
+**`numbers.view` does not protect the cost columns themselves.** The reports are gated, but
+`unit.purchase_cost` and `repair_job.actual_cost` are still readable by any active operator, because
+the operational screens select whole rows. Closing it means column-level grants, which break
+PostgREST's `select *`. Worth doing only if somebody without `numbers.view` ever holds an account.
+
+**No Team screen.** `fn_admin_set_operator` is the only way to grant a permission and it is not
+callable from a browser, so today a person is added by hand with the service key. The screen comes
+with Pass G's navigation, which re-flows to the modules a person actually holds.
+

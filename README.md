@@ -11,10 +11,14 @@ Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 
 ## Status
 
-**Access control is an allowlist, not a signup toggle.** `0017` made membership of the `operator`
-table the thing every policy tests, so a stranger who self-registers reads zero rows from all 16
-tables. That is what makes the publishable key safe to ship in the page source, which it must be.
-It is not a reason to publish the repo — see Hosting below.
+**Access control is granular permissions, not a role and not a signup toggle.** `0017` made
+membership of the `operator` table the thing every policy tests; `0021` made *which* permission the
+thing they test. Eleven keys, one `fn_has_permission()` choke point, every table. Measured both
+ways: the owner reads and writes everywhere, a staff account holding only `sendout.write` and
+`returns.write` reads **0** ledger rows and is refused on all fifteen other tables, and an account
+with no `operator` row reads **0** rows from every one of the seventeen. That is what makes the
+publishable key safe to ship in the page source, which it must be. It is not a reason to publish the
+repo — see Hosting below.
 
 **Driven end to end by a signed-in operator on 2026-09-07.** A complete job was walked through the
 browser — product, six pieces, customer with a portal code, an order for four, a dispatch of two,
@@ -36,8 +40,8 @@ What exists:
 
 | | |
 |---|---|
-| Database | 16 tables, 9 views, 21 functions. Migrations `0001`–`0018`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
-| Screens | 10 static pages under `web/`, no build step. Nine behind an operator sign-in, plus the customer portal. |
+| Database | 17 tables, 14 views, 27 functions. Migrations `0001`–`0021`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
+| Screens | 11 static pages under `web/`, no build step. Ten behind an operator sign-in, plus the customer portal. |
 | Offline | Vendored Supabase client, service worker for the app shell, IndexedDB for queued writes, explicit per-job prefetch. |
 | Sheet | Read-only mirror OUT, deployed as the `sheet-mirror` Edge Function with `sheet/DataSync.gs`. The bulk import lane is NOT built. |
 | Fixture | `supabase/seed/dev_seed.sql` — development data, not the catalogue. |

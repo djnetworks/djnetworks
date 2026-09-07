@@ -121,6 +121,12 @@ The mitigations, and they are weaker than a second session:
 - All money is `numeric(12,2)`. Never float.
 - All dates that mean a calendar day are `date`, not `timestamptz`. The rental day convention is a
   calendar convention, not a clock one.
+- **In the client, a calendar day comes from `todayLocal()`, never `new Date().toISOString()`.**
+  `toISOString()` is UTC: before 05:30 IST it names *yesterday*, and 6am is exactly when a job gets
+  booked. It shipped once in `orders.html` and defaulted a new order's out date to the day before;
+  it was found by reading the date on a repeated job, not by a test. The same applies to
+  `current_date` in SQL called from the browser — that is UTC too, which is why every movement
+  carries the phone's local date.
 - Views are prefixed `v_`, functions `fn_`.
 - Business conventions that could change (day counting, availability buffer) live in `app_setting`,
   not in code.

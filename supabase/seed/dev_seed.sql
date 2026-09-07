@@ -266,6 +266,16 @@ select o.id, p.id, v.qty, v.days, v.base_rate, v.discount_pct, v.agreed_rate, v.
 from (values
   ('0001', 'SPK-18',   2, 3, 1500.00,  0.00, 1500.00,  9000.00),
   ('0001', 'MIX-16',   1, 3,  800.00,  0.00,  800.00,  2400.00),
+  -- THE LINE THE FIXTURE WAS MISSING. Order 0001 has nothing loaded yet, so with this it is the
+  -- one order carrying a NUMBERED line and a COUNTED line BOTH still to go out — which is the
+  -- shape the send-out screen is most dangerous in, and which no order had before.
+  --
+  -- It is not decoration. "Pick N" re-rendered the counted-stock box to 0 while POOLPICK still
+  -- held the typed number, so seven cables left the godown under a box reading zero. The walk
+  -- could not reach it and a wire test had to inject the case by hand. A backlog entry cannot
+  -- catch a regression; a fixture can. The assertion at the foot of this file now refuses to
+  -- seed without it.
+  ('0001', 'CBL-XLR', 12, 3,   30.00,  0.00,   30.00,  1080.00),
   ('0002', 'SPK-15',   4, 3, 1200.00,  0.00, 1200.00, 14400.00),
   ('0003', 'MIX-16',   2, 5,  800.00, 10.00,  720.00,  7200.00),
   ('0003', 'FOG-5L',   9, 5,  900.00,  0.00,  900.00,  8100.00),
@@ -510,6 +520,24 @@ begin
   -- Pooled arithmetic must balance, with no data-entry error flagged.
   select count(*) into n from v_pool_stock where short_code = 'CBL-XLR' and has_ledger_error;
   if n > 0 then raise exception 'FIXTURE BUG: CBL-XLR has a ledger error'; end if;
+
+  -- The mixed-mode send-out case. Without an order carrying both a numbered line and a counted
+  -- line with nothing loaded, the screen path that shipped a wrong quantity is unreachable from
+  -- this fixture and only a hand-written wire test can find it again.
+  select count(*)::int into n from (
+    select ol.order_id
+    from order_line ol
+    join product p on p.id = ol.product_id
+    join v_order_fulfilment f on f.order_id = ol.order_id
+    where f.order_status = 'confirmed' and f.qty_dispatched = 0
+    group by ol.order_id
+    having count(*) filter (where p.tracking_mode = 'unit') > 0
+       and count(*) filter (where p.tracking_mode in ('pool','consumable')) > 0
+  ) x;
+  if n = 0 then
+    raise exception 'FIXTURE GAP: no confirmed order has a numbered line AND a counted line both still to go out. The send-out screen''s mixed-mode path is the one that shipped a wrong quantity, and without this order it cannot be walked.';
+  end if;
+  raise notice 'dev_seed: % order(s) carry a numbered and a counted line both still to go out', n;
 
   -- ROI has something honest to say about missing costs.
   select units_missing_cost into n from v_product_roi where short_code = 'AMP-2K';

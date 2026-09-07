@@ -25,10 +25,11 @@ system exports.
 **Transactions** — `rental_order`, `order_line`, `order_charge`, `movement`, `repair_job`,
 `ledger_entry`, `product_image`
 
-**Derived views (11)** — `v_movement_effective`, `v_unit_location`, `v_unit_status`,
+**Derived views (14)** — `v_movement_effective`, `v_unit_location`, `v_unit_status`,
 `v_unit_history`, `v_order_outstanding`, `v_order_fulfilment`, `v_pool_stock`, `v_product_stock`,
-`v_customer_balance`, `v_unit_utilisation`, `v_product_roi`, and the function
-`fn_availability(product, from, to)`
+`v_customer_balance`, `v_unit_utilisation`, `v_product_roi`, plus the three permission-gated
+wrappers `v_customer_balance_visible`, `v_product_roi_visible` and `v_unit_utilisation_visible`,
+and the function `fn_availability(product, from, to)`
 
 `v_pool_stock` is the one place that knows what pooled stock is; `v_product_stock` and
 `fn_availability` read it rather than re-deriving quantities. `v_order_outstanding` replaced
@@ -92,6 +93,53 @@ Plus three screens that are not forms:
   `orders.html`, which regenerates every rate from today's rate card (rule 5) rather than carrying
   a number across.
 - `analysis.html` — the reports below.
+
+## Permissions
+
+`0021`. `authenticated` no longer means "may do everything". The `operator` row carries a JSONB
+`permissions` object with eleven granular keys, and **`fn_has_permission(key)` is the single choke
+point** — every policy on every table calls it and nothing else tests permissions directly. An
+absent key is denied: there is no wildcard and no implication, so `admin.team` does not confer
+`ledger.view`.
+
+| key | what it opens |
+|---|---|
+| `orders.write` | orders, lines and charges |
+| `sendout.write` | recording a dispatch |
+| `returns.write` | recording a return |
+| `movement.correct` | undoing a movement (`0019`) |
+| `products.write` | the catalogue: products, photos, categories |
+| `equipment.write` | pieces, locations, vendors, repairs, transfers, write-offs |
+| `customers.write` | customer records |
+| `ledger.view` | **seeing** money — the ledger and every balance |
+| `ledger.write` | posting to the ledger |
+| `numbers.view` | the reports |
+| `admin.team` | people, and the settings that change arithmetic |
+
+Reading is open to any active operator **except the ledger**: knowing an order exists is part of
+doing the work, and knowing what a customer owes is not. `movement` is the one table where the key
+depends on the row — dispatch, return and correction each test a different one, because the man
+loading the van may record what he did and may not erase it.
+
+The policies are built from a MAP in the migration, and the migration then **asserts that no table
+with row level security is missing from it**. A table nobody remembered is how this goes wrong, and
+it can no longer go wrong quietly.
+
+`v_customer_balance`, `v_product_roi` and `v_unit_utilisation` are revoked from `authenticated` and
+reached through `_visible` wrappers carrying the permission predicate. They return **zero rows**
+without the key rather than every customer at ₹0.00 — a refusal, not a wrong number. The ungated
+`v_customer_balance` stays for `fn_portal_snapshot`, which is `security definer`: a predicate inside
+it would evaluate `auth.uid()` as NULL on an anon portal request and break the customer portal.
+
+**Invitation only.** `fn_admin_set_operator` records who somebody is and what they may do, is
+`security definer`, and is executable by nobody holding a browser session. Nothing in the app can
+grant a permission. Turning off self-registration is a project setting, not SQL — the Today screen
+checks `/auth/v1/settings` and tells whoever holds `admin.team` if the door is still open.
+
+**The client's `can(key)` is convenience, never the boundary.** Hiding a button spares somebody a
+refusal; the refusal comes from the database either way.
+
+---
 
 **All of these have now been operated by a signed-in operator** — a complete job was walked end to
 end in a browser on 2026-09-07, and the offline dispatch path was exercised with the network down.

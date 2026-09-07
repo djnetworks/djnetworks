@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Numbers — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-2" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-2" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-2">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-2">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-2">
-<link rel="stylesheet" href="style.css?v=2026-09-08-2">
-<script src="vendor/supabase.js?v=2026-09-08-2" defer></script>
-<script src="boot.js?v=2026-09-08-2" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
+<link rel="stylesheet" href="style.css?v=2026-09-08-3">
+<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
+<script src="boot.js?v=2026-09-08-3" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -23,9 +23,10 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock,
+import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
+         loadPermissions, can,
          initOffline, revealActiveTab, trackBadge }
-  from './app.js?v=2026-09-08-2';
+  from './app.js?v=2026-09-08-3';
 
 $('#chrome').innerHTML = chrome('analysis.html');
 revealActiveTab();
@@ -36,9 +37,20 @@ let ROI = [], UTIL = [], PRODUCTS = new Map(), MOVES = [], REPAIRS = [];
 // of 1 and the percentage above it meaningless.
 let NO_PURCHASE_DATE = new Map();
 
-requireSession(async () => { await boot(); });
+requireSession(async () => { await loadPermissions(); await boot(); });
 
 async function boot() {
+  // Same shape as the ledger. The report views return zero rows without numbers.view, and an empty
+  // table with no explanation reads as "the business earned nothing".
+  if (!can('numbers.view')) {
+    $('#app').innerHTML = `<h1>Numbers</h1>` + stateBlock({
+      icon: '🔒', title: 'The reports are not visible to this account',
+      body: 'What each product earns and how hard it works needs the "see the numbers" permission, '
+          + 'which this account does not have. The reports are empty here because they cannot be '
+          + 'read, not because there is nothing in them.',
+    });
+    return;
+  }
   $('#app').innerHTML = `
     <h1>Numbers</h1>
     <p class="sub">What earns, what sits, and what keeps breaking.</p>
@@ -60,8 +72,8 @@ async function boot() {
 async function load() {
   try {
     const [roi, util, prods, units, moves, reps] = await Promise.all([
-      sb.from('v_product_roi').select('*'),
-      sb.from('v_unit_utilisation').select('*'),
+      sb.from('v_product_roi_visible').select('*'),
+      sb.from('v_unit_utilisation_visible').select('*'),
       sb.from('product').select('id,short_code,brand,model_name,tracking_mode,active'),
       // Purchase dates only, to say which utilisation figures rest on a real denominator.
       // v_unit_utilisation cannot say so itself: days_owned is greatest(today - purchase_date, 1),
@@ -251,7 +263,14 @@ function showFreq(panel) {
 
 function showDead(panel) {
   const DAYS = 90;
-  const cutoff = new Date(Date.now() - DAYS * 86400000).toISOString().slice(0, 10);
+  // A CALENDAR DAY, so it is built from the local one and not from toISOString(), which is UTC.
+  // It is compared against movement.moved_on, which every screen writes as the PHONE's local date —
+  // so a UTC cutoff was measuring a 90-day window against dates recorded on a different calendar,
+  // and for five and a half hours every morning the boundary sat a day early. Found by the grep
+  // that CLAUDE.md's conventions now ask for, after the same class of bug shipped in orders.html.
+  const d = new Date(todayLocal() + 'T00:00:00');
+  d.setDate(d.getDate() - DAYS);
+  const cutoff = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const rows = [...PRODUCTS.values()].map(p => {
     const ms = MOVES.filter(m => m.product_id === p.id && m.movement_type === 'dispatch');
     const last = ms.map(m => m.moved_on).sort().pop() ?? null;
