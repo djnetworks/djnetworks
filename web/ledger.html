@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ledger — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-5">
+<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
+<script src="boot.js?v=2026-09-07-5" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate"><div class="signin" data-djn-boot><h1 class="signin__title">DJ Network's</h1>
+  <p class="signin__sub">Starting up…</p></div></main>
+<main id="app" class="wrap" hidden></main>
+<div id="sheet-host"></div>
+
+<script type="module">
+import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
+         errorBlock, toast, openSheet, focusField, initOffline, revealActiveTab }
+  from './app.js?v=2026-09-07-5';
+
+$('#chrome').innerHTML = chrome('ledger.html');
+revealActiveTab();
+initOffline();
+
+let CUSTOMERS = [], BALANCES = new Map(), SELECTED = null, ENTRIES = [], ORDERS = [];
+
+requireSession(async () => { await boot(); });
+
+async function boot() {
+  $('#app').innerHTML = `
+    <div class="row row--between">
+      <div><h1>Ledger &amp; payments</h1>
+        <p class="sub">One ledger per customer. Money owed and money held are different things.</p></div>
+      <button class="btn btn--primary" id="add-entry" hidden>Record something</button>
+    </div>
+    <div id="picker"></div>
+    <div id="body" class="skeleton"><div class="skeleton__row"></div></div>`;
+  $('#add-entry').addEventListener('click', () => openEntry());
+  await load();
+}
+
+async function load() {
+  try {
+    const [c, b, o] = await Promise.all([
+      sb.from('customer').select('id,name,business_name,whatsapp').eq('active', true).order('name'),
+      sb.from('v_customer_balance').select('*'),
+      sb.from('rental_order').select('id,order_no,customer_id,status,out_date').order('out_date', { ascending: false }),
+    ]);
+    for (const r of [c, b, o]) if (r.error) throw r.error;
+    CUSTOMERS = c.data ?? []; ORDERS = o.data ?? [];
+    BALANCES = new Map((b.data ?? []).map(x => [x.customer_id, x]));
+    const wanted = new URLSearchParams(location.search).get('customer');
+    SELECTED = CUSTOMERS.find(x => x.id === wanted) ?? null;
+    renderPicker();
+    await renderBody();
+  } catch (err) {
+    $('#body').className = ''; $('#body').innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', load);
+  }
+}
+
+function renderPicker() {
+  if (!CUSTOMERS.length) { $('#picker').innerHTML = ''; return; }
+  $('#picker').innerHTML = `<div class="row" style="margin-bottom:14px">
+    <select class="field__select grow" id="c-select" style="max-width:520px">
+      <option value="">Choose a customer…</option>
+      ${CUSTOMERS.map(c => `<option value="${esc(c.id)}" ${SELECTED?.id === c.id ? 'selected' : ''}>
+        ${esc(c.business_name || c.name)}</option>`).join('')}
+    </select></div>`;
+  $('#c-select').addEventListener('change', async e => {
+    SELECTED = CUSTOMERS.find(x => x.id === e.target.value) ?? null;
+    $('#add-entry').hidden = !SELECTED;
+    history.replaceState({}, '', SELECTED ? `ledger.html?customer=${SELECTED.id}` : 'ledger.html');
+    await renderBody();
+  });
+  $('#add-entry').hidden = !SELECTED;
+}
+
+async function renderBody() {
+  const body = $('#body');
+  if (!CUSTOMERS.length) {
+    body.className = '';
+    body.innerHTML = stateBlock({ icon: '👥', title: 'No customers yet',
+      body: 'A ledger belongs to a customer, so one has to exist first.',
+      actionLabel: 'Go to Customers', actionId: 'go-cust' });
+    $('#go-cust').addEventListener('click', () => location.href = 'customers.html');
+    return;
+  }
+  if (!SELECTED) {
+    body.className = '';
+    body.innerHTML = stateBlock({ icon: '👆', title: 'Pick a customer',
+      body: 'Every entry belongs to one customer. Payments need not attach to an order — trade '
+          + 'regulars pay on account, against the balance rather than against a job.' });
+    return;
+  }
+
+  body.className = 'skeleton'; body.innerHTML = '<div class="skeleton__row"></div>';
+  const { data, error } = await sb.from('ledger_entry')
+    .select('*, order:order_id(order_no)').eq('customer_id', SELECTED.id)
+    .order('entry_date', { ascending: false }).order('created_at', { ascending: false });
+  if (error) { body.className = ''; body.innerHTML = errorBlock(error, 'r2');
+    $('#r2').addEventListener('click', renderBody); return; }
+  ENTRIES = data ?? [];
+  body.className = '';
+
+  const b = BALANCES.get(SELECTED.id) ?? { receivable: 0, upcoming: 0, deposit_held: 0 };
+
+  // ---------------------------------------------------------------------------
+  // RULE 6 ON THE SCREEN WHERE IT IS EASIEST TO GET WRONG.
+  //
+  // Three tiles, never two, and never one total. A deposit is the customer's own money being held —
+  // a liability, not revenue — and adding it to what they owe would produce a number that is not
+  // any real quantity. `upcoming` is separate again: it is billed work that has not gone out yet,
+  // and calling it a debt is how a wedding customer is told they owe money three weeks early.
+  // ---------------------------------------------------------------------------
+  body.innerHTML = `
+    <div class="stats" style="margin-bottom:14px">
+      <div class="card"><div class="item__meta">Owed now</div>
+        <div class="stat__n${Number(b.receivable) > 0 ? ' stat__n--bad' : ''}">${money(b.receivable)}</div>
+        <div class="field__hint">Billed, dispatched, unpaid.</div></div>
+      <div class="card"><div class="item__meta">Upcoming</div>
+        <div class="stat__n">${money(b.upcoming)}</div>
+        <div class="field__hint">Booked but not yet out. Not a debt yet.</div></div>
+      <div class="card"><div class="item__meta">Deposit held</div>
+        <div class="stat__n">${money(b.deposit_held)}</div>
+        <div class="field__hint">The customer's money, held. Never revenue.</div></div>
+    </div>
+    <p class="field__hint" style="margin-top:-6px">These three are never added together. Owed and held
+      are opposite directions, and upcoming has not happened yet.</p>
+    <div class="card scroll-x">
+      <table class="data">
+        <thead><tr><th>Date</th><th>What</th><th>Order</th><th>State</th><th>How</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${ENTRIES.length ? ENTRIES.map(e => `
+          <tr>
+            <td data-label="Date">${esc(fmtDate(e.entry_date))}</td>
+            <td data-label="What"><span class="badge">${esc(e.type.replace(/_/g, ' '))}</span>
+              ${e.notes ? `<div class="item__meta">${esc(e.notes)}</div>` : ''}</td>
+            <td data-label="Order">${esc(e.order?.order_no ?? '—')}</td>
+            <td data-label="State">${e.state === 'upcoming' ? '<span class="badge badge--muted">upcoming</span>' : 'due'}</td>
+            <td data-label="How">${esc(e.payment_mode ?? '')}${e.reference ? ' · ' + esc(e.reference) : ''}</td>
+            <td data-label="Amount" style="text-align:right">${esc(signed(e))}</td>
+          </tr>`).join('') : `<tr><td colspan="6">
+            <p class="field__hint" style="margin:0">No entries yet for this customer.</p></td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// Direction is shown, not just magnitude: what increases what they owe, and what reduces it.
+function signed(e) {
+  const owes = ['rental', 'transport', 'labour', 'misc', 'damage'];
+  const reduces = ['payment', 'discount', 'write_off', 'reversal'];
+  if (owes.includes(e.type)) return '+' + money(e.amount);
+  if (reduces.includes(e.type)) return '−' + money(e.amount);
+  return money(e.amount);   // deposits: a separate axis entirely, so no sign
+}
+
+function openEntry() {
+  const b = BALANCES.get(SELECTED.id) ?? { deposit_held: 0 };
+  const custOrders = ORDERS.filter(o => o.customer_id === SELECTED.id);
+  openSheet(`
+    <div class="sheet__head">
+      <h2 class="sheet__title">Record something — ${esc(SELECTED.business_name || SELECTED.name)}</h2>
+      <button class="btn btn--ghost" id="close-sheet" aria-label="Close">✕</button>
+    </div>
+    <label class="field"><span class="field__label">What is it? *</span>
+      <select class="field__select" id="f-type">
+        <optgroup label="Money in">
+          <option value="payment">Payment received</option>
+          <option value="deposit_in">Deposit taken</option>
+        </optgroup>
+        <optgroup label="Money out / back">
+          <option value="deposit_out">Deposit returned</option>
+          <option value="deposit_forfeit">Deposit kept against damage</option>
+        </optgroup>
+        <optgroup label="Adjustments">
+          <option value="discount">Discount given</option>
+          <option value="write_off">Written off</option>
+          <option value="reversal">Reversal of a charge</option>
+          <option value="damage">Damage charge</option>
+          <option value="misc">Other charge</option>
+        </optgroup>
+      </select>
+      <span class="field__hint" id="type-hint"></span></label>
+    <div class="grid2">
+      <label class="field"><span class="field__label">Amount (₹) *</span>
+        <input class="field__input" id="f-amt" type="number" min="0" step="0.01" inputmode="decimal"></label>
+      <label class="field"><span class="field__label">Date</span>
+        <input class="field__input" id="f-date" type="date" value="${esc(todayLocal())}" max="${esc(todayLocal())}"></label>
+      <label class="field"><span class="field__label">How</span>
+        <select class="field__select" id="f-mode">
+          <option value="">—</option>
+          ${['cash', 'upi', 'bank', 'cheque', 'adjustment'].map(m => `<option value="${m}">${m}</option>`).join('')}
+        </select></label>
+      <label class="field"><span class="field__label">Reference</span>
+        <input class="field__input" id="f-ref" placeholder="UPI ref, cheque no."></label>
+    </div>
+    <label class="field"><span class="field__label">Against which job?</span>
+      <select class="field__select" id="f-order">
+        <option value="">Not against a job — on account</option>
+        ${custOrders.map(o => `<option value="${esc(o.id)}">${esc(o.order_no)} · ${esc(fmtDate(o.out_date))}</option>`).join('')}
+      </select>
+      <span class="field__hint">Payments need not attach to an order. Trade regulars pay against the
+        balance, and forcing a job onto the payment would be inventing a fact.</span></label>
+    <label class="field"><span class="field__label">Note</span>
+      <input class="field__input" id="f-notes"></label>
+    <div class="note" id="dep-note" hidden></div>
+    <div class="sheet__foot">
+      <button class="btn" id="cancel">Cancel</button>
+      <button class="btn btn--primary" id="save">Record it</button>
+    </div>`, 'Record a ledger entry');
+
+  $('#cancel').addEventListener('click', () => $('#sheet-host').innerHTML = '');
+
+  const HINTS = {
+    payment: 'Reduces what they owe.',
+    deposit_in: 'The customer\'s own money, held. Never counted as revenue.',
+    deposit_out: `Returns held money. ${money(b.deposit_held)} is held right now.`,
+    deposit_forfeit: `Keeps held money against damage. ${money(b.deposit_held)} is held right now.`,
+    discount: 'Reduces what they owe.',
+    write_off: 'Reduces what they owe, and says it will not be collected.',
+    reversal: 'Cancels a charge that was posted. This is what unlocks an order line for editing.',
+    damage: 'Increases what they owe.',
+    misc: 'Increases what they owe.',
+  };
+  const syncType = () => {
+    const t = $('#f-type').value;
+    $('#type-hint').textContent = HINTS[t] ?? '';
+    const isDepOut = ['deposit_out', 'deposit_forfeit'].includes(t);
+    $('#dep-note').hidden = !isDepOut;
+    if (isDepOut) $('#dep-note').innerHTML =
+      `${money(b.deposit_held)} is held for this customer. Nothing above that can be returned or kept —
+       a deposit cannot go negative, and the database refuses it as well as this screen.`;
+    checkAmount();
+  };
+  const checkAmount = () => {
+    const t = $('#f-type').value;
+    const amt = Number($('#f-amt').value || 0);
+    const btn = $('#save');
+    if (['deposit_out', 'deposit_forfeit'].includes(t) && amt > Number(b.deposit_held)) {
+      // Said as a sentence, before the write, rather than surfacing a trigger's exception after it.
+      $('#dep-note').className = 'note note--warn';
+      $('#dep-note').innerHTML =
+        `<strong>That is more than is held.</strong> ${money(b.deposit_held)} is held for
+         ${esc(SELECTED.business_name || SELECTED.name)}, so ${money(amt)} cannot be
+         ${t === 'deposit_out' ? 'returned' : 'kept'}. If the difference is really owed to them,
+         record it as a payment; if it is a charge, record it as damage. Those are revenue and a
+         deposit is not.`;
+      btn.disabled = true;
+    } else {
+      $('#dep-note').className = 'note';
+      btn.disabled = false;
+      if (['deposit_out', 'deposit_forfeit'].includes(t)) syncTypeNote();
+    }
+  };
+  const syncTypeNote = () => {
+    $('#dep-note').innerHTML =
+      `${money(b.deposit_held)} is held for this customer. Nothing above that can be returned or kept.`;
+  };
+  $('#f-type').addEventListener('change', syncType);
+  $('#f-amt').addEventListener('input', checkAmount);
+  syncType();
+
+  $('#save').addEventListener('click', async () => {
+    const amt = Number($('#f-amt').value || 0);
+    if (!(amt > 0)) { toast('Enter an amount.', 'error'); focusField('#f-amt'); return; }
+    const btn = $('#save'); btn.disabled = true; btn.textContent = 'Recording…';
+    const row = {
+      customer_id: SELECTED.id,
+      order_id: $('#f-order').value || null,
+      entry_date: $('#f-date').value || todayLocal(),
+      type: $('#f-type').value,
+      amount: amt,
+      // Anything recorded here has happened. `upcoming` is written only by the order screen, when
+      // revenue posts on confirmation and the gear has not gone out yet.
+      state: 'due',
+      payment_mode: $('#f-mode').value || null,
+      reference: $('#f-ref').value.trim() || null,
+      notes: $('#f-notes').value.trim() || null,
+    };
+    const { error } = await sb.from('ledger_entry').insert(row);
+    if (error) {
+      btn.disabled = false; btn.textContent = 'Record it';
+      // The trigger's message is already a sentence aimed at a person, so it is shown as-is.
+      toast(error.message.replace(/^.*?ERROR:\s*/, ''), 'error');
+      return;
+    }
+    toast('Recorded.');
+    $('#sheet-host').innerHTML = '';
+    await load();
+  });
+  focusField('#f-amt');
+}
+
+window.__djn = { showEmpty() { CUSTOMERS = []; renderPicker(); renderBody(); }, reload: load };
+</script>
+</body>
+</html>

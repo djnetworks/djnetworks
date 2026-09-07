@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your bookings — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-5">
+<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
+<script src="boot.js?v=2026-09-07-5" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <span class="topbar__brand">DJ Network's</span>
+  <span class="topbar__who" id="who"></span>
+  <button class="btn btn--ghost" id="leave" hidden>Sign out</button>
+</header>
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title">DJ Network's</h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-07-5';
+import { $, esc, money, fmtDate, toast } from './app.js?v=2026-09-07-5';
+
+// ---------------------------------------------------------------------------
+// The customer portal. This page is opened by people who are not staff, on a link sent over
+// WhatsApp, and it is the ONLY page that runs without an operator sign-in.
+//
+// It reads through exactly one function: fn_portal_view(phone, code), which is SECURITY DEFINER and
+// the only thing `anon` may execute. There is no table access here at all — no `.from('...')`
+// anywhere in this file, deliberately. Opening anon SELECT on ledger_entry to make this screen work
+// would hand every customer every other customer's account, to anyone holding the publishable key,
+// which ships in this page's source. CLAUDE.md says exactly that, and this is the screen it is
+// about.
+//
+// The credentials live in sessionStorage, not localStorage: this is frequently a borrowed or shared
+// phone, and closing the tab should end the session.
+// ---------------------------------------------------------------------------
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+const KEY = 'djn-portal';
+
+start();
+
+function start() {
+  const saved = sessionStorage.getItem(KEY);
+  if (saved) {
+    const { phone, code } = JSON.parse(saved);
+    fetchAndRender(phone, code, true);
+  } else {
+    renderGate();
+  }
+}
+
+function renderGate(message) {
+  $('#app').hidden = true;
+  $('#leave').hidden = true;
+  $('#who').textContent = '';
+  const gate = $('#gate');
+  gate.hidden = false;
+  gate.innerHTML = `
+    <form class="signin" id="portal-form">
+      <h1 class="signin__title">Your bookings</h1>
+      <p class="signin__sub">Enter the phone number you booked with, and the code DJ Network's sent you.</p>
+      <label class="field"><span class="field__label">Phone number</span>
+        <input class="field__input" id="p-phone" type="tel" inputmode="tel" autocomplete="tel"
+               required placeholder="98765 43210"></label>
+      <label class="field"><span class="field__label">Access code</span>
+        <input class="field__input" id="p-code" required autocapitalize="characters"
+               spellcheck="false" placeholder="ABCD-2345" style="letter-spacing:2px"></label>
+      <button class="btn btn--primary btn--block" type="submit" id="p-go">View my bookings</button>
+      <p class="signin__err" id="p-err" role="alert" ${message ? '' : 'hidden'}>${esc(message ?? '')}</p>
+      <p class="field__hint" style="margin-top:14px">Lost the code? Message DJ Network's on WhatsApp and
+        they will send a new one. There is nothing to reset here.</p>
+    </form>`;
+  $('#portal-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const phone = $('#p-phone').value.trim();
+    const code = $('#p-code').value.trim().toUpperCase();
+    const btn = $('#p-go');
+    btn.disabled = true; btn.textContent = 'Checking…';
+    await fetchAndRender(phone, code, false);
+    btn.disabled = false; btn.textContent = 'View my bookings';
+  });
+}
+
+async function fetchAndRender(phone, code, silent) {
+  const { data, error } = await sb.rpc('fn_portal_view', { p_phone: phone, p_code: code });
+  if (error) {
+    sessionStorage.removeItem(KEY);
+    // The gate returns one message for a wrong number and a wrong code alike, so this page cannot
+    // be used to discover which numbers are customers.
+    renderGate(silent ? null : (error.message || 'That did not work. Please check and try again.'));
+    return;
+  }
+  sessionStorage.setItem(KEY, JSON.stringify({ phone, code }));
+  render(data);
+}
+
+function render(d) {
+  $('#gate').hidden = true;
+  const app = $('#app');
+  app.hidden = false;
+  $('#leave').hidden = false;
+  $('#who').textContent = d.customer?.business_name || d.customer?.name || '';
+  $('#leave').onclick = () => { sessionStorage.removeItem(KEY); renderGate(); };
+
+  const bal = d.balance ?? { receivable: 0, upcoming: 0, deposit_held: 0 };
+  const out = d.out_now ?? [];
+  const orders = d.orders ?? [];
+  const ledger = d.ledger ?? [];
+
+  app.innerHTML = `
+    <h1>Your bookings</h1>
+    <p class="sub">${esc(d.customer?.name ?? '')}${d.customer?.business_name ? ' · ' + esc(d.customer.business_name) : ''}</p>
+
+    <!-- Rule 6, and the reason this screen exists in this shape. Owed and held are opposite
+         directions and are never added. Upcoming is separate again: a wedding customer opening
+         this three weeks early must see a booking, not a debt. -->
+    <div class="stats" style="margin-bottom:6px">
+      <div class="card"><div class="item__meta">To pay now</div>
+        <div class="stat__n${Number(bal.receivable) > 0 ? ' stat__n--bad' : ''}">${money(bal.receivable)}</div>
+        <div class="field__hint">For jobs that have gone out.</div></div>
+      <div class="card"><div class="item__meta">Upcoming bookings</div>
+        <div class="stat__n">${money(bal.upcoming)}</div>
+        <div class="field__hint">Agreed for a future date. Nothing to pay yet.</div></div>
+      <div class="card"><div class="item__meta">Deposit we hold</div>
+        <div class="stat__n">${money(bal.deposit_held)}</div>
+        <div class="field__hint">Your money, returned when everything is back.</div></div>
+    </div>
+    <p class="field__hint" style="margin-bottom:18px">
+      Your deposit is not part of what you owe — we hold it and give it back. Upcoming bookings are
+      not due yet either.
+    </p>
+
+    ${out.length ? `<div class="card">
+      <h2 style="font-size:16px;margin:0 0 8px">With you now</h2>
+      <div class="list">${out.map(r => `
+        <div class="item" style="cursor:default">
+          <span class="item__main">
+            <span class="item__title">${esc(r.qty)} × ${esc(r.product)}</span>
+            <span class="item__meta">${esc(r.order_no)} · due back ${esc(fmtDate(r.expected_return_date))}</span>
+          </span>
+          ${Number(r.days_overdue) > 0
+            ? `<span class="badge badge--out">${esc(r.days_overdue)} day(s) over</span>` : ''}
+        </div>`).join('')}</div>
+      <p class="field__hint">Equipment is listed by what it is, not by our internal box numbers.</p>
+    </div>` : ''}
+
+    <div class="card">
+      <h2 style="font-size:16px;margin:0 0 8px">Your jobs</h2>
+      ${orders.length ? `<div class="list">${orders.map(o => `
+        <div class="item" style="cursor:default;align-items:flex-start">
+          <span class="item__main">
+            <span class="item__title">${esc(o.order_no)}${o.venue_name ? ' · ' + esc(o.venue_name) : ''}</span>
+            <span class="item__meta">${esc(fmtDate(o.out_date))} → ${esc(fmtDate(o.expected_return_date))}
+              · ${esc(o.days)} day${o.days === 1 ? '' : 's'}</span>
+            <span class="item__meta">${(o.lines ?? []).map(l =>
+              `${esc(l.qty)} × ${esc(l.product)}`).join(' · ') || 'no items listed'}</span>
+            <span class="item__meta">
+              <span class="badge badge--${esc(o.status)}">${esc(statusWord(o))}</span>
+              ${o.deposit_amount > 0 ? `<span class="badge badge--muted">deposit ${esc(money(o.deposit_amount))}</span>` : ''}
+            </span>
+          </span>
+        </div>`).join('')}</div>`
+      : `<p class="field__hint">Nothing here yet.</p>`}
+    </div>
+
+    <div class="card scroll-x">
+      <h2 style="font-size:16px;margin:0 0 8px">Your account</h2>
+      ${ledger.length ? `<table class="data">
+        <thead><tr><th>Date</th><th>What</th><th>Job</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${ledger.map(e => `
+          <tr>
+            <td data-label="Date">${esc(fmtDate(e.entry_date))}</td>
+            <td data-label="What">${esc(friendlyType(e))}
+              ${e.state === 'upcoming' ? '<span class="badge badge--muted">upcoming</span>' : ''}</td>
+            <td data-label="Job">${esc(e.order_no ?? '—')}</td>
+            <td data-label="Amount" style="text-align:right">${esc(money(e.amount))}</td>
+          </tr>`).join('')}</tbody></table>`
+      : `<p class="field__hint">No entries yet.</p>`}
+    </div>
+
+    <p class="field__hint" style="text-align:center;margin:24px 0">
+      Questions? WhatsApp DJ Network's on 9824083533.
+    </p>`;
+}
+
+// The customer sees plain English, never the internal type name. `upcoming` in particular must not
+// read as a demand for money.
+function friendlyType(e) {
+  const map = {
+    rental: 'Equipment hire', transport: 'Transport', labour: 'Labour', misc: 'Other charge',
+    damage: 'Damage', deposit_in: 'Deposit received', deposit_out: 'Deposit returned',
+    deposit_forfeit: 'Deposit kept against damage', payment: 'Payment received',
+    discount: 'Discount', write_off: 'Adjustment', reversal: 'Charge cancelled',
+  };
+  return map[e.type] ?? e.type;
+}
+function statusWord(o) {
+  if (o.status === 'cancelled') return 'cancelled';
+  if (o.status === 'closed') return 'finished';
+  if (o.qty_outstanding > 0) return 'with you now';
+  if (o.fulfilment_state === 'nothing_dispatched') return 'booked';
+  return 'confirmed';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Customers — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-5">
+<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
+<script src="boot.js?v=2026-09-07-5" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate"><div class="signin" data-djn-boot><h1 class="signin__title">DJ Network's</h1>
+  <p class="signin__sub">Starting up…</p></div></main>
+<main id="app" class="wrap" hidden></main>
+<div id="sheet-host"></div>
+
+<script type="module">
+import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
+         openSheet, focusField, initOffline, revealActiveTab }
+  from './app.js?v=2026-09-07-5';
+
+$('#chrome').innerHTML = chrome('customers.html');
+revealActiveTab();
+initOffline();
+
+let CUSTOMERS = [], BALANCES = new Map();
+
+requireSession(async () => { await boot(); });
+
+async function boot() {
+  $('#app').innerHTML = `
+    <div class="row row--between">
+      <div><h1>Customers</h1><p class="sub" id="count-line">Who hires, and how to reach them.</p></div>
+      <button class="btn btn--primary" id="new-cust">Add customer</button>
+    </div>
+    <div class="row" id="filters" hidden>
+      <input class="field__input grow" id="q" type="search" placeholder="Search name, business or phone…"
+             autocapitalize="none" spellcheck="false">
+    </div>
+    <div id="list" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
+  $('#new-cust').addEventListener('click', () => openEditor(null));
+  $('#q').addEventListener('input', renderList);
+  await load();
+}
+
+async function load() {
+  try {
+    const [c, b] = await Promise.all([
+      sb.from('customer').select('*').order('name'),
+      sb.from('v_customer_balance').select('*'),
+    ]);
+    if (c.error) throw c.error;
+    if (b.error) throw b.error;
+    CUSTOMERS = c.data ?? [];
+    BALANCES = new Map((b.data ?? []).map(x => [x.customer_id, x]));
+    renderList();
+  } catch (err) {
+    $('#list').className = ''; $('#list').innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', load);
+  }
+}
+
+function renderList() {
+  const list = $('#list');
+  if (!CUSTOMERS.length) {
+    $('#filters').hidden = true;
+    $('#count-line').textContent = 'Nobody yet.';
+    list.className = '';
+    list.innerHTML = stateBlock({
+      icon: '👥', title: 'No customers yet',
+      body: 'An order needs a customer, so this is the other thing that has to exist before any job '
+          + 'can be recorded. WhatsApp is the primary contact and the portal identity.',
+      actionLabel: 'Add the first customer', actionId: 'empty-new',
+    });
+    $('#empty-new').addEventListener('click', () => openEditor(null));
+    return;
+  }
+  $('#filters').hidden = false;
+  const q = ($('#q').value || '').trim().toLowerCase();
+  const rows = CUSTOMERS.filter(c => !q ||
+    [c.name, c.business_name, c.whatsapp, c.alt_phone, c.city].some(v => (v || '').toLowerCase().includes(q)));
+  $('#count-line').textContent = `${rows.length} of ${CUSTOMERS.length} customer${CUSTOMERS.length === 1 ? '' : 's'}.`;
+
+  if (!rows.length) {
+    list.className = '';
+    list.innerHTML = stateBlock({ icon: '🔍', title: 'Nobody matches that',
+      body: `There are ${CUSTOMERS.length} customers in total.`,
+      actionLabel: 'Clear the search', actionId: 'clear' });
+    $('#clear').addEventListener('click', () => { $('#q').value = ''; renderList(); });
+    return;
+  }
+
+  list.className = 'list';
+  list.innerHTML = rows.map(c => {
+    const b = BALANCES.get(c.id);
+    return `<button class="item" data-id="${esc(c.id)}">
+      <span class="item__main">
+        <span class="item__title">${esc(c.business_name || c.name)}</span>
+        <span class="item__meta">${c.business_name ? esc(c.name) + ' · ' : ''}${esc(c.whatsapp)}
+          ${c.city ? '· ' + esc(c.city) : ''}</span>
+        <span class="item__meta">
+          <span class="badge">${esc(c.type)}</span>
+          ${c.portal_code_hash ? '<span class="badge badge--available">portal code issued</span>' : ''}
+          ${c.active ? '' : '<span class="badge badge--muted">inactive</span>'}
+        </span>
+      </span>
+      <span class="item__right">
+        ${b ? `owes ${esc(money(b.receivable))}<br><span class="item__meta">deposit ${esc(money(b.deposit_held))}</span>` : ''}
+      </span>
+    </button>`;
+  }).join('');
+  $$('.item', list).forEach(b =>
+    b.addEventListener('click', () => openEditor(CUSTOMERS.find(c => c.id === b.dataset.id))));
+}
+
+function openEditor(c) {
+  const isNew = !c;
+  c = c ?? { name: '', business_name: '', type: 'individual', whatsapp: '', alt_phone: '', email: '',
+             address: '', city: 'Ahmedabad', pincode: '', id_proof_type: '', id_proof_url: '', active: true };
+  const b = c.id ? BALANCES.get(c.id) : null;
+
+  openSheet(`
+    <div class="sheet__head">
+      <h2 class="sheet__title">${isNew ? 'Add customer' : esc(c.business_name || c.name)}</h2>
+      <button class="btn btn--ghost" id="close-sheet" aria-label="Close">✕</button>
+    </div>
+    <div class="grid2">
+      <label class="field"><span class="field__label">Name *</span>
+        <input class="field__input" id="f-name" value="${esc(c.name)}"></label>
+      <label class="field"><span class="field__label">Business name</span>
+        <input class="field__input" id="f-biz" value="${esc(c.business_name)}"></label>
+      <label class="field"><span class="field__label">Type</span>
+        <select class="field__select" id="f-type">
+          ${['individual', 'dj', 'decorator', 'event_company', 'corporate'].map(t =>
+            `<option value="${t}" ${t === c.type ? 'selected' : ''}>${t.replace('_', ' ')}</option>`).join('')}
+        </select></label>
+      <label class="field"><span class="field__label">WhatsApp *</span>
+        <input class="field__input" id="f-wa" type="tel" inputmode="tel" value="${esc(c.whatsapp)}">
+        <span class="field__hint">The primary contact, and the portal identity.</span></label>
+      <label class="field"><span class="field__label">Other phone</span>
+        <input class="field__input" id="f-alt" type="tel" inputmode="tel" value="${esc(c.alt_phone)}"></label>
+      <label class="field"><span class="field__label">Email</span>
+        <input class="field__input" id="f-email" type="email" inputmode="email" autocapitalize="none"
+               value="${esc(c.email)}"></label>
+    </div>
+    <label class="field"><span class="field__label">Address</span>
+      <input class="field__input" id="f-addr" value="${esc(c.address)}"></label>
+    <div class="grid2">
+      <label class="field"><span class="field__label">City</span>
+        <input class="field__input" id="f-city" value="${esc(c.city)}"></label>
+      <label class="field"><span class="field__label">Pincode</span>
+        <input class="field__input" id="f-pin" inputmode="numeric" value="${esc(c.pincode)}"></label>
+    </div>
+
+    <div class="card" style="background:#fbfcfd">
+      <strong>ID document</strong>
+      <p class="field__hint" style="margin-top:4px">
+        There is deliberately <strong>no field for an Aadhaar or PAN number</strong>, and there never
+        will be. The document itself lives in cloud storage and this holds a link to it. A number
+        typed here would be a copy of somebody's government ID sitting in a rental database.
+      </p>
+      <div class="grid2">
+        <label class="field"><span class="field__label">Document type</span>
+          <input class="field__input" id="f-idtype" value="${esc(c.id_proof_type)}"
+                 placeholder="e.g. Aadhaar card, driving licence"></label>
+        <label class="field"><span class="field__label">Link to the document</span>
+          <input class="field__input" id="f-idurl" type="url" inputmode="url" value="${esc(c.id_proof_url)}"
+                 placeholder="https://…"></label>
+      </div>
+    </div>
+
+    ${c.id ? `<div class="card" style="background:#fbfcfd">
+      <strong>Customer portal</strong>
+      <p class="field__hint" style="margin-top:4px">
+        ${c.portal_code_hash
+          ? 'A code was issued on ' + esc(new Date(c.portal_code_issued_at).toLocaleDateString('en-IN'))
+            + '. It is stored hashed and cannot be read back — issuing a new one replaces it.'
+          : 'No code yet. The portal shows this customer their own orders, what is out, and what they owe.'}
+      </p>
+      <div id="code-box"></div>
+      <button class="btn btn--sm" id="issue-code" type="button">
+        ${c.portal_code_hash ? 'Issue a new code' : 'Issue a portal code'}</button>
+    </div>` : ''}
+
+    ${b ? `<div class="card">
+      <strong>Balance</strong>
+      <dl class="kv" style="margin-top:8px">
+        <dt>Owed now</dt><dd>${money(b.receivable)}</dd>
+        <dt>Upcoming (booked, not yet out)</dt><dd>${money(b.upcoming)}</dd>
+        <dt>Deposit held</dt><dd>${money(b.deposit_held)}</dd>
+      </dl>
+      <p class="field__hint">Three separate figures. A deposit is the customer's own money and is
+        never part of what they owe.</p>
+      <a class="btn btn--sm" href="ledger.html?customer=${esc(c.id)}">Open the ledger</a>
+    </div>` : ''}
+
+    <label class="field field--inline">
+      <input type="checkbox" id="f-active" ${c.active ? 'checked' : ''}>
+      <span>Active</span></label>
+
+    <div class="sheet__foot">
+      <button class="btn" id="cancel">Close</button>
+      <button class="btn btn--primary" id="save">${isNew ? 'Add customer' : 'Save changes'}</button>
+    </div>`, isNew ? 'Add customer' : 'Edit customer');
+
+  $('#cancel').addEventListener('click', () => $('#sheet-host').innerHTML = '');
+  $('#issue-code')?.addEventListener('click', () => issueCode(c));
+  $('#save').addEventListener('click', async () => {
+    const row = {
+      name: $('#f-name').value.trim(), business_name: $('#f-biz').value.trim() || null,
+      type: $('#f-type').value, whatsapp: $('#f-wa').value.trim(),
+      alt_phone: $('#f-alt').value.trim() || null, email: $('#f-email').value.trim() || null,
+      address: $('#f-addr').value.trim() || null, city: $('#f-city').value.trim() || null,
+      pincode: $('#f-pin').value.trim() || null,
+      id_proof_type: $('#f-idtype').value.trim() || null,
+      id_proof_url: $('#f-idurl').value.trim() || null,
+      active: $('#f-active').checked,
+    };
+    if (!row.name || !row.whatsapp) { toast('Name and WhatsApp number are both needed.', 'error'); return; }
+    if (/^\d{6,}$/.test(row.id_proof_type ?? '')) {
+      toast('That looks like an ID number. This field is for the KIND of document — the number itself '
+          + 'must never be stored here.', 'error'); focusField('#f-idtype'); return;
+    }
+    const btn = $('#save'); btn.disabled = true; btn.textContent = 'Saving…';
+    const res = c.id ? await sb.from('customer').update(row).eq('id', c.id)
+                     : await sb.from('customer').insert(row).select().single();
+    if (res.error) {
+      btn.disabled = false; btn.textContent = isNew ? 'Add customer' : 'Save changes';
+      toast(res.error.message.includes('portal_identifier')
+        ? 'That portal identifier is already used by another customer.' : res.error.message, 'error');
+      return;
+    }
+    toast(c.id ? 'Customer saved.' : `${row.name} added.`);
+    // A brand new customer gets a code immediately: it is the only moment chachu has the person's
+    // attention on WhatsApp, and the code cannot be read back later.
+    if (isNew) { await load(); openEditor(CUSTOMERS.find(x => x.id === res.data.id)); await issueCode(res.data); }
+    else { $('#sheet-host').innerHTML = ''; await load(); }
+  });
+  if (isNew) focusField('#f-name');
+}
+
+async function issueCode(c) {
+  const box = $('#code-box');
+  const btn = $('#issue-code');
+  if (btn) { btn.disabled = true; btn.textContent = 'Issuing…'; }
+  const { data, error } = await sb.rpc('fn_issue_portal_code', { p_customer_id: c.id });
+  if (btn) { btn.disabled = false; btn.textContent = 'Issue a new code'; }
+  if (error) { toast(error.message, 'error'); return; }
+
+  // Shown ONCE. The database stores only a bcrypt hash, so this value cannot be retrieved again by
+  // anyone, including chachu. Reissuing is the only recovery, and that is the right shape for a
+  // code that is pasted into WhatsApp.
+  const msg = `DJ Network's — your booking page\n`
+            + `https://djnetworks.com/portal\n`
+            + `Phone: ${c.whatsapp}\nCode: ${data}`;
+  box.innerHTML = `<div class="note note--warn" style="margin:10px 0">
+      <strong>Copy this now — it cannot be shown again.</strong>
+      <div style="font-size:28px;font-weight:700;letter-spacing:2px;margin:8px 0">${esc(data)}</div>
+      <div class="row">
+        <button class="btn btn--sm" id="copy-code" type="button">Copy the code</button>
+        <button class="btn btn--sm" id="copy-msg" type="button">Copy a WhatsApp message</button>
+      </div>
+      <p class="field__hint" style="margin-bottom:0">Only a hash is stored. Nobody can read this back —
+        if it is lost, issue a new one.</p>
+    </div>`;
+  const copy = async (text, what) => {
+    try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
+    catch { // clipboard is blocked without a secure context or a user gesture on some phones
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); ta.remove(); toast(`${what} copied.`);
+    }
+  };
+  $('#copy-code').addEventListener('click', () => copy(data, 'Code'));
+  $('#copy-msg').addEventListener('click', () => copy(msg, 'Message'));
+  await load();
+}
+
+window.__djn = { showEmpty() { CUSTOMERS = []; renderList(); }, reload: load };
+</script>
+</body>
+</html>

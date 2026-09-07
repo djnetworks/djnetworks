@@ -159,6 +159,23 @@ deleted. Harmless, but they read as live paths to anyone tracing what a delete w
 
 ## Screens (prompt 6 and after)
 
+**The portal code has no rate limiting, and that is the weak point of the portal.** `fn_portal_view`
+is callable by `anon` over `/rest/v1/rpc/fn_portal_view` with no throttle. The code is eight
+characters from a 32-symbol alphabet — about 10^12 combinations, which is far too many to guess by
+hand and not obviously too many for a script left running. The phone number narrows nothing, since
+a customer's WhatsApp number is not secret. Mitigations, roughly in order of effort: a per-IP rate
+limit in front of the function, a lockout counter on `customer` after N failures, or the change that
+makes this moot — replacing the static code with a one-time code, which `docs/open-questions.md`
+item 2 already prefers. The gate was deliberately built as a separate function from the query so
+that swap touches nothing else.
+
+**The Sheet's IN lane does not exist yet.** `sheet/DataSync.gs` and the `sheet-mirror` function are
+the read-only mirror OUT. The bulk catalogue importer — the lane that actually matters, because the
+catalogue is empty and the fleet runs to hundreds of items — is still to build, with validation
+before import and per-row rejection reasons. See the `djn-sheet-sync` skill.
+
+
+
 **Offline is unimplemented end to end, and the CDN is a hard dependency at boot.** Every screen's
 code is a module whose first line imports the Supabase client from jsdelivr; with the CDN
 unreachable the browser discards the whole module graph in silence. `web/boot.js` now turns that

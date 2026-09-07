@@ -353,6 +353,9 @@ export function chrome(active) {
     ['return.html', 'Return'],
     ['products.html', 'Products'],
     ['units.html', 'Pieces'],
+    ['customers.html', 'Customers'],
+    ['ledger.html', 'Ledger'],
+    ['analysis.html', 'Analysis'],
   ];
   return `
   <header class="topbar">

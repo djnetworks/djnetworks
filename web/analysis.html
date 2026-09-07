@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Analysis — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-5">
+<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
+<script src="boot.js?v=2026-09-07-5" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate"><div class="signin" data-djn-boot><h1 class="signin__title">DJ Network's</h1>
+  <p class="signin__sub">Starting up…</p></div></main>
+<main id="app" class="wrap" hidden></main>
+
+<script type="module">
+import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock,
+         initOffline, revealActiveTab }
+  from './app.js?v=2026-09-07-5';
+
+$('#chrome').innerHTML = chrome('analysis.html');
+revealActiveTab();
+initOffline();
+
+let ROI = [], UTIL = [], PRODUCTS = new Map(), MOVES = [], REPAIRS = [];
+
+requireSession(async () => { await boot(); });
+
+async function boot() {
+  $('#app').innerHTML = `
+    <h1>Analysis</h1>
+    <p class="sub">What earns, what sits, and what keeps breaking.</p>
+    <div class="pill-row" id="tabs">
+      ${[['roi', 'Return'], ['util', 'Utilisation'], ['freq', 'Hire frequency'],
+         ['dead', 'Dead stock'], ['dmg', 'Damage rate']]
+        .map(([k, l], i) => `<button class="btn btn--sm tab-btn${i === 0 ? ' btn--primary' : ''}"
+          data-tab="${k}">${l}</button>`).join('')}
+    </div>
+    <div id="panel" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
+  $$('.tab-btn').forEach(b => b.addEventListener('click', () => {
+    $$('.tab-btn').forEach(x => x.classList.remove('btn--primary'));
+    b.classList.add('btn--primary');
+    show(b.dataset.tab);
+  }));
+  await load();
+}
+
+async function load() {
+  try {
+    const [roi, util, prods, moves, reps] = await Promise.all([
+      sb.from('v_product_roi').select('*'),
+      sb.from('v_unit_utilisation').select('*'),
+      sb.from('product').select('id,short_code,brand,model_name,tracking_mode,active'),
+      // Movements are read here only to count hires and find the last one. Nothing is derived that
+      // a view already knows — v_product_roi and v_unit_utilisation do all the arithmetic.
+      sb.from('movement').select('product_id,unit_id,movement_type,moved_on,qty')
+        .in('movement_type', ['dispatch', 'return']),
+      sb.from('repair_job').select('id,unit_id,date_sent,actual_cost,outcome'),
+    ]);
+    for (const r of [roi, util, prods, moves, reps]) if (r.error) throw r.error;
+    ROI = roi.data ?? []; UTIL = util.data ?? []; MOVES = moves.data ?? []; REPAIRS = reps.data ?? [];
+    PRODUCTS = new Map((prods.data ?? []).map(p => [p.id, p]));
+    show('roi');
+  } catch (err) {
+    $('#panel').className = ''; $('#panel').innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', load);
+  }
+}
+
+const pname = id => {
+  const p = PRODUCTS.get(id);
+  return p ? `${p.short_code} — ${p.brand ? p.brand + ' ' : ''}${p.model_name}` : '(unknown product)';
+};
+
+function show(tab) {
+  const panel = $('#panel');
+  panel.className = '';
+  if (!PRODUCTS.size) {
+    panel.innerHTML = stateBlock({ icon: '📈', title: 'Nothing to analyse yet',
+      body: 'These reports are built from movements and orders. Once gear has been hired out a few '
+          + 'times they start to say something.' });
+    return;
+  }
+  ({ roi: showRoi, util: showUtil, freq: showFreq, dead: showDead, dmg: showDamage }[tab])(panel);
+}
+
+// ---------------------------------------------------------------------------
+// Return per product — LIFETIME, per 0012.
+//
+// The critical rule on this screen: a NULL roi_pct is NOT zero. Null means no purchase cost has
+// been entered, so the answer is unknown; zero means the product earned nothing. Rendering the
+// first as the second tells chachu a product loses money when the truth is that he has not typed
+// its cost in — and that is a number he would act on.
+// ---------------------------------------------------------------------------
+function showRoi(panel) {
+  const rows = [...ROI].sort((a, b) => (b.roi_pct ?? -1e9) - (a.roi_pct ?? -1e9));
+  const unknown = rows.filter(r => r.roi_pct === null);
+  panel.innerHTML = `
+    <p class="field__hint">Lifetime return: rental revenue less repair cost, over what every piece
+      ever bought cost — including pieces since retired or lost. A box that earned for four years and
+      was then scrapped still cost money and still earned it.</p>
+    ${unknown.length ? `<div class="note note--warn">
+      ${unknown.length} product${unknown.length === 1 ? '' : 's'} cannot be scored because no purchase
+      cost has been recorded. They are listed at the bottom as <strong>cost not recorded</strong>, not
+      as 0% — those are different facts and only one of them is a reason to stop buying something.
+    </div>` : ''}
+    <div class="card scroll-x"><table class="data">
+      <thead><tr><th>Product</th><th style="text-align:right">Revenue</th>
+        <th style="text-align:right">Repairs</th><th style="text-align:right">Cost</th>
+        <th style="text-align:right">Pieces</th><th style="text-align:right">Return</th></tr></thead>
+      <tbody>${rows.map(r => `
+        <tr>
+          <td data-label="Product">${esc(r.short_code)} — ${esc(r.model_name)}</td>
+          <td data-label="Revenue" style="text-align:right">${esc(money(r.rental_revenue))}</td>
+          <td data-label="Repairs" style="text-align:right">${esc(money(r.repair_cost))}</td>
+          <td data-label="Cost" style="text-align:right">${r.purchase_cost > 0 ? esc(money(r.purchase_cost)) : '—'}</td>
+          <td data-label="Pieces" style="text-align:right">${esc(r.units_active)}${
+            r.units_ever !== r.units_active ? ` <span class="item__meta">of ${esc(r.units_ever)} ever</span>` : ''}</td>
+          <td data-label="Return" style="text-align:right">${
+            r.roi_pct === null
+              ? `<span class="badge badge--muted">cost not recorded</span>${
+                  r.units_missing_cost > 0
+                    ? `<div class="item__meta">${esc(r.units_missing_cost)} piece(s) with no cost</div>` : ''}`
+              : `<strong>${esc(r.roi_pct)}%</strong>`}</td>
+        </tr>`).join('')}</tbody></table></div>`;
+}
+
+function showUtil(panel) {
+  // Per product, from the per-unit view. Days out over days owned, from real movements — never
+  // from planned dates.
+  const byProduct = new Map();
+  for (const u of UTIL) {
+    const cur = byProduct.get(u.product_id) ?? { days_out: 0, days_owned: 0, pieces: 0, hires: 0 };
+    cur.days_out += u.days_out ?? 0;
+    cur.days_owned += u.days_owned ?? 0;
+    cur.hires += u.times_hired ?? 0;
+    cur.pieces += 1;
+    byProduct.set(u.product_id, cur);
+  }
+  const rows = [...byProduct.entries()]
+    .map(([id, v]) => ({ id, ...v, pct: v.days_owned ? (100 * v.days_out / v.days_owned) : null }))
+    .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+  panel.innerHTML = `
+    <p class="field__hint">Days out over days owned, counted from actual dispatch and return
+      movements — never from the dates on an order. Needs no cost data, which is why it is the
+      number that works first.</p>
+    <div class="card scroll-x"><table class="data">
+      <thead><tr><th>Product</th><th style="text-align:right">Pieces</th>
+        <th style="text-align:right">Hires</th><th style="text-align:right">Days out</th>
+        <th style="text-align:right">Days owned</th><th style="text-align:right">Utilisation</th></tr></thead>
+      <tbody>${rows.length ? rows.map(r => `
+        <tr>
+          <td data-label="Product">${esc(pname(r.id))}</td>
+          <td data-label="Pieces" style="text-align:right">${esc(r.pieces)}</td>
+          <td data-label="Hires" style="text-align:right">${esc(r.hires)}</td>
+          <td data-label="Days out" style="text-align:right">${esc(r.days_out)}</td>
+          <td data-label="Days owned" style="text-align:right">${esc(r.days_owned)}</td>
+          <td data-label="Utilisation" style="text-align:right"><strong>${
+            r.pct === null ? '—' : esc(r.pct.toFixed(1)) + '%'}</strong></td>
+        </tr>`).join('') : `<tr><td colspan="6"><p class="field__hint" style="margin:0">
+          No numbered pieces yet. Counted stock has no per-piece history, so it does not appear
+          here.</p></td></tr>`}</tbody></table></div>`;
+}
+
+function showFreq(panel) {
+  // Rule 13: a hire is one dispatch movement for a numbered piece, but a QUANTITY for pooled and
+  // consumable stock. Counting rows for both would say a job that took 40 cables was one hire and a
+  // job that took 4 speakers was four.
+  const rows = [...PRODUCTS.values()].map(p => {
+    const ms = MOVES.filter(m => m.product_id === p.id && m.movement_type === 'dispatch');
+    const jobs = ms.length;
+    const qty = p.tracking_mode === 'unit' ? ms.length : ms.reduce((n, m) => n + (m.qty ?? 0), 0);
+    const last = ms.map(m => m.moved_on).sort().pop() ?? null;
+    return { p, jobs, qty, last };
+  }).filter(r => r.jobs > 0).sort((a, b) => b.qty - a.qty);
+
+  panel.innerHTML = `
+    <p class="field__hint">How often each product goes out. For numbered pieces this counts boxes;
+      for counted stock it counts quantity, because one job taking 40 cables is not the same event
+      as one job taking one.</p>
+    ${rows.length ? `<div class="card scroll-x"><table class="data">
+      <thead><tr><th>Product</th><th>Tracked as</th><th style="text-align:right">Dispatches</th>
+        <th style="text-align:right">Total sent</th><th>Last out</th></tr></thead>
+      <tbody>${rows.map(r => `
+        <tr>
+          <td data-label="Product">${esc(pname(r.p.id))}</td>
+          <td data-label="Tracked as"><span class="badge badge--${esc(r.p.tracking_mode)}">${esc(r.p.tracking_mode)}</span></td>
+          <td data-label="Dispatches" style="text-align:right">${esc(r.jobs)}</td>
+          <td data-label="Total sent" style="text-align:right">${esc(r.qty)}${
+            r.p.tracking_mode === 'unit' ? ' piece(s)' : ''}</td>
+          <td data-label="Last out">${esc(fmtDate(r.last))}</td>
+        </tr>`).join('')}</tbody></table></div>`
+    : stateBlock({ icon: '📦', title: 'Nothing has gone out yet',
+        body: 'Hire frequency is counted from dispatch movements. It fills in as jobs happen.' })}`;
+}
+
+function showDead(panel) {
+  const DAYS = 90;
+  const cutoff = new Date(Date.now() - DAYS * 86400000).toISOString().slice(0, 10);
+  const rows = [...PRODUCTS.values()].map(p => {
+    const ms = MOVES.filter(m => m.product_id === p.id && m.movement_type === 'dispatch');
+    const last = ms.map(m => m.moved_on).sort().pop() ?? null;
+    return { p, last, never: !last };
+  }).filter(r => r.never || r.last < cutoff)
+    .sort((a, b) => (a.last ?? '').localeCompare(b.last ?? ''));
+
+  panel.innerHTML = `
+    <p class="field__hint">Owned, and not hired out in ${DAYS} days. Counted from movements, so a
+      product with no dispatch ever is included — that is usually the more interesting case.</p>
+    ${rows.length ? `<div class="card scroll-x"><table class="data">
+      <thead><tr><th>Product</th><th>Tracked as</th><th>Last hired</th></tr></thead>
+      <tbody>${rows.map(r => `
+        <tr>
+          <td data-label="Product">${esc(pname(r.p.id))}${r.p.active ? '' : ' <span class="badge badge--muted">inactive</span>'}</td>
+          <td data-label="Tracked as"><span class="badge badge--${esc(r.p.tracking_mode)}">${esc(r.p.tracking_mode)}</span></td>
+          <td data-label="Last hired">${r.never ? '<span class="badge badge--muted">never</span>' : esc(fmtDate(r.last))}</td>
+        </tr>`).join('')}</tbody></table></div>`
+    : stateBlock({ icon: '✅', title: `Everything has moved in the last ${DAYS} days`,
+        body: 'No product has been sitting unused for that long.' })}`;
+}
+
+function showDamage(panel) {
+  // Repair events per product per hire. repair_job.unit_id is NOT NULL, so pooled stock cannot
+  // carry a repair at all (docs/backlog.md) — this table therefore covers numbered pieces only,
+  // and says so rather than showing counted products with a misleading zero.
+  const unitToProduct = new Map(UTIL.map(u => [u.unit_id, u.product_id]));
+  const byProduct = new Map();
+  for (const r of REPAIRS) {
+    const pid = unitToProduct.get(r.unit_id);
+    if (!pid) continue;
+    const cur = byProduct.get(pid) ?? { repairs: 0, cost: 0 };
+    cur.repairs += 1; cur.cost += Number(r.actual_cost ?? 0);
+    byProduct.set(pid, cur);
+  }
+  const rows = [...PRODUCTS.values()].filter(p => p.tracking_mode === 'unit').map(p => {
+    const hires = MOVES.filter(m => m.product_id === p.id && m.movement_type === 'dispatch').length;
+    const r = byProduct.get(p.id) ?? { repairs: 0, cost: 0 };
+    return { p, hires, ...r, rate: hires ? r.repairs / hires : null };
+  }).filter(r => r.repairs > 0 || r.hires > 0)
+    .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+
+  panel.innerHTML = `
+    <p class="field__hint">Repair jobs per hire, for numbered pieces. Counted stock is excluded
+      because a repair must name a piece, and cables have none — that gap is logged, not hidden by
+      showing them a zero they did not earn.</p>
+    ${rows.length ? `<div class="card scroll-x"><table class="data">
+      <thead><tr><th>Product</th><th style="text-align:right">Hires</th>
+        <th style="text-align:right">Repairs</th><th style="text-align:right">Repair cost</th>
+        <th style="text-align:right">Per hire</th></tr></thead>
+      <tbody>${rows.map(r => `
+        <tr>
+          <td data-label="Product">${esc(pname(r.p.id))}</td>
+          <td data-label="Hires" style="text-align:right">${esc(r.hires)}</td>
+          <td data-label="Repairs" style="text-align:right">${esc(r.repairs)}</td>
+          <td data-label="Repair cost" style="text-align:right">${esc(money(r.cost))}</td>
+          <td data-label="Per hire" style="text-align:right">${
+            r.rate === null ? '—' : `<strong>${esc((r.rate * 100).toFixed(0))}%</strong>`}</td>
+        </tr>`).join('')}</tbody></table></div>`
+    : stateBlock({ icon: '🔧', title: 'No repairs recorded',
+        body: 'Nothing has been sent to a repair shop yet.' })}`;
+}
+
+window.__djn = { reload: load, show };
+</script>
+</body>
+</html>
