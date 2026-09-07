@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Load the van — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-12" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-12" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-12">
+<meta name="theme-color" content="#2B7379">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-12">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-12">
+<link rel="stylesheet" href="style.css?v=2026-09-08-12">
+<script src="vendor/supabase.js?v=2026-09-08-12" defer></script>
+<script src="boot.js?v=2026-09-08-12" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+
+<script type="module">
+import { sb, store, $, $$, esc, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
+         toast, initOffline, syncNow, revealActiveTab, loadPermissions, can, trackBadge,
+         newRequestId, guardedWrite, publicUrl }
+  from './app.js?v=2026-09-08-12';
+
+$('#chrome').innerHTML = chrome('transfer.html');
+revealActiveTab();
+initOffline();
+
+// ---------------------------------------------------------------------------
+// LOADING THE VAN — form 9, and it was never built.
+//
+// Gear in the van between jobs is the NORMAL state of this business, not an exception. Two jobs on
+// a Saturday means the speakers never come back to the godown in between, and until now there was
+// no way to say so: the pieces stayed recorded at the godown, the send-out screen filtered to the
+// godown and found them, and the record and the world disagreed quietly.
+//
+// ONE ACTION, not three. Pick where it is going, tap the pieces, done — the same shape as sending
+// out, because it is the same job with a different destination. Six pieces is one tap each and one
+// commit, never six transfers.
+//
+// AVAILABILITY NEEDS NO NEW RULE, and that is worth saying because it looks like it should. A van
+// is one of OUR locations (location.type = 'van'), so a piece in it is `at_kind = 'location'` and
+// v_unit_status already calls it available. Nothing here touches fn_availability. What DID need
+// fixing is the send-out screen's default, which was the first location alphabetically — Godown —
+// so a job whose gear was already in the van showed an empty pick list that read as the pieces
+// being lost. That is fixed alongside this, in dispatch.html.
+// ---------------------------------------------------------------------------
+
+let LOCS = [], PRODUCTS = new Map(), UNITS = [], PICK = new Map();
+let FROM = '', TO = '';
+
+requireSession(async () => {
+  await loadPermissions();
+  if (!can('equipment.write')) {
+    $('#app').innerHTML = `<h1>Load the van</h1>` + stateBlock({
+      icon: '🔒', title: 'Moving gear between our own places needs the catalogue permission',
+      body: 'This account can record what goes out to a customer and what comes back, but not '
+          + 'where our own equipment sits in between. Ask whoever manages the team.',
+    });
+    return;
+  }
+  await boot();
+});
+
+async function boot() {
+  $('#app').innerHTML = `
+    <h1>Load the van</h1>
+    <p class="sub">Move our own gear between our own places. Nothing here goes to a customer.</p>
+    <div class="card">
+      <div class="grid2">
+        <div class="field"><label class="field__label" for="f-from">From *</label>
+          <select class="field__select" id="f-from"></select></div>
+        <div class="field"><label class="field__label" for="f-to">To *</label>
+          <select class="field__select" id="f-to"></select></div>
+      </div>
+      <span class="field__hint" id="where-hint"></span>
+    </div>
+    <div id="body"><div class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div></div>
+    <div class="dispatch-bar">
+      <div id="t-summary" class="field__hint"></div>
+      <button class="btn btn--primary btn--block" id="go" type="button" disabled>Move these</button>
+    </div>`;
+  await load();
+}
+
+async function load() {
+  try {
+    const [locs, status, prods] = await Promise.all([
+      sb.from('location').select('id,name,type').eq('active', true).order('type').order('name'),
+      sb.from('v_unit_status').select('unit_id,product_id,piece_no,condition,status,at_kind,at_id'),
+      sb.from('product').select('id,short_code,brand,model_name,tracking_mode,image_url'),
+    ]);
+    for (const r of [locs, status, prods]) if (r.error) throw r.error;
+    LOCS = locs.data ?? [];
+    PRODUCTS = new Map((prods.data ?? []).map(p => [p.id, p]));
+    // Only pieces standing at one of OUR locations can be moved between them. A piece with a
+    // customer is out, and a piece at a repair shop comes back through the repair path — moving
+    // either from here would invent a movement that never happened.
+    UNITS = (status.data ?? []).filter(u => u.status === 'available');
+
+    if (LOCS.length < 2) {
+      $('#body').innerHTML = stateBlock({
+        icon: '📍', title: 'There is only one place to be',
+        body: 'Moving gear needs somewhere to move it to. Add a second location — a van, the shop — '
+            + 'in Supabase (table location) and this screen becomes useful.',
+      });
+      return;
+    }
+    // FROM defaults to wherever most of the fleet is; TO to the first van, because that is the
+    // journey this screen exists for.
+    const counts = new Map(LOCS.map(l => [l.id, UNITS.filter(u => u.at_id === l.id).length]));
+    FROM = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    TO = (LOCS.find(l => l.type === 'van' && l.id !== FROM) ?? LOCS.find(l => l.id !== FROM)).id;
+    paintLocs();
+    $('#f-from').addEventListener('change', () => { FROM = $('#f-from').value; PICK.clear(); paintLocs(); render(); });
+    $('#f-to').addEventListener('change', () => { TO = $('#f-to').value; paintLocs(); render(); });
+    $('#go').addEventListener('click', () => guardedWrite($('#go'), 'Moving…', doMove));
+    render();
+  } catch (err) {
+    console.error('[transfer] load failed', err);
+    $('#body').innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', load);
+  }
+}
+
+function paintLocs() {
+  const opt = (l, sel) => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>
+    ${esc(l.name)} (${esc(l.type)}) — ${esc(UNITS.filter(u => u.at_id === l.id).length)} here</option>`;
+  $('#f-from').innerHTML = LOCS.map(l => opt(l, FROM)).join('');
+  // A place cannot be moved to itself. Removing it from the list beats refusing it afterwards.
+  $('#f-to').innerHTML = LOCS.filter(l => l.id !== FROM).map(l => opt(l, TO)).join('');
+  if (!LOCS.some(l => l.id === TO && l.id !== FROM)) {
+    TO = LOCS.find(l => l.id !== FROM).id;
+    $('#f-to').value = TO;
+  }
+  const fromName = LOCS.find(l => l.id === FROM)?.name ?? '';
+  const toName = LOCS.find(l => l.id === TO)?.name ?? '';
+  $('#where-hint').textContent =
+    `Everything standing at ${fromName} is offered below. Nothing leaves your hands — gear in a van `
+    + `is still yours and still available to book.`;
+  $('#go').textContent = `Move these to ${toName}`;
+}
+
+function render() {
+  const here = UNITS.filter(u => u.at_kind === 'location' && u.at_id === FROM);
+  const body = $('#body');
+  body.className = '';
+  if (!here.length) {
+    body.innerHTML = stateBlock({
+      icon: '📦', title: 'Nothing is standing here',
+      body: `No numbered piece is at ${esc(LOCS.find(l => l.id === FROM)?.name ?? 'this place')} right now. `
+          + 'Counted stock — cables, fog fluid — has no piece numbers and is not moved from this screen.',
+    });
+    paintSummary();
+    return;
+  }
+  // Grouped by product, because every screen here is product-first (rule 8): a sticker carries a
+  // bare number and belongs to nothing on its own.
+  const byProduct = new Map();
+  for (const u of here) {
+    const list = byProduct.get(u.product_id) ?? [];
+    list.push(u); byProduct.set(u.product_id, list);
+  }
+  body.innerHTML = [...byProduct.entries()].map(([pid, list]) => {
+    const p = PRODUCTS.get(pid);
+    const allPicked = list.every(u => PICK.has(u.unit_id));
+    return `<div class="card">
+      <div class="pick-head">
+        <span class="pick-thumb" data-product="${esc(pid)}">
+          ${p?.image_url ? `<img src="${esc(publicUrl(p.image_url))}" alt="" loading="lazy">` : ''}
+          <span class="pick-thumb__code">${esc(p?.short_code ?? '?')}</span></span>
+        <span class="pick-head__main">
+          <span class="pick-head__title">${esc(p?.model_name ?? 'unknown')}</span>
+          <span class="item__meta">${esc(p?.brand ? p.brand + ' · ' : '')}${esc(p?.short_code ?? '')}</span>
+        </span>
+        <span class="pick-head__right">
+          <button class="btn btn--sm grp" data-product="${esc(pid)}" type="button">
+            ${allPicked ? 'Clear' : `All ${esc(list.length)}`}</button>
+        </span>
+      </div>
+      <div class="pieces">${list.map(u => `
+        <button class="piece ${PICK.has(u.unit_id) ? 'is-on' : ''}" data-unit="${esc(u.unit_id)}"
+                data-product="${esc(pid)}" type="button"
+                aria-pressed="${PICK.has(u.unit_id) ? 'true' : 'false'}">
+          <span class="piece__no">${esc(u.piece_no)}</span>
+          ${u.condition !== 'good' ? `<span class="piece__tag">${esc(u.condition.replace('_', ' '))}</span>` : ''}
+        </button>`).join('')}</div>
+    </div>`;
+  }).join('');
+
+  $$('.piece').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.unit;
+    if (PICK.has(id)) PICK.delete(id); else PICK.set(id, b.dataset.product);
+    render();
+  }));
+  $$('.grp').forEach(b => b.addEventListener('click', () => {
+    const list = here.filter(u => u.product_id === b.dataset.product);
+    const allPicked = list.every(u => PICK.has(u.unit_id));
+    for (const u of list) { if (allPicked) PICK.delete(u.unit_id); else PICK.set(u.unit_id, u.product_id); }
+    render();
+  }));
+  paintSummary();
+}
+
+function paintSummary() {
+  const n = PICK.size;
+  const toName = LOCS.find(l => l.id === TO)?.name ?? '';
+  $('#t-summary').textContent = n
+    ? `${n} piece${n === 1 ? '' : 's'} moving to ${toName}.`
+    : 'Tap the pieces going into the van. Nothing moves until you press the button.';
+  $('#go').disabled = !n;
+}
+
+async function doMove() {
+  if (!PICK.size) return;
+  if (FROM === TO) { toast('Pick two different places.', 'error'); return; }
+  // ONE id for the whole tap, rows numbered within it (0024). Moving six pieces is one action and
+  // replaying it must write six movements or none.
+  const requestId = newRequestId();
+  const movements = [...PICK.entries()].map(([unitId, productId], i) => ({
+    request_id: requestId, request_seq: i,
+    movement_type: 'transfer', unit_id: unitId, product_id: productId, qty: 1,
+    from_kind: 'location', from_id: FROM,
+    to_kind: 'location', to_id: TO,
+    moved_on: todayLocal(),
+    notes: `Moved to ${LOCS.find(l => l.id === TO)?.name ?? 'another location'}`,
+  }));
+  const label = `Move ${movements.length} piece(s) to ${LOCS.find(l => l.id === TO)?.name ?? ''}`;
+
+  if (!navigator.onLine) {
+    await store.enqueue('transfer', { movements }, label);
+    toast(`No signal — ${movements.length} piece(s) held on this phone and sent when it returns.`);
+    PICK.clear(); await load();
+    return;
+  }
+  try {
+    const { error } = await sb.from('movement').insert(movements);
+    if (error) throw error;
+    toast(`${movements.length} piece(s) moved to ${LOCS.find(l => l.id === TO)?.name}.`);
+    PICK.clear();
+    await load();
+  } catch (err) {
+    const msg = err?.message || String(err);
+    if (/fetch|network|Failed to fetch/i.test(msg)) {
+      await store.enqueue('transfer', { movements }, label);
+      toast('Connection dropped — held on this phone and sent when the signal returns.');
+      PICK.clear(); await load();
+    } else if (err?.code === '23505') {
+      toast('That move was already recorded — the same tap reached the server twice.', 'error');
+    } else {
+      console.error('[transfer] write failed', err);
+      toast(msg, 'error');
+    }
+  }
+}
+</script>
+</body>
+</html>

@@ -25,11 +25,12 @@ system exports.
 **Transactions** — `rental_order`, `order_line`, `order_charge`, `movement`, `repair_job`,
 `ledger_entry`, `product_image`
 
-**Derived views (14)** — `v_movement_effective`, `v_unit_location`, `v_unit_status`,
+**Derived views (15)** — `v_movement_effective`, `v_unit_location`, `v_unit_status`,
 `v_unit_history`, `v_order_outstanding`, `v_order_fulfilment`, `v_pool_stock`, `v_product_stock`,
-`v_customer_balance`, `v_unit_utilisation`, `v_product_roi`, plus the three permission-gated
-wrappers `v_customer_balance_visible`, `v_product_roi_visible` and `v_unit_utilisation_visible`,
-and the function `fn_availability(product, from, to)`
+`v_customer_balance`, `v_customer_figures`, `v_unit_utilisation`, `v_product_roi`, plus the three
+permission-gated wrappers `v_customer_balance_visible`, `v_product_roi_visible` and
+`v_unit_utilisation_visible`, and the functions `fn_availability(product, from, to)` and
+`fn_today()`
 
 `v_pool_stock` is the one place that knows what pooled stock is; `v_product_stock` and
 `fn_availability` read it rather than re-deriving quantities. `v_order_outstanding` replaced
@@ -75,7 +76,7 @@ Build order is dependency order. Built so far, as static pages under `web/`:
 | 6 · Order | `orders.html` | built |
 | 7 · Dispatch | `dispatch.html` | built, offline-capable with explicit prefetch |
 | 8 · Return | `return.html` | built |
-| 9 · Internal transfer | — | not built |
+| 9 · Internal transfer | `transfer.html` | built — "Load the van", one action for a whole load |
 | 10 · Repair | — | not built |
 | 11 · Payments and ledger | `ledger.html` | built |
 | 12 · Customer portal | `portal.html` | built |
@@ -287,7 +288,36 @@ carries an order number to quote. The payment chaser sits behind two rule 6 guar
 when `receivable <= 0` (a credit balance is reachable since `0018`), and the deposit is named
 separately or not at all — it is the customer's own money and is never part of what is owed.
 
-**9 · Internal transfer.** From, to, date, units, moved by, notes. That is the whole form.
+**9 · Internal transfer — "Load the van".** Gear in the van between jobs is the NORMAL state of
+this business, not an exception: two jobs on a Saturday and the speakers never come back to the
+godown in between. One action for a whole load — pick where it is going, tap the pieces, commit —
+never one transfer per box.
+
+*Availability needs no new rule,* which is worth saying because it looks like it should. A van is
+one of OUR locations, so a piece in it is `at_kind = 'location'` and `v_unit_status` already calls
+it available. What DID need fixing is the send-out screen's "Loading from", which defaulted to the
+first location alphabetically — Godown — so a job whose gear was already in the van showed an empty
+pick list that read as the pieces being lost. It now defaults to wherever most of THAT JOB's gear is
+standing, names the count in each option, and when nothing is at the chosen place it says where the
+rest is instead of leaving an empty list to be interpreted.
+
+**`fn_today()`, and `current_date` is banned.** Every date this system stores is a calendar day on
+the Indian calendar — `movement.moved_on` comes from the phone, `out_date` is typed by a person in
+Ahmedabad. The server's `current_date` is UTC, so between midnight and 05:30 IST they are different
+days, and four views and a function were off by one for the five and a half hours when a van is
+actually loaded. A piece moved that morning read *(-1 days)*; Today said "4 days overdue" while the
+portal, reading the view, said 3 — the operator and the customer seeing different numbers for the
+same job. `0026` gives them one source.
+
+**The numbers live on the entity.** A reports tab gets opened twice; the same facts where the
+decision happens get read daily. A product shows how often it is hired, how long it is out, how
+often it is repaired and what it has earned back — gated on `numbers.view`, and absent it says so
+rather than showing zeros. A customer shows jobs, owed now, oldest unpaid, returns late and overdue
+right now, from `v_customer_figures` — **numbers, never verdicts**: no "reliable" and no "always
+pays", because revenue posts on confirmation and somebody with three unstarted jobs would read as a
+model payer. A piece shows where it is, who has it, and everything that has happened to it including
+corrections, from `v_unit_history`. Dead stock stays a report — forgotten gear surfaces nowhere else
+by definition.
 
 **10 · Repair.** Unit, vendor, date sent, fault, estimated cost, then date back, actual cost,
 outcome. A unit at a repair shop leaves availability with no extra rule.

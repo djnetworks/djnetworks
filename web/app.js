@@ -837,6 +837,7 @@ const MODULES = [
   { href: 'return.html',    label: 'Return',    icon: '\u2193',  key: 'returns.write' },
   { href: 'products.html',  label: 'Products',  icon: '\u25A6', key: 'products.write' },
   { href: 'units.html',     label: 'Equipment', icon: '\u25A3', key: 'equipment.write' },
+  { href: 'transfer.html',  label: 'Van',       icon: '\u2B1A', key: 'equipment.write' },
   { href: 'customers.html', label: 'Customers', icon: '\u263A', key: 'customers.write' },
   { href: 'ledger.html',    label: 'Ledger',    icon: '\u20B9',  key: 'ledger.view' },
   { href: 'analysis.html',  label: 'Numbers',   icon: '\u2211', key: 'numbers.view' },
@@ -958,7 +959,56 @@ export function revealActiveTab() {}
 // of the godown with six dispatches in it.
 // ---------------------------------------------------------------------------
 
-let queueHandlers = {};
+// ---------------------------------------------------------------------------
+// THE QUEUE HANDLERS LIVE HERE, NOT ON THE SCREEN THAT MADE THE WRITE.
+//
+// They used to be registered by dispatch.html and return.html, which meant a queued dispatch could
+// only be replayed on Send out. Open Today with one waiting and the queue reported `No handler for
+// "dispatch" — this version of the app cannot replay it`, and stayed stuck until the operator
+// happened to walk back to the screen that made it. Visible rather than silent since the queue got
+// a sheet, and still the offline path failing in the one feature whose failure mode is a box
+// leaving the godown with no record.
+//
+// So every screen can drain the queue. The payloads are plain JSON and have to stay that way: they
+// survive the phone being locked, the tab being killed and the browser restarting, and a payload
+// that carried a function or a Blob would arrive as an empty object with no error.
+// ---------------------------------------------------------------------------
+const BUILTIN_HANDLERS = {
+  async dispatch(payload) {
+    const { error } = await sb.from('movement').insert(payload.movements);
+    if (error) throw error;
+    // Revenue posted on confirmation as `upcoming` becomes `due` when the gear actually leaves.
+    // It is due because it went out, which is why this belongs with the dispatch and not with the
+    // order.
+    const { error: e2 } = await sb.from('ledger_entry')
+      .update({ state: 'due' }).eq('order_id', payload.order_id).eq('state', 'upcoming');
+    if (e2) throw e2;
+  },
+
+  async return_gear(payload) {
+    const { error } = await sb.from('movement').insert(payload.movements);
+    if (error) throw error;
+    if (payload.charges?.length) {
+      const { error: e2 } = await sb.from('order_charge').insert(payload.charges);
+      if (e2) throw e2;
+    }
+    if (payload.lost_unit_ids?.length) {
+      // A lost piece is marked lost, never deleted. Its number dies with it and is never reissued
+      // (rules 4 and 12).
+      for (const id of payload.lost_unit_ids) {
+        const { error: e3 } = await sb.from('unit').update({ lifecycle: 'lost' }).eq('id', id);
+        if (e3) throw e3;
+      }
+    }
+  },
+
+  async transfer(payload) {
+    const { error } = await sb.from('movement').insert(payload.movements);
+    if (error) throw error;
+  },
+};
+
+let queueHandlers = { ...BUILTIN_HANDLERS };
 export function registerQueueHandlers(h) { queueHandlers = { ...queueHandlers, ...h }; }
 
 export function paintConn(pending) {

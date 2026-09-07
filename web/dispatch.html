@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Send out — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-10" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-10" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-10">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-12" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-12" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-12">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-10">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-12">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-10">
-<link rel="stylesheet" href="style.css?v=2026-09-08-10">
-<script src="vendor/supabase.js?v=2026-09-08-10" defer></script>
-<script src="boot.js?v=2026-09-08-10" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-12">
+<link rel="stylesheet" href="style.css?v=2026-09-08-12">
+<script src="vendor/supabase.js?v=2026-09-08-12" defer></script>
+<script src="boot.js?v=2026-09-08-12" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -28,31 +28,15 @@
 
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
-         errorBlock, toast, initOffline, registerQueueHandlers, syncNow, revealActiveTab,
+         errorBlock, toast, initOffline, syncNow, revealActiveTab,
          trackBadge, publicUrl, waLink, waMessage, newRequestId, guardedWrite, networkMessage }
-  from './app.js?v=2026-09-08-10';
+  from './app.js?v=2026-09-08-12';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
 
-// ---------------------------------------------------------------------------
-// The write this screen makes, and how it is replayed.
-//
-// Registered BEFORE initOffline so a queue left over from a previous visit — the phone was locked,
-// the tab was killed, the van drove out of signal — can be replayed the moment this page opens.
-// The payload is plain JSON on purpose: it has to survive a browser restart.
-// ---------------------------------------------------------------------------
-registerQueueHandlers({
-  async dispatch(payload) {
-    const { error } = await sb.from('movement').insert(payload.movements);
-    if (error) throw error;
-    // Revenue posted on confirmation as `upcoming` becomes `due` when the gear actually leaves.
-    // Doing it here rather than on the order screen is the point: it is due because it went out.
-    const { error: e2 } = await sb.from('ledger_entry')
-      .update({ state: 'due' }).eq('order_id', payload.order_id).eq('state', 'upcoming');
-    if (e2) throw e2;
-  },
-});
+// The `dispatch` replay handler now lives in app.js, so a queued send-out can be drained from ANY
+// screen rather than only from this one. See BUILTIN_HANDLERS there.
 initOffline();
 
 let ORDER = null, CUSTOMER = null, LINES = [], PRODUCTS = new Map(), LOCS = [], AVAIL = new Map();
@@ -377,11 +361,17 @@ function render() {
 
   body.innerHTML = `
     <div class="card">
+      <!-- THE DEFAULT IS WHERE THIS ORDER'S GEAR ACTUALLY IS, not the first location by name.
+           LOCS is ordered by name, so the default was Godown — and gear lives in the van between
+           jobs, which is the normal state of this business. Open a job whose pieces are all in
+           Van 1 and the pick list was empty: not "they are in the van", but nothing at all, which
+           reads as the pieces being missing on the morning of somebody's wedding. -->
       <label class="field"><span class="field__label">Loading from *</span>
         <select class="field__select" id="f-loc">
-          ${LOCS.map(l => `<option value="${esc(l.id)}">${esc(l.name)} (${esc(l.type)})</option>`).join('')}
+          ${LOCS.map(l => `<option value="${esc(l.id)}" ${l.id === defaultLoc() ? 'selected' : ''}>
+            ${esc(l.name)} (${esc(l.type)})${countHere(l.id) ? ` — ${esc(countHere(l.id))} of this job here` : ''}</option>`).join('')}
         </select>
-        <span class="field__hint">Only pieces sitting at this location are offered below.</span></label>
+        <span class="field__hint" id="loc-hint">Only pieces sitting at this location are offered below.</span></label>
     </div>
     <!-- LOAD THE WHOLE ORDER, mirroring "All 6 back" on the return screen. The ordinary job is
          that everything on the order goes out together; picking six tiles one at a time is the
@@ -427,9 +417,36 @@ function render() {
       <button class="btn btn--primary btn--block" id="go">Send these out</button>
     </div>`;
 
-  $('#f-loc').addEventListener('change', renderLines);
+  $('#f-loc').addEventListener('change', () => { renderLines(); paintLocHint(); });
+  paintLocHint();
   $('#go').addEventListener('click', doDispatch);
   renderLines();
+}
+
+// How many of THIS ORDER's outstanding pieces are standing at a given location. The number goes
+// in the dropdown so the right answer is visible before the list is read, rather than discovered
+// by trying each one.
+function countHere(locId) {
+  let n = 0;
+  for (const line of LINES) {
+    const p = PRODUCTS.get(line.product_id);
+    if (p?.tracking_mode !== 'unit') continue;
+    for (const u of (AVAIL.get(line.product_id) ?? [])) {
+      if (u.at_kind === 'location' && u.at_id === locId) n++;
+    }
+  }
+  return n;
+}
+
+// The location holding most of what this job still needs. Ties and empties fall back to the first,
+// which is the old behaviour and is right when nothing is anywhere yet.
+function defaultLoc() {
+  let best = LOCS[0]?.id ?? '', bestN = -1;
+  for (const l of LOCS) {
+    const n = countHere(l.id);
+    if (n > bestN) { best = l.id; bestN = n; }
+  }
+  return best;
 }
 
 function renderLines() {
@@ -600,6 +617,19 @@ function loadAllPlan() {
   const adds = picks.length + [...pools.entries()]
     .reduce((t, [pid, n]) => t + (n - (POOLPICK.get(pid) ?? 0)), 0);
   return { picks, pools, adds };
+}
+
+// Says where the rest of it is, instead of leaving an empty list to be interpreted.
+function paintLocHint() {
+  const el = $('#loc-hint');
+  if (!el) return;
+  const here = countHere($('#f-loc')?.value);
+  const elsewhere = LOCS.filter(l => l.id !== $('#f-loc')?.value && countHere(l.id) > 0)
+    .map(l => `${countHere(l.id)} at ${l.name}`);
+  el.innerHTML = here === 0 && elsewhere.length
+    ? `<strong>Nothing for this job is here.</strong> ${esc(elsewhere.join(', '))} — gear lives in the van between jobs.`
+    : `Only pieces sitting at this location are offered below.${
+        elsewhere.length ? ` Also ${esc(elsewhere.join(', '))}.` : ''}`;
 }
 
 function paintLoadAll() {

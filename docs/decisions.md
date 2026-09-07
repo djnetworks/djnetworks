@@ -242,3 +242,26 @@ with no record, a dead end nobody can open is the worst possible place for one.
 **Cost:** a `discarded` IndexedDB store and a database version bump. Discarding does not undo
 anything physical, which the confirm says in as many words.
 
+### `fn_today()`, and `current_date` is never compared to a stored date
+`0026`. The server's `current_date` is UTC; every date this system stores is an Indian calendar day.
+**Why:** four views and a function were off by one between midnight and 05:30 IST — the hours a van
+is loaded in. A piece moved that morning read "(-1 days)", and Today said "4 days overdue" while the
+portal said 3 about the same job, because one was computed in the client from the local date and the
+other in a view from UTC.
+**Cost:** the timezone is hard-coded to Asia/Kolkata in one function. A second branch in another
+country would need it to come from a setting, and would have bigger problems first.
+
+### Queue handlers live in app.js, not on the screen that made the write
+**Why:** a queued dispatch sitting on Today reported *No handler for "dispatch"* and stayed stuck
+until the operator happened to walk back to Send out. Visible rather than silent since the queue got
+a sheet, and still the offline path failing in the one feature whose failure is a box leaving with
+no record.
+**Cost:** two insert bodies moved out of the screens that own them, so a change to what a dispatch
+writes has to be made in `app.js` as well.
+
+### The numbers go on the entity; dead stock stays a report
+**Why:** he will open a Numbers tab twice. The same facts on the product, the customer and the piece
+get read every time somebody rings up.
+**Cost:** three more queries on three detail views. Dead stock is the exception and stays a report,
+because gear he has forgotten he owns surfaces nowhere else by definition.
+

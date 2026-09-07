@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Customers — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-10" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-10" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-10">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-12" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-12" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-12">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-10">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-12">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-10">
-<link rel="stylesheet" href="style.css?v=2026-09-08-10">
-<script src="vendor/supabase.js?v=2026-09-08-10" defer></script>
-<script src="boot.js?v=2026-09-08-10" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-12">
+<link rel="stylesheet" href="style.css?v=2026-09-08-12">
+<script src="vendor/supabase.js?v=2026-09-08-12" defer></script>
+<script src="boot.js?v=2026-09-08-12" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -24,15 +24,15 @@
 <div id="sheet-host"></div>
 
 <script type="module">
-import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
+import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, initOffline, revealActiveTab, loadPermissions, can, cardList }
-  from './app.js?v=2026-09-08-10';
+  from './app.js?v=2026-09-08-12';
 
 $('#chrome').innerHTML = chrome('customers.html');
 revealActiveTab();
 initOffline();
 
-let CUSTOMERS = [], BALANCES = new Map();
+let CUSTOMERS = [], BALANCES = new Map(), FIGURES = new Map();
 
 requireSession(async () => { await loadPermissions(); await boot(); });
 
@@ -56,14 +56,17 @@ async function boot() {
 
 async function load() {
   try {
-    const [c, b] = await Promise.all([
+    const [c, b, g] = await Promise.all([
       sb.from('customer').select('*').order('name'),
       sb.from('v_customer_balance_visible').select('*'),
+      sb.from('v_customer_figures').select('*'),
     ]);
     if (c.error) throw c.error;
     if (b.error) throw b.error;
     CUSTOMERS = c.data ?? [];
     BALANCES = new Map((b.data ?? []).map(x => [x.customer_id, x]));
+    // The figures are a nicety, not the screen: a failure here must not stop the customer list.
+    FIGURES = new Map((g.error ? [] : g.data ?? []).map(x => [x.customer_id, x]));
     renderList();
   } catch (err) {
     $('#list').className = ''; $('#list').innerHTML = errorBlock(err, 'retry');
@@ -201,6 +204,31 @@ function openEditor(c) {
         ${c.portal_code_hash ? 'Issue a new code' : 'Issue a portal code'}</button>
     </div>` : ''}
 
+    ${(() => {
+      // THE FACTS ABOUT THIS CUSTOMER, where the decision about them is made. He will open a
+      // Numbers tab twice; this he reads every time somebody rings up.
+      //
+      // NUMBERS, NEVER VERDICTS. No "reliable", no "always pays" — that is a judgment, and one
+      // this system would get wrong: revenue posts on order CONFIRMATION, so somebody with three
+      // unstarted jobs owes nothing and would read as a model payer.
+      const g = c.id ? FIGURES.get(c.id) : null;
+      if (!g) return '';
+      const bits = [
+        `<strong>${esc(g.jobs_total)}</strong> job${g.jobs_total === 1 ? '' : 's'}`,
+        g.jobs_cancelled ? `${esc(g.jobs_cancelled)} cancelled` : '',
+        // null is "cannot see money"; 0 is "settled". Never the same sentence (rule 14).
+        g.receivable === null ? '<span class="item__meta">money hidden</span>'
+          : Number(g.receivable) > 0 ? `<strong class="stat__n--bad">${esc(money(g.receivable))}</strong> owed now`
+          : 'nothing owed',
+        g.longest_unpaid_days != null ? `oldest unpaid <strong>${esc(g.longest_unpaid_days)}</strong> days` : '',
+        g.returned_late ? `<strong>${esc(g.returned_late)}</strong> returned late` : 'never returned late',
+        g.jobs_overdue_now ? `<strong class="stat__n--bad">${esc(g.jobs_overdue_now)}</strong> overdue right now` : '',
+        g.last_job_on ? `last job ${esc(fmtDate(g.last_job_on))}` : '',
+      ].filter(Boolean);
+      return `<div class="card card--sunk"><strong>This customer</strong>
+        <p style="margin:4px 0 0;line-height:1.7">${bits.join(' · ')}</p>
+        <p class="field__hint">Facts, not a verdict. What they mean is yours to decide.</p></div>`;
+    })()}
     ${!can('ledger.view') ? `<div class="card"><strong>Balance</strong>
       <p class="field__hint" style="margin:6px 0 0">Hidden — this account does not have permission to
         see money. Nothing is being shown as zero; it is simply not readable from here.</p></div>` : ''}

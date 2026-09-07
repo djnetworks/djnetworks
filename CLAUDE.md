@@ -94,6 +94,19 @@ These are not style preferences. Each one exists because breaking it has already
     error and only claims a cause it has evidence for: if `navigator.onLine` is true, it is not the
     signal.
 
+16. **A probe must reproduce the real call shape** — same batch size, same transaction boundary,
+    same page state. `0022`'s probe inserted one row per statement while the app inserts a batch,
+    so it proved the constraint worked on a shape the app never uses, and shipped a bug that told
+    the operator a write had already happened when nothing had been written. A test that does not
+    reproduce the real conditions runs clean and proves nothing. This is rule 10's lesson wearing
+    new clothes: the danger is never the failure you can see, it is the confident wrong answer.
+
+17. **When a shared helper's contract changes, grep every caller and DRIVE one of each.**
+    `openSheet` has now broken its callers twice — once when three screens passed the wrong markup
+    shape and could never save, once when it required a `#sheet-host` div that five of twelve pages
+    carry and threw on null inside a click handler, silently. Each file still parsed both times.
+    Only running one shows the break.
+
 ---
 
 ## Who applies schema changes

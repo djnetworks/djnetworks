@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Equipment — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-10" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-10" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-10">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-12" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-12" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-12">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-10">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-12">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-10">
-<link rel="stylesheet" href="style.css?v=2026-09-08-10">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-12">
+<link rel="stylesheet" href="style.css?v=2026-09-08-12">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-10" defer></script>
-<script src="boot.js?v=2026-09-08-10" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-12" defer></script>
+<script src="boot.js?v=2026-09-08-12" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -35,7 +35,7 @@
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, fmtDate, todayLocal, networkMessage, initOffline,
          revealActiveTab, cardList, loadPermissions, publicUrl }
-  from './app.js?v=2026-09-08-10';
+  from './app.js?v=2026-09-08-12';
 
 $('#chrome').innerHTML = chrome('units.html');
 revealActiveTab();
@@ -78,16 +78,23 @@ async function load() {
   $('#body').className = 'skeleton';
   $('#body').innerHTML = '<div class="skeleton__row"></div><div class="skeleton__row"></div>';
   try {
-    const [prods, locs, stock] = await Promise.all([
+    const [prods, locs, custs, vends, stock] = await Promise.all([
       sb.from('product').select('*').eq('active', true).order('short_code'),
       // NOT filtered to active here. A piece standing at a location that was later deactivated
       // still has to say where it is; filtering the lookup list made 'Where' read '—', which is
       // the same thing the screen shows for a piece with no movement at all. Only the intake
       // PICKER is restricted to active locations, further down.
       sb.from('location').select('id,name,type,active').order('name'),
+      // Names for the piece sheet: a movement's destination is an id and 'who has it' is the
+      // whole question. Fetched once with everything else rather than per piece opened.
+      sb.from('customer').select('id,name,business_name'),
+      sb.from('vendor').select('id,name'),
       sb.from('v_product_stock').select('*'),
     ]);
     for (const r of [prods, locs, stock]) if (r.error) throw r.error;
+    // Names are a nicety for one sheet; a failure here must not stop the equipment list.
+    for (const c of (custs.error ? [] : custs.data ?? [])) CUSTOMER_NAMES.set(c.id, c.business_name || c.name);
+    for (const v of (vends.error ? [] : vends.data ?? [])) VENDOR_NAMES.set(v.id, v.name);
     // Only numbered-piece products have pieces at all. Offering a cable here would be offering
     // to create piece numbers for something that has none (rule 13).
     PRODUCTS = (prods.data ?? []).filter(p => p.tracking_mode === 'unit');
@@ -307,7 +314,7 @@ async function renderBody() {
       <table class="data">
         <thead><tr><th>Piece</th><th>Status</th><th>Where</th><th>Condition</th><th>Since</th><th>Cost</th></tr></thead>
         <tbody>${UNITS.map(u => `
-          <tr>
+          <tr class="tappable unit-row" data-unit="${esc(u.unit_id)}" data-piece="${esc(u.piece_no)}">
             <td data-label="Piece"><strong>${esc(u.piece_no)}</strong></td>
             <td data-label="Status"><span class="badge badge--${esc(u.status)}">${esc(u.status.replace('_', ' '))}</span></td>
             <td data-label="Where">${esc(where(u))}</td>
@@ -320,8 +327,10 @@ async function renderBody() {
           </tr>`).join('')}</tbody>
       </table>
     </div>
-    <p class="field__hint">A piece is out because no return has been recorded against it — never because a
-      date has passed. Piece numbers are never reused: a retired or lost number stays dead.</p>`;
+    <p class="field__hint">Tap a piece for where it is, who has it and everything that has happened
+      to it. A piece is out because no return has been recorded against it — never because a date has
+      passed. Piece numbers are never reused: a retired or lost number stays dead.</p>`;
+  $$('.unit-row').forEach(r => r.addEventListener('click', () => openPiece(r.dataset.unit, r.dataset.piece)));
 
   $('#fix-stranded')?.addEventListener('click', () => openSetLocation(stranded));
 }
@@ -330,6 +339,82 @@ const unitCost = id => (COSTS.get(id) ?? null) === null ? '—' : money(COSTS.ge
 
 /** Active locations only — the ones a piece can actually be put into today. */
 const activeLocs = () => LOCS.filter(l => l.active);
+
+// ---------------------------------------------------------------------------
+// ONE PIECE: where it is, who has it, and what has happened to it.
+//
+// v_unit_history is the human view added by 0019 — it keeps corrected movements and the
+// corrections themselves, flagged rather than hidden, because a history with a hole in it is
+// worse than one with a crossing-out. This is the screen it was built for.
+// ---------------------------------------------------------------------------
+async function openPiece(unitId, pieceNo) {
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="pc-title" tabindex="-1">
+      <div class="sheet__head">
+        <h2 class="sheet__title" id="pc-title">${esc(SELECTED?.short_code ?? '')} · piece ${esc(pieceNo)}</h2>
+        <button class="btn btn--ghost btn--sm" data-sheet-close type="button">Close</button>
+      </div>
+      <div id="pc-body"><div class="skeleton"><div class="skeleton__row"></div></div></div>
+      <div class="sheet__foot"><button class="btn" data-sheet-close type="button">Close</button></div>
+    </div>
+  </div>`);
+
+  const [st, hist] = await Promise.all([
+    sb.from('v_unit_status').select('*').eq('unit_id', unitId).maybeSingle(),
+    sb.from('v_unit_history').select('*').eq('unit_id', unitId)
+      .order('moved_on', { ascending: false }).order('created_at', { ascending: false }),
+  ]);
+  if (st.error || hist.error) {
+    $('#pc-body').innerHTML = errorBlock(st.error || hist.error);
+    return;
+  }
+  const u = st.data;
+  const rows = hist.data ?? [];
+  // WHO HAS IT. at_kind says whether the destination is one of our locations, a customer or a
+  // repair shop; the name comes from whichever table that is.
+  const holder = u?.at_kind === 'customer'
+    ? (CUSTOMER_NAMES.get(u.at_id) ?? 'a customer')
+    : u?.at_kind === 'vendor' ? (VENDOR_NAMES.get(u.at_id) ?? 'a repair shop')
+    : (LOCS.find(l => l.id === u?.at_id)?.name ?? '—');
+
+  const label = { intake: 'Taken into stock', dispatch: 'Sent out', return: 'Came back',
+                  transfer: 'Moved', repair_out: 'Sent for repair', repair_in: 'Back from repair',
+                  write_off: 'Written off', found: 'Found', correction: 'Correction' };
+
+  $('#pc-body').innerHTML = `
+    <div class="card card--sunk">
+      <div class="row" style="gap:6px"><span class="badge badge--${esc(u?.status ?? 'not_recorded')}">${esc((u?.status ?? 'not recorded').replace('_',' '))}</span>
+        <span class="badge badge--muted">${esc((u?.condition ?? '').replace('_',' '))}</span></div>
+      <p style="margin:6px 0 0;line-height:1.6">
+        ${u?.at_kind === 'customer' ? 'With' : u?.at_kind === 'vendor' ? 'At' : 'At'}
+        <strong>${esc(holder)}</strong>
+        ${u?.last_moved_on ? `since ${esc(fmtDate(u.last_moved_on))}` : ''}
+        ${u?.days_in_place != null ? `<span class="item__meta">(${esc(u.days_in_place)} days)</span>` : ''}
+      </p>
+    </div>
+    <div class="card">
+      <strong>Everything that has happened</strong>
+      <div class="list" style="margin-top:6px">${rows.map(h => `
+        <div class="item" style="cursor:default;${h.is_corrected ? 'opacity:.6' : ''}">
+          <span class="item__main">
+            <span class="item__title">${esc(label[h.movement_type] ?? h.movement_type)}
+              ${h.is_corrected ? '<span class="badge badge--out">corrected</span>' : ''}
+              ${h.is_correction ? '<span class="badge badge--muted">annotation</span>' : ''}</span>
+            <span class="item__meta">${esc(fmtDate(h.moved_on))}${h.order_no ? ' · ' + esc(h.order_no) : ''}${
+              h.condition_at_move ? ' · ' + esc(h.condition_at_move.replace('_',' ')) : ''}</span>
+            ${h.is_corrected ? `<span class="item__meta">Taken back${
+              h.correction_reason ? ': ' + esc(h.correction_reason) : ''}</span>` : ''}
+            ${h.notes && !h.is_correction ? `<span class="item__meta">${esc(h.notes)}</span>` : ''}
+          </span>
+        </div>`).join('') || '<p class="field__hint">Nothing recorded yet.</p>'}</div>
+      <p class="field__hint">A corrected movement stays here, greyed and marked, with the reason
+        beside it — never removed. That is what makes an undo safe to have.</p>
+    </div>`;
+}
+
+const CUSTOMER_NAMES = new Map();
+const VENDOR_NAMES = new Map();
 
 const locationField = (id) => activeLocs().length
   ? `<select class="field__select" id="${id}">
