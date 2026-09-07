@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Analysis — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -18,13 +18,16 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock,
          initOffline, revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('analysis.html');
 revealActiveTab();
 initOffline();
 
 let ROI = [], UTIL = [], PRODUCTS = new Map(), MOVES = [], REPAIRS = [];
+// product_id -> pieces with no purchase date. See showUtil: those pieces make days_owned a floor
+// of 1 and the percentage above it meaningless.
+let NO_PURCHASE_DATE = new Map();
 
 requireSession(async () => { await boot(); });
 
@@ -49,19 +52,27 @@ async function boot() {
 
 async function load() {
   try {
-    const [roi, util, prods, moves, reps] = await Promise.all([
+    const [roi, util, prods, units, moves, reps] = await Promise.all([
       sb.from('v_product_roi').select('*'),
       sb.from('v_unit_utilisation').select('*'),
       sb.from('product').select('id,short_code,brand,model_name,tracking_mode,active'),
+      // Purchase dates only, to say which utilisation figures rest on a real denominator.
+      // v_unit_utilisation cannot say so itself: days_owned is greatest(today - purchase_date, 1),
+      // so a piece with no date contributes exactly 1 and the view has no column that admits it.
+      sb.from('unit').select('product_id,purchase_date').eq('lifecycle', 'active'),
       // Movements are read here only to count hires and find the last one. Nothing is derived that
       // a view already knows — v_product_roi and v_unit_utilisation do all the arithmetic.
       sb.from('movement').select('product_id,unit_id,movement_type,moved_on,qty')
         .in('movement_type', ['dispatch', 'return']),
       sb.from('repair_job').select('id,unit_id,date_sent,actual_cost,outcome'),
     ]);
-    for (const r of [roi, util, prods, moves, reps]) if (r.error) throw r.error;
+    for (const r of [roi, util, prods, units, moves, reps]) if (r.error) throw r.error;
     ROI = roi.data ?? []; UTIL = util.data ?? []; MOVES = moves.data ?? []; REPAIRS = reps.data ?? [];
     PRODUCTS = new Map((prods.data ?? []).map(p => [p.id, p]));
+    NO_PURCHASE_DATE = new Map();
+    for (const u of (units.data ?? [])) {
+      if (!u.purchase_date) NO_PURCHASE_DATE.set(u.product_id, (NO_PURCHASE_DATE.get(u.product_id) ?? 0) + 1);
+    }
     show('roi');
   } catch (err) {
     $('#panel').className = ''; $('#panel').innerHTML = errorBlock(err, 'retry');
@@ -116,8 +127,16 @@ function showRoi(panel) {
           <td data-label="Revenue" style="text-align:right">${esc(money(r.rental_revenue))}</td>
           <td data-label="Repairs" style="text-align:right">${esc(money(r.repair_cost))}</td>
           <td data-label="Cost" style="text-align:right">${r.purchase_cost > 0 ? esc(money(r.purchase_cost)) : '—'}</td>
-          <td data-label="Pieces" style="text-align:right">${esc(r.units_active)}${
-            r.units_ever !== r.units_active ? ` <span class="item__meta">of ${esc(r.units_ever)} ever</span>` : ''}</td>
+          <!-- Rule 13. v_product_roi counts rows in the unit table, so a pooled or consumable
+               product is always 0 — and "0" printed beside CBL-XLR's revenue of 8,160 says the
+               business earned that from no cables, when there are 235 of them. A confident wrong
+               number, which is the worst kind. A unit-tracked product with genuinely no pieces
+               still reads 0, because there that is the true answer. -->
+          <td data-label="Pieces" style="text-align:right">${
+            PRODUCTS.get(r.product_id)?.tracking_mode !== 'unit'
+              ? '<span class="item__meta">counted stock</span>'
+              : esc(r.units_active) + (r.units_ever !== r.units_active
+                  ? ` <span class="item__meta">of ${esc(r.units_ever)} ever</span>` : '')}</td>
           <td data-label="Return" style="text-align:right">${
             r.roi_pct === null
               ? `<span class="badge badge--muted">cost not recorded</span>${
@@ -140,12 +159,30 @@ function showUtil(panel) {
     byProduct.set(u.product_id, cur);
   }
   const rows = [...byProduct.entries()]
-    .map(([id, v]) => ({ id, ...v, pct: v.days_owned ? (100 * v.days_out / v.days_owned) : null }))
-    .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+    .map(([id, v]) => ({ id, ...v, noDate: NO_PURCHASE_DATE.get(id) ?? 0,
+                         pct: v.days_owned ? (100 * v.days_out / v.days_owned) : null }))
+    // Untrustworthy rows sort to the BOTTOM. Leaving them ranked by a percentage the table has
+    // just said not to believe puts WALK-TOP12's 33.3% above every real figure, and the top of a
+    // league table is the part anybody actually reads.
+    .sort((a, b) => (a.noDate > 0) - (b.noDate > 0) || (b.pct ?? -1) - (a.pct ?? -1));
+  // ---------------------------------------------------------------------------
+  // A piece with no purchase date has days_owned = greatest(NULL, 1) = 1, so the denominator is a
+  // floor and the percentage above it is arbitrary. Measured: WALK-TOP12, six pieces, none with a
+  // purchase date, 2 days out over 6 days "owned" — 33.3%, the TOP of this table, above SPK-18 at
+  // 0.9% which has actually been working. Ranked, that reads as the hardest-working product in the
+  // fleet. The view cannot say so itself (docs/backlog.md), so the screen does, the same way the
+  // return report already owns up to a missing purchase cost.
+  // ---------------------------------------------------------------------------
+  const suspect = rows.filter(r => r.noDate > 0);
   panel.innerHTML = `
     <p class="field__hint">Days out over days owned, counted from actual dispatch and return
       movements — never from the dates on an order. Needs no cost data, which is why it is the
-      number that works first.</p>
+      number that works first. Numbered pieces only — counted stock has no per-piece history.</p>
+    ${suspect.length ? `<div class="note note--warn">
+      ${suspect.length} product${suspect.length === 1 ? '' : 's'} below ${suspect.length === 1 ? 'has' : 'have'}
+      pieces with no purchase date. Days owned counts as 1 for those, so the percentage is far too
+      high and the ranking cannot be trusted until the dates are entered on the Pieces screen.
+    </div>` : ''}
     <div class="card scroll-x"><table class="data">
       <thead><tr><th>Product</th><th style="text-align:right">Pieces</th>
         <th style="text-align:right">Hires</th><th style="text-align:right">Days out</th>
@@ -156,9 +193,15 @@ function showUtil(panel) {
           <td data-label="Pieces" style="text-align:right">${esc(r.pieces)}</td>
           <td data-label="Hires" style="text-align:right">${esc(r.hires)}</td>
           <td data-label="Days out" style="text-align:right">${esc(r.days_out)}</td>
-          <td data-label="Days owned" style="text-align:right">${esc(r.days_owned)}</td>
-          <td data-label="Utilisation" style="text-align:right"><strong>${
-            r.pct === null ? '—' : esc(r.pct.toFixed(1)) + '%'}</strong></td>
+          <td data-label="Days owned" style="text-align:right">${esc(r.days_owned)}${
+            r.noDate ? `<div class="item__meta">${esc(r.noDate)} with no purchase date</div>` : ''}</td>
+          <td data-label="Utilisation" style="text-align:right">${
+            r.pct === null ? '<strong>—</strong>'
+            : r.noDate
+              // Not shown as a figure at all. A number printed in the same column as the real ones
+              // gets read as comparable with them, and this one is not.
+              ? '<span class="badge badge--muted">no purchase date</span>'
+              : `<strong>${esc(r.pct.toFixed(1))}%</strong>`}</td>
         </tr>`).join('') : `<tr><td colspan="6"><p class="field__hint" style="margin:0">
           No numbered pieces yet. Counted stock has no per-piece history, so it does not appear
           here.</p></td></tr>`}</tbody></table></div>`;

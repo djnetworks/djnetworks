@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Your bookings — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -25,8 +25,8 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-07-5';
-import { $, esc, money, fmtDate, toast } from './app.js?v=2026-09-07-5';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-07-7';
+import { $, esc, money, fmtDate, toast } from './app.js?v=2026-09-07-7';
 
 // ---------------------------------------------------------------------------
 // The customer portal. This page is opened by people who are not staff, on a link sent over
@@ -61,7 +61,7 @@ function start() {
   }
 }
 
-function renderGate(message) {
+function renderGate(message, keep = {}) {
   $('#app').hidden = true;
   $('#leave').hidden = true;
   $('#who').textContent = '';
@@ -73,7 +73,7 @@ function renderGate(message) {
       <p class="signin__sub">Enter the phone number you booked with, and the code DJ Network's sent you.</p>
       <label class="field"><span class="field__label">Phone number</span>
         <input class="field__input" id="p-phone" type="tel" inputmode="tel" autocomplete="tel"
-               required placeholder="98765 43210"></label>
+               required placeholder="98765 43210" value="${esc(keep.phone ?? '')}"></label>
       <label class="field"><span class="field__label">Access code</span>
         <input class="field__input" id="p-code" required autocapitalize="characters"
                spellcheck="false" placeholder="ABCD-2345" style="letter-spacing:2px"></label>
@@ -82,6 +82,11 @@ function renderGate(message) {
       <p class="field__hint" style="margin-top:14px">Lost the code? Message DJ Network's on WhatsApp and
         they will send a new one. There is nothing to reset here.</p>
     </form>`;
+  // One wrong character used to clear BOTH boxes and leave focus on <body>, so the customer
+  // retyped a ten-digit number he had got right, with the keyboard closed. The phone number is
+  // kept and the cursor goes to the code, which is the field that was actually wrong. The code
+  // itself is never refilled — retyping it is the point.
+  if (message) $('#p-code').focus();
   $('#portal-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const phone = $('#p-phone').value.trim();
@@ -99,7 +104,8 @@ async function fetchAndRender(phone, code, silent) {
     sessionStorage.removeItem(KEY);
     // The gate returns one message for a wrong number and a wrong code alike, so this page cannot
     // be used to discover which numbers are customers.
-    renderGate(silent ? null : (error.message || 'That did not work. Please check and try again.'));
+    renderGate(silent ? null : (error.message || 'That did not work. Please check and try again.'),
+               silent ? {} : { phone });
     return;
   }
   sessionStorage.setItem(KEY, JSON.stringify({ phone, code }));

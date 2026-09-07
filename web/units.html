@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pieces — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -28,7 +28,7 @@
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, fmtDate, todayLocal, networkMessage, initOffline,
          revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('units.html');
 revealActiveTab();
@@ -219,7 +219,7 @@ async function renderBody() {
       This happens when the pieces are created but their opening movement is not.
       <div style="margin-top:10px"><button class="btn" id="fix-stranded" type="button">Set their location</button></div>
     </div>` : ''}
-    <div class="stats">
+    <div class="stats stats--count">
       ${[['On the shelf', s?.units_on_hand ?? 0], ['Out', s?.units_out ?? 0],
          ['At repair', s?.units_at_repair ?? 0], ['Retired', s?.units_retired ?? 0],
          ['Lost', s?.units_lost ?? 0]]

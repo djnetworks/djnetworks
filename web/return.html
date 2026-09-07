@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Return — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -22,7 +22,7 @@
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, registerQueueHandlers, revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('return.html');
 revealActiveTab();
@@ -56,16 +56,45 @@ requireSession(async () => { orderId ? load() : chooser(); });
 async function chooser() {
   const app = $('#app');
   app.innerHTML = `<h1>Return</h1><p class="sub">Open the job that is coming back.</p><div id="jobs"></div>`;
-  const { data, error } = await sb.from('v_order_fulfilment')
-    .select('order_id,order_no,qty_outstanding,order_status,fulfilment_state');
-  if (error) { $('#jobs').innerHTML = errorBlock(error); return; }
-  const out = (data ?? []).filter(f => f.qty_outstanding > 0);
+  // The counts come from the view; the customer and the due date come from the order. Both are
+  // needed on the row: chachu knows this job as "the Patel job at the stadium", not as
+  // DJN-2609-0004, and OVERDUE is the reason he opened this screen at all. The list used to say
+  // only an order number and a count, so telling which of four rows was the late one meant opening
+  // each in turn. Overdue and merely out are different problems (CLAUDE.md), so they look different.
+  const [f, o] = await Promise.all([
+    sb.from('v_order_fulfilment').select('order_id,order_no,qty_outstanding,order_status'),
+    sb.from('rental_order').select('id,expected_return_date,venue_name,customer:customer_id(name,business_name)'),
+  ]);
+  if (f.error || o.error) { $('#jobs').innerHTML = errorBlock(f.error || o.error); return; }
+  const ORD = new Map((o.data ?? []).map(r => [r.id, r]));
+  const today = todayLocal();
+  const out = (f.data ?? []).filter(x => x.qty_outstanding > 0)
+    // Latest due date first: the most overdue job is the one to open.
+    .sort((a, b) => (ORD.get(a.order_id)?.expected_return_date ?? '')
+      .localeCompare(ORD.get(b.order_id)?.expected_return_date ?? ''));
+
   $('#jobs').innerHTML = out.length
-    ? `<div class="list">${out.map(f => `<a class="item" href="return.html?order=${esc(f.order_id)}">
-        <span class="item__main"><span class="item__title">${esc(f.order_no)}</span>
-        <span class="item__meta">${esc(f.qty_outstanding)} item(s) still out
-          ${['cancelled','closed'].includes(f.order_status) ? '· order ' + esc(f.order_status) : ''}</span></span>
-        <span class="item__right">›</span></a>`).join('')}</div>`
+    ? `<div class="list">${out.map(x => {
+        const r = ORD.get(x.order_id) ?? {};
+        const cust = r.customer?.business_name || r.customer?.name || '';
+        // Rule 2: late because nothing has been returned, compared against the calendar only to
+        // decide what to CALL it — never to infer that anything came back.
+        const late = r.expected_return_date && r.expected_return_date < today;
+        return `<a class="item" href="return.html?order=${esc(x.order_id)}">
+        <span class="item__main">
+          <span class="item__title">${esc(x.order_no)}${cust ? ' — ' + esc(cust) : ''}</span>
+          <span class="item__meta">due ${esc(fmtDate(r.expected_return_date))}${
+            r.venue_name ? ' · ' + esc(r.venue_name) : ''}</span>
+          <span class="item__meta">
+            <!-- Every job on this list is out, so red on the count would say nothing. Overdue is
+                 the thing that separates one row from another here, so it gets the colour. -->
+            <span class="badge badge--muted">${esc(x.qty_outstanding)} still out</span>
+            ${late ? '<span class="badge badge--out">overdue</span>' : ''}
+            ${['cancelled', 'closed'].includes(x.order_status)
+              ? `<span class="badge badge--${esc(x.order_status)}">order ${esc(x.order_status)}</span>` : ''}
+          </span></span>
+        <span class="item__right">›</span></a>`;
+      }).join('')}</div>`
     : stateBlock({ icon: '✅', title: 'Nothing is out',
         body: 'Every dispatched item has been returned, written off, or marked lost. Nothing is with a customer.' });
 }
@@ -286,6 +315,37 @@ function paint() {
     ${damage > 0 ? `<p class="field__hint">Nothing is deducted from the deposit ledger automatically here;
       the deduction is recorded when the deposit is actually settled, on the payments screen.</p>` : ''}`;
 
+  // ---------------------------------------------------------------------------
+  // MORE CANNOT COME BACK THAN WENT OUT.
+  //
+  // Measured, signed in, on a pooled line with 12 out: typing 99 into "How many came back?" was
+  // accepted in full. The input carries max="12" and nothing reads it — a native max is only
+  // enforced by form validation, and this is not a form. The summary then read "0 still out after
+  // this" and Record returns stayed enabled.
+  //
+  // What it costs: v_pool_stock nets returns into on-hand and owned, so 99 back off 12 out adds
+  // 87 cables nobody ever bought, and fn_availability offers them for hire. docs/backlog.md
+  // records that an over-return does NOT surface in v_order_outstanding either — the `> 0` filter
+  // hides it — so it appears only as has_ledger_error on a screen nobody has open. The typo has
+  // to be refused where it is typed.
+  //
+  // Returned + written off is capped together, not separately: 9 back and 9 lost out of 12 is the
+  // same impossible claim as 18 back.
+  // ---------------------------------------------------------------------------
+  const over = picked.filter(p => p.kind === 'pool'
+    && (p.qty + p.writeoff) > Number(p.row.qty_outstanding ?? 0));
+
+  if (over.length) {
+    $('#ret-summary').innerHTML = over.map(p =>
+      `<strong>${esc(p.row.short_code)}: ${esc(p.qty + p.writeoff)} accounted for, only
+       ${esc(p.row.qty_outstanding)} went out.</strong> Returned plus written off cannot be more
+       than what is still out.`).join('<br>');
+    $('#ret-summary').className = 'field__hint dispatch-bar__warn';
+    $('#go').disabled = true;
+    return;
+  }
+
+  $('#ret-summary').className = 'field__hint';
   const remaining = OUTSTANDING.length - picked.length;
   $('#ret-summary').textContent = picked.length
     ? `${picked.length} item(s) ticked. ${remaining} still out after this.`

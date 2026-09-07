@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Products — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, networkMessage, initOffline, revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('products.html');
 revealActiveTab();
@@ -91,8 +91,12 @@ async function boot() {
       <button class="btn btn--primary" id="new-product">Add product</button>
     </div>
     <div class="row" id="filters" hidden>
+      <!-- A placeholder is not a label: it vanishes on the first keystroke and a screen reader
+           announces an unnamed edit box. The mode filter had no accessible name at all. -->
+      <label class="sr-only" for="q">Search products</label>
       <input class="field__input grow" id="q" type="search" placeholder="Search code, brand or model…"
              autocapitalize="none" spellcheck="false">
+      <label class="sr-only" for="f-mode">Filter by tracking mode</label>
       <select class="field__select" id="f-mode" style="max-width:200px">
         <option value="">All tracking modes</option>
         <option value="unit">Numbered pieces</option>

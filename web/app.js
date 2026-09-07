@@ -186,8 +186,12 @@ export function openSheet(html, onClose) {
   $('.sheet', host).addEventListener('mousedown', e => { if (e.target.classList.contains('sheet')) close(); });
   $$('[data-sheet-close]', host).forEach(b => b.addEventListener('click', close));
 
-  // The first field, not the close button: the point of opening the sheet is to type in it.
-  const firstField = $('input:not([type=hidden]), select, textarea', panel);
+  // The first field a person can actually change, not the close button: the point of opening the
+  // sheet is to type in it. Readonly and disabled fields are skipped — on an existing order the
+  // first input is the order number, which is readonly, so the cursor landed somewhere that
+  // ignores every keystroke and the next Tab had to walk past it again.
+  const firstField = $$('input:not([type=hidden]), select, textarea', panel)
+    .find(el => !el.readOnly && !el.disabled && el.offsetParent !== null);
   (firstField ?? panel).focus?.();
 
   return { close };

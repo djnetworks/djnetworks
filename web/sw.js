@@ -10,7 +10,7 @@
 // Bump CACHE when any shell file changes. The old cache is deleted on activate, so a stale shell
 // cannot outlive a deploy: "the fix isn't showing up" is this, nine times in ten.
 
-const CACHE = 'djn-shell-2026-09-07-6';
+const CACHE = 'djn-shell-2026-09-07-7';
 
 const SHELL = [
   './',

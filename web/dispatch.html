@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dispatch — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -22,7 +22,7 @@
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, registerQueueHandlers, syncNow, revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
@@ -393,11 +393,72 @@ function renderInclusions() {
   }));
 }
 
+/**
+ * How much more of each product this order can still take. Aggregated per PRODUCT because
+ * fn_availability and v_order_fulfilment both do, and because one order may carry the same
+ * product on two lines — capping per line would let 2 + 2 through against a remainder of 3.
+ */
+function remainingByProduct() {
+  const owed = new Map();
+  for (const line of LINES) {
+    const p = PRODUCTS.get(line.product_id);
+    if (!p) continue;
+    const done = DISPATCHED.get(line.product_id) ?? { pieces: [], qty: 0 };
+    const alreadyN = p.tracking_mode === 'unit' ? done.pieces.length : done.qty;
+    // Summed across lines first, then the dispatched total taken off once.
+    owed.set(line.product_id, (owed.get(line.product_id) ?? -alreadyN) + Number(line.qty || 0));
+  }
+  for (const [k, v] of owed) owed.set(k, Math.max(v, 0));
+  return owed;
+}
+
 function paintSummary() {
   const pieces = PICK.size;
   const pooled = [...POOLPICK.values()].reduce((a, b) => a + b, 0);
   const el = $('#pick-summary');
   if (!el) return;
+
+  // ---------------------------------------------------------------------------
+  // NOTHING MAY GO OUT THAT THE ORDER DID NOT ASK FOR.
+  //
+  // Measured, signed in: on DJN-2609-0002 the line read "2 still owed, 4 here" and tapping all
+  // four gave "4 piece(s) selected" with Dispatch enabled and no warning. On a pooled line the
+  // input carries max="12" but nothing reads it — typing 20 against 12 owed and 15 on the shelf
+  // gave "20 counted item(s) selected", Dispatch enabled, validity.rangeOverflow true and no
+  // message anywhere.
+  //
+  // What that costs: two boxes recorded at a customer who never received them. They are then out
+  // by rule 2 — no return has been recorded — so they are unavailable for every later job until
+  // somebody types a return for a movement that never physically happened. That is the six-out-
+  // five-back bug arriving from the other end, and this screen is where it would be typed, one
+  // handed, in the dark, next to a van.
+  //
+  // Refused rather than warned. Deselecting is one tap on the same button, so the cost of being
+  // strict is trivial; the cost of being lenient is a box that does not exist being promised to
+  // the next customer. If the extra piece is genuinely going, the order is what is wrong — add
+  // the line, and then the invoice is right too.
+  // ---------------------------------------------------------------------------
+  const owed = remainingByProduct();
+  const picked = new Map();
+  for (const v of PICK.values()) picked.set(v.product_id, (picked.get(v.product_id) ?? 0) + 1);
+  for (const [pid, n] of POOLPICK) if (n > 0) picked.set(pid, (picked.get(pid) ?? 0) + n);
+
+  const over = [...picked.entries()]
+    .map(([pid, n]) => ({ pid, n, owed: owed.get(pid) ?? 0 }))
+    .filter(x => x.n > x.owed);
+
+  if (over.length) {
+    el.innerHTML = over.map(x => {
+      const p = PRODUCTS.get(x.pid);
+      return `<strong>${esc(p?.short_code ?? 'This product')}: ${esc(x.n)} selected, ${esc(x.owed)} still owed.</strong>
+        Take ${esc(x.n - x.owed)} off, or add it to the order first.`;
+    }).join('<br>');
+    el.className = 'field__hint dispatch-bar__warn';
+    $('#go').disabled = true;
+    return;
+  }
+
+  el.className = 'field__hint';
   el.textContent = (pieces || pooled)
     ? `${pieces ? pieces + ' piece(s)' : ''}${pieces && pooled ? ' and ' : ''}${pooled ? pooled + ' counted item(s)' : ''} selected.`
     : 'Nothing selected yet. Partial dispatch is normal — send what is ready.';

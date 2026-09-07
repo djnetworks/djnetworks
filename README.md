@@ -16,9 +16,16 @@ tables, so publishing the page — which necessarily publishes the publishable k
 database to anyone who reads the source. Turn signups off first, then create the one operator
 account.
 
-**Nothing has been driven by a signed-in user yet.** There is no account in `auth.users`. Every
-screen's read path, write path and offline behaviour is argued from code and verified at the
-database level; none of it has been watched working end to end. Treat it as unproven.
+**Driven end to end by a signed-in operator on 2026-09-07.** A complete job was walked through the
+browser — product, six pieces, customer with a portal code, an order for four, a dispatch of two,
+availability reading 2 (not 0, not 4), a damaged return with the deposit deduction and the excess
+billed as a charge, a close refused while a piece was still out, the close, a payment, and the portal
+at phone width showing receivable and deposit as separate figures. Offline was exercised for real:
+prefetch in signal, dispatch with no connection, queue surviving a page teardown, replay on
+reconnect, movements landing. Access control is enforced by an `operator` allowlist (`0017`), not by
+a signup toggle — a stranger who self-registers reads zero rows from every table.
+
+**Still not deployed.** GitHub Pages is unavailable on a private repo on the current plan.
 
 What exists:
 

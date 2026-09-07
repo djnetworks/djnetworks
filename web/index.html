@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DJ Network's — Rental System</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 <script type="module">
 import { sb, $, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, initOffline,
          revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('index.html');
 revealActiveTab();
@@ -41,7 +41,7 @@ requireSession(async () => {
     <!-- Four skeleton tiles in the same grid the real tiles use, so nothing jumps when the
          numbers arrive. A one-row skeleton followed by four stacked cards moved the buttons
          below it 300px down the page. -->
-    <div id="summary" class="stats">
+    <div id="summary" class="stats stats--count">
       <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
       <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
       <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
@@ -110,7 +110,7 @@ requireSession(async () => {
       return;
     }
 
-    $('#summary').className = 'stats';
+    $('#summary').className = 'stats stats--count';
     $('#summary').innerHTML = [
       ['On the shelf', onHand, ''],
       ['Out with customers', out, ''],
@@ -153,11 +153,18 @@ requireSession(async () => {
       // block is the call list, so it carries the order number and the customer's due date —
       // a product code and a piece number alone cannot be acted on.
       const SHOWN = 5;
-      const lines = late.slice(0, SHOWN).map(r => `<li>
-        <strong>${esc(r.order_no ?? '—')}</strong> · ${esc(r.short_code)}${
+      // The order number is a LINK. This is the only list on the home screen that names something
+      // to act on, and it was plain text: the one thing chachu does after reading it is open that
+      // job, and he had to go to Orders and search for a number he had just been shown. Two taps
+      // from home to the thing that is late, and the return screen is one tap from there.
+      const lines = late.slice(0, SHOWN).map(r => `<li style="margin-bottom:10px">
+        <a href="orders.html?order=${esc(r.order_id)}"><strong>${esc(r.order_no ?? '—')}</strong></a>
+        · ${esc(r.short_code)}${
           r.piece_no ? ' piece ' + esc(r.piece_no) : ' ×' + esc(r.qty_outstanding)}
         — <span class="num">${esc(r.days_overdue)}</span> day${r.days_overdue === 1 ? '' : 's'} late,
-        due ${esc(fmtDate(r.expected_return_date))}</li>`).join('');
+        due ${esc(fmtDate(r.expected_return_date))}
+        <span style="display:block"><a href="return.html?order=${esc(r.order_id)}">Record the return</a></span>
+        </li>`).join('');
       html += `<div class="card">
         <h2 style="font-size:16px;margin:0 0 8px">Overdue</h2>
         <ul style="margin:0;padding-left:20px">${lines}</ul>

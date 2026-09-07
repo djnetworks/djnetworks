@@ -83,6 +83,13 @@ h1 { font-size: 22px; margin: 0 0 4px; }
   font: inherit; font-weight: 600; cursor: pointer;
 }
 .btn:hover { border-color: var(--ink-faint); }
+/* Several buttons are anchors — "Products" on the home screen, "Dispatch" and "Return" in the
+   order sheet, every row of the return chooser. They kept the browser's default underline, so
+   half the buttons on a screen were underlined and half were not, and an underlined list row
+   reads as broken rather than as a link.
+   Text-decoration ONLY: .btn and .item already set their own colour, and adding one here
+   out-specifies .btn--primary and turns the white label on the blue button black. */
+a.btn, a.item { text-decoration: none; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn--danger { background: var(--bad); border-color: var(--bad); color: #fff; }
@@ -149,6 +156,13 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 .item__meta { color: var(--ink-soft); font-size: 13px; }
 .item__right { text-align: right; flex: none; color: var(--ink-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
 
+/* Visible to a screen reader, not to an eye. Used for labels on controls whose purpose is obvious
+   from the layout but which would otherwise be announced as an unnamed edit box or combo box. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
 /* ---------- stat tiles ----------
    Was a .row of .card.grow with flex-basis 220px, so at 375px every tile took a full row: five
    counters became 600px of scrolling before the piece list came into view. */
@@ -163,6 +177,12 @@ h1 { font-size: 22px; margin: 0 0 4px; }
   .stats { grid-template-columns: 1fr; gap: 8px; }
   .stats .card { padding: 10px 14px; }
   .stat__n { overflow-wrap: anywhere;  font-size: 24px; }
+  /* ...but a COUNT is two or three characters wide and never clips, so stacking those buys
+     nothing and costs a screen. Measured at 375px: the five tiles on the Pieces screen ran to
+     roughly 800px, so "At repair 0 / Retired 0 / Lost 0" filled the whole phone and the piece
+     list — the thing he opened the screen for — started below the fold. Two columns for counts,
+     one for money. */
+  .stats--count { grid-template-columns: 1fr 1fr; }
 }
 .stats .card { margin: 0; padding: 10px 12px; }
 .stat__n { overflow-wrap: anywhere;  font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
@@ -181,6 +201,13 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 .badge--at_repair { background: #fdf0e3; color: var(--warn); }
 .badge--retired, .badge--lost { background: #eceef1; color: var(--ink-soft); }
 .badge--muted { background: #eceef1; color: var(--ink-soft); }
+/* Order status had no variants at all, so `confirmed`, `closed` and `cancelled` were the same
+   grey pill: a job that is NOT happening looked exactly like a job that is, in the list where
+   telling them apart is the whole point. Cancelled is the one that must never be acted on, so it
+   is the one that carries the warning colour. */
+.badge--confirmed { background: #e8f0fe; color: #1a4fa0; }
+.badge--closed    { background: #eceef1; color: var(--ink-soft); }
+.badge--cancelled { background: var(--bad-bg); color: var(--bad); }
 /* v_unit_status returns `not_recorded` for a piece with no movement — the exact state a bulk
    create leaves behind when the units insert succeeds and the opening-movement insert fails
    (two calls, no transaction). There was no rule for it, so it fell through to the default grey
@@ -364,6 +391,10 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 }
 .dispatch-bar .field__hint { margin: 0 0 8px; }
+/* The over-selection message shares the sticky bar with the button it has just disabled, so it
+   has to read as a refusal and not as the usual grey count. A greyed-out primary button with no
+   adjacent reason is the thing that makes an operator tap twice and then give up. */
+.dispatch-bar__warn { color: var(--bad); }
 
 /* ---------- return rows ---------- */
 .ret-row {

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orders — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -23,7 +23,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, initOffline, revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('orders.html');
 revealActiveTab();
@@ -41,8 +41,12 @@ async function boot() {
       <button class="btn btn--primary" id="new-order">New order</button>
     </div>
     <div class="row" id="filters" hidden>
+      <!-- A placeholder is not a label: it disappears the moment anything is typed, and a screen
+           reader announces an unnamed edit box. Same for the filter, which had no name at all. -->
+      <label class="sr-only" for="q">Search orders</label>
       <input class="field__input grow" id="q" type="search" placeholder="Search order number, customer or venue…"
              autocapitalize="none" spellcheck="false">
+      <label class="sr-only" for="f-state">Filter by what has gone out</label>
       <select class="field__select" id="f-state" style="max-width:220px">
         <option value="">All</option>
         <option value="live">Live (not closed or cancelled)</option>
@@ -89,6 +93,7 @@ async function load() {
       POSTED.set(e.order_id, (POSTED.get(e.order_id) ?? 0) + delta);
     }
     renderList();
+    openFromUrl();
   } catch (err) {
     $('#list').className = '';
     $('#list').innerHTML = errorBlock(err, 'retry');
@@ -181,11 +186,39 @@ function renderList() {
           ${POSTED.get(o.id) ? '<span class="badge badge--muted">charge posted</span>' : ''}
         </span>
       </span>
-      <span class="item__right">${f ? `${f.qty_dispatched}/${f.qty_ordered} out` : ''}</span>
+      <!-- What is STILL out, not what was ever sent. Dispatched-over-ordered read "43/43 out" on
+           DJN-2609-0004 while 27 of the 43 were already back and 11 were the real problem, and
+           "4/4 out" on a closed order with nothing out at all. The number on an overdue row has
+           to be the number of things to chase. -->
+      <span class="item__right">${!f ? ''
+        : f.qty_outstanding > 0 ? `<strong>${f.qty_outstanding} still out</strong>`
+        // A cancelled or closed order will never dispatch anything more, whatever its lines still
+        // say. It read "2 to go out" on a cancelled job, which is an instruction to load a van for
+        // a job that is not happening. v_order_fulfilment reports the arithmetic; deciding it is
+        // not actionable is this screen's job.
+        : ['closed', 'cancelled'].includes(o.status) ? 'nothing out'
+        : f.qty_undispatched > 0 ? `${f.qty_undispatched} to go out`
+        : 'all back'}</span>
     </button>`;
   }).join('');
   $$('.item', list).forEach(b =>
     b.addEventListener('click', () => openOrder(ORDERS.find(o => o.id === b.dataset.id))));
+}
+
+function setOrderUrl(id) {
+  const u = new URL(location.href);
+  if (id) u.searchParams.set('order', id); else u.searchParams.delete('order');
+  history.replaceState(null, '', u);
+}
+
+/** An order id in the URL opens that order. An id that no longer resolves says so rather than
+ *  showing the list as though nothing had been asked for. */
+function openFromUrl() {
+  const wanted = new URLSearchParams(location.search).get('order');
+  if (!wanted) return;
+  const o = ORDERS.find(x => x.id === wanted);
+  if (o) openOrder(o);
+  else { setOrderUrl(null); toast('That order was not found. It may have been opened on another device.', 'error'); }
 }
 
 // ---------------------------------------------------------------------------
@@ -193,22 +226,46 @@ function renderList() {
 // ---------------------------------------------------------------------------
 
 let LINES = [], CHARGES = [], CURRENT = null;
+// product_id -> how much of it has ALREADY left the shelf on this order. Empty for a new order.
+let SENT = new Map();
 
 async function openOrder(o) {
   const isNew = !o;
   CURRENT = o;
-  LINES = []; CHARGES = [];
+  LINES = []; CHARGES = []; SENT = new Map();
   const posted = o ? (POSTED.get(o.id) ?? 0) : 0;
   const frozen = posted !== 0;
 
   if (o) {
-    const [l, c] = await Promise.all([
+    const [l, c, m] = await Promise.all([
       sb.from('order_line').select('*').eq('order_id', o.id),
       sb.from('order_charge').select('*').eq('order_id', o.id).order('created_at'),
+      // What has already gone out on this order, per product. There is no view that answers this
+      // — v_order_fulfilment is per ORDER and v_order_outstanding is what is still at the
+      // customer, which is a different question once something has come back. The dispatch screen
+      // reads the same rows the same way (recordDispatched); this is the only other place.
+      //
+      // WHY IT IS NEEDED AT ALL: availability was compared against the whole line quantity, so
+      // opening an order whose gear has already gone out reported a shortage against boxes that
+      // are out ON THIS ORDER. Measured on DJN-2609-0004 (3 SPK-18, all three dispatched, 1 left
+      // on the shelf): "asked for 3, 1 available" — and the save refused unless the operator
+      // ticked availability_override and typed a reason. Correcting a venue phone number would
+      // have written a permanent, audited override recording a same-day turnaround that never
+      // happened. Rule 2 in the other direction: those pieces are out because they were
+      // dispatched, not because they are unavailable, and a reservation that has been fulfilled
+      // reserves nothing. fn_availability's own `remainder` CTE does exactly this arithmetic
+      // server-side; this makes the screen agree with it.
+      sb.from('movement').select('product_id,unit_id,qty')
+        .eq('order_id', o.id).eq('movement_type', 'dispatch'),
     ]);
-    if (l.error || c.error) { toast((l.error || c.error).message, 'error'); return; }
+    if (l.error || c.error || m.error) { toast((l.error || c.error || m.error).message, 'error'); return; }
     LINES = (l.data ?? []).map(x => ({ ...x }));
     CHARGES = (c.data ?? []).map(x => ({ ...x }));
+    for (const mv of (m.data ?? [])) {
+      // Rule 13: a numbered piece is one row worth one; pooled and consumable stock carries a qty.
+      const n = mv.unit_id ? 1 : Number(mv.qty ?? 0);
+      SENT.set(mv.product_id, (SENT.get(mv.product_id) ?? 0) + n);
+    }
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -230,6 +287,13 @@ async function openOrder(o) {
       frozen — quantity, rate and product cannot change while a charge stands, or the receivable would
       overstate what is owed. Record a <strong>reversal</strong> for the amount, edit, then post again.
     </div><div style="height:12px"></div>` : ''}
+
+    <!-- Saving an order that has never been posted DOES post it, and after that 0009 freezes the
+         line money until a reversal is recorded. That used to happen in silence: opening
+         DJN-2609-0004 to correct a venue phone number and pressing Save put ₹43,060 on Rakesh
+         Patel's ledger, and the toast said only "Order saved." A write that size must never be a
+         side effect the operator finds out about on the customers screen. -->
+    ${!isNew && !frozen ? `<div class="note" id="unposted-note"></div><div style="height:12px"></div>` : ''}
 
     <div class="grid2">
       <label class="field"><span class="field__label">Order number *</span>
@@ -311,12 +375,17 @@ async function openOrder(o) {
     </div>`;
 
   // openSheet expects the full .sheet / .sheet__panel shell and closes on [data-sheet-close].
+  // The URL carries the open order so the address bar names what is on screen: an order sent over
+  // WhatsApp opens that order, a reload does not throw the operator back to the list, and the
+  // overdue list on the home screen has somewhere to link to. Cleared on close, so the back
+  // button and a refresh both land somewhere that matches what is showing.
   const sheet = openSheet(`
   <div class="sheet" id="sheet">
     <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
       ${panel}
     </div>
-  </div>`);
+  </div>`, () => setOrderUrl(null));
+  setOrderUrl(o.id ?? null);
 
   if (isNew) {
     const d = new Date();
@@ -449,6 +518,26 @@ function renderLines() {
         $('.l-agreed', el).value = LINES[i].agreed_rate;
         $('.l-total', el).value = LINES[i].line_total;
         renderTotals(); hints(el, i);
+        // ---------------------------------------------------------------------
+        // CHANGING THE QUANTITY MUST RE-ASK. It did not, and that is a double
+        // booking with no warning at all — the exact thing docs/decisions.md says
+        // this application was built to buy ("refusing a double-booking instead of
+        // warning about it").
+        //
+        // Measured, signed in: add a line for MIC-BLX (4 on the shelf) at qty 1, and
+        // the box reads "Everything is available". Change the quantity to 40 and it
+        // STILL reads "Everything is available", dataset.short stays empty, and the
+        // order saves for forty microphones out of a fleet of four with no override
+        // and nothing recorded. Availability was only re-asked on a product change,
+        // a date change, a sub-hire toggle or a line delete — never on the one field
+        // most likely to be edited after the product is picked.
+        //
+        // Debounced because this is an RPC per product and it fires on every
+        // keystroke: typing "40" is two events, and "1" must not be answered after
+        // "40" has been asked. checkAvailability's own availToken already discards
+        // stale replies; this just stops three round trips per number.
+        // ---------------------------------------------------------------------
+        if (sel === '.l-qty') scheduleAvailability();
       }));
     // Editing agreed_rate or line_total by hand wins and is never overwritten afterwards.
     $('.l-agreed', el).addEventListener('input', () => {
@@ -527,12 +616,44 @@ function renderTotals() {
           part of the job total. It is returned, or set against damage, when everything is back.</span></dt>
       </dl>
     </div>`;
+  paintUnpostedNote(rental + charges);
 }
+
+/** What Save is about to do to the ledger, said before it does it rather than after. */
+function paintUnpostedNote(total) {
+  const box = $('#unposted-note');
+  if (!box) return;
+  if (!(total > 0)) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `Nothing is posted to this customer's ledger for this order yet.
+    <strong>Saving will post ${money(total)}</strong> as ${postState() === 'due' ? 'money due' : 'an upcoming booking'}.
+    After that the quantities and rates are frozen until a reversal is recorded.`;
+}
+
+/**
+ * docs/decisions.md: rental charges post on order confirmation as `upcoming` and become `due` at
+ * dispatch. An order whose gear has already left is past that transition, so posting it as
+ * `upcoming` would tell the customer a job that is out — and on DJN-2609-0004, five days overdue —
+ * has not happened yet. The dispatch screen only flips entries that already exist, so an entry
+ * posted late in the wrong state would never be corrected by anything.
+ */
+const postState = () => (SENT.size ? 'due' : 'upcoming');
 
 // ---------------------------------------------------------------------------
 // Availability. The database decides; this screen only asks and reports.
 // ---------------------------------------------------------------------------
 let availToken = 0;
+let availTimer;
+/** Ask again shortly. Called from the quantity field, which fires per keystroke. */
+function scheduleAvailability() {
+  const box = $('#avail');
+  // Say so immediately, so the previous answer cannot be read as the answer to the new number.
+  // Blanking dataset.short at the same moment means a save between keystrokes cannot slip through
+  // on a stale "everything is available".
+  if (box) { box.dataset.short = ''; box.innerHTML = '<p class="field__hint">Checking availability…</p>'; }
+  clearTimeout(availTimer);
+  availTimer = setTimeout(checkAvailability, 400);
+}
 async function checkAvailability() {
   const box = $('#avail');
   if (!box) return;
@@ -542,41 +663,62 @@ async function checkAvailability() {
 
   const my = ++availToken;
   box.innerHTML = `<p class="field__hint">Checking availability…</p>`;
+
+  // Aggregated per PRODUCT, not per line, because fn_availability aggregates per order the same
+  // way. One order carrying the same product on two lines was asked twice and each answer ignored
+  // the other, so 2 + 2 of a product with 3 free read as "available" twice over.
+  const wanted = new Map();
+  for (const l of lines) wanted.set(l.product_id, (wanted.get(l.product_id) ?? 0) + Number(l.qty || 0));
+
   const results = [];
-  for (const l of lines) {
+  for (const [productId, qty] of wanted) {
     const { data, error } = await sb.rpc('fn_availability', {
-      p_product_id: l.product_id, p_from: from, p_to: to,
+      p_product_id: productId, p_from: from, p_to: to,
       p_exclude_order_id: CURRENT?.id ?? null,
     });
     if (my !== availToken) return;                       // a newer check has started
     if (error) { box.innerHTML = `<p class="signin__err">${esc(error.message)}</p>`; return; }
     const row = Array.isArray(data) ? data[0] : data;
-    results.push({ line: l, ...row });
+    // Availability gates only what still has to come off the shelf. Anything already dispatched
+    // on this order is physically gone and cannot be reserved again — see the comment on SENT.
+    const sent = SENT.get(productId) ?? 0;
+    results.push({ productId, qty, sent, stillToSend: Math.max(qty - sent, 0), ...row });
   }
   if (my !== availToken) return;
 
-  const short = results.filter(r => (r.available ?? 0) < r.line.qty);
+  const short = results.filter(r => r.stillToSend > 0 && (r.available ?? 0) < r.stillToSend);
   box.dataset.short = short.length ? '1' : '';
+
+  // This box is re-rendered on every re-check, including the one Save now forces, and the override
+  // checkbox and its reason live INSIDE it. Read them back first or a half-typed reason is thrown
+  // away every time a quantity changes — and the operator would retype it, or give up and not
+  // record the override at all, which defeats the point of having one.
+  const keptOverride = $('#f-override') ? $('#f-override').checked : !!CURRENT?.availability_override;
+  const keptReason = $('#f-override-reason')
+    ? $('#f-override-reason').value
+    : (CURRENT?.availability_override_reason ?? '');
   if (!short.length) {
-    box.innerHTML = `<p class="field__hint" style="color:var(--ok)">Everything on this order is available for
-      ${esc(fmtDate(from))} → ${esc(fmtDate(to))}.</p>`;
+    box.innerHTML = `<p class="field__hint" style="color:var(--ok)">Everything still to go out on this
+      order is available for ${esc(fmtDate(from))} → ${esc(fmtDate(to))}.</p>`;
     return;
   }
   box.innerHTML = `<div class="note note--warn">
     <strong>Not enough available.</strong>
     <ul style="margin:8px 0 0;padding-left:20px">
       ${short.map(r => {
-        const p = PRODUCTS.find(x => x.id === r.line.product_id);
-        return `<li>${esc(p?.short_code ?? '?')}: asked for ${esc(r.line.qty)}, ${esc(r.available)} available
-          (${esc(r.units_on_hand)} on hand, ${esc(r.committed)} already committed)</li>`;
+        const p = PRODUCTS.find(x => x.id === r.productId);
+        return `<li>${esc(p?.short_code ?? '?')}: ${esc(r.stillToSend)} still to go out${
+          r.sent ? ` (${esc(r.qty)} ordered, ${esc(r.sent)} already dispatched)` : ''},
+          ${esc(r.available)} available (${esc(r.units_on_hand)} on hand,
+          ${esc(r.committed)} committed to other orders)</li>`;
       }).join('')}
     </ul>
     <label class="field field--inline" style="margin:12px 0 0">
-      <input type="checkbox" id="f-override" ${CURRENT?.availability_override ? 'checked' : ''}>
+      <input type="checkbox" id="f-override" ${keptOverride ? 'checked' : ''}>
       <span>Override — I know, and I am doing it anyway</span></label>
     <label class="field" style="margin:8px 0 0"><span class="field__label">Why</span>
       <input class="field__input" id="f-override-reason"
-             value="${esc(CURRENT?.availability_override_reason ?? '')}"
+             value="${esc(keptReason)}"
              placeholder="e.g. the 4th job returns by 9am, collecting on the way">
       <span class="field__hint">Recorded on the order. Same-day turnaround is possible; it is just never silent.</span>
     </label>
@@ -615,6 +757,18 @@ async function save(o, isNew, frozen, sheet) {
 
   // fn_availability gates the save. The override is the documented escape hatch, and it is only an
   // escape hatch if it is recorded — a silent one is just a bug with a checkbox.
+  //
+  // Asked again here, and awaited, rather than trusting whatever the box happens to say. The
+  // quantity field debounces its re-check by 400ms, so a fast "type 40, tap Save" would otherwise
+  // be gated on the answer to the previous number. The gate has to read a fresh answer or it is
+  // not a gate.
+  if (LINES.some(l => l.product_id && !l.is_subhired)) {
+    btn.disabled = true; btn.textContent = 'Checking…';
+    clearTimeout(availTimer);
+    await checkAvailability();
+    btn.disabled = false; btn.textContent = isNew ? 'Create order' : 'Save changes';
+  }
+
   if ($('#avail')?.dataset.short === '1') {
     if (!order.availability_override) {
       toast('Not enough available. Tick the override and say why, or change the dates or quantities.', 'error');
@@ -686,26 +840,36 @@ async function save(o, isNew, frozen, sheet) {
     // telling a wedding customer he owes money three weeks early (docs/decisions.md). Posted once:
     // if a charge already stands against this order, nothing is posted again.
     const already = (POSTED.get(orderId) ?? 0) !== 0;
+    let postedNow = 0;
     if (!already) {
+      const state = postState();
       const rental = LINES.reduce((n, l) => n + Number(l.line_total || 0), 0);
       const entries = [];
       if (rental > 0) entries.push({
         customer_id: order.customer_id, order_id: orderId, type: 'rental',
-        amount: rental, state: 'upcoming', notes: `Rental agreed on ${order.order_no}`,
+        amount: rental, state, notes: `Rental agreed on ${order.order_no}`,
       });
       for (const c of CHARGES) {
         if (Number(c.amount) > 0) entries.push({
           customer_id: order.customer_id, order_id: orderId, type: c.type,
-          amount: Number(c.amount), state: 'upcoming', notes: c.description || null,
+          amount: Number(c.amount), state, notes: c.description || null,
         });
       }
       if (entries.length) {
         const r = await sb.from('ledger_entry').insert(entries);
         if (r.error) throw r.error;
+        postedNow = entries.reduce((n, e) => n + Number(e.amount), 0);
       }
     }
 
-    toast(isNew ? `${order.order_no} created and posted as upcoming.` : 'Order saved.');
+    // Never just "Order saved." when money moved. The customer's name is in the message because
+    // that is the thing to check if the amount looks wrong.
+    const custName = CUSTOMERS.find(c => c.id === order.customer_id);
+    toast(postedNow
+      ? `${order.order_no} ${isNew ? 'created' : 'saved'}. ${money(postedNow)} posted to `
+        + `${custName?.business_name || custName?.name || 'the customer'}'s ledger as `
+        + `${postState() === 'due' ? 'due' : 'upcoming'}.`
+      : `${order.order_no} saved.`);
     sheet.close();
     await load();
   } catch (err) {

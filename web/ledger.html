@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-5">
-<script src="vendor/supabase.js?v=2026-09-07-5" defer></script>
-<script src="boot.js?v=2026-09-07-5" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-7">
+<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
+<script src="boot.js?v=2026-09-07-7" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -19,7 +19,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, openSheet, focusField, initOffline, revealActiveTab }
-  from './app.js?v=2026-09-07-5';
+  from './app.js?v=2026-09-07-7';
 
 $('#chrome').innerHTML = chrome('ledger.html');
 revealActiveTab();
@@ -65,6 +65,9 @@ async function load() {
 function renderPicker() {
   if (!CUSTOMERS.length) { $('#picker').innerHTML = ''; return; }
   $('#picker').innerHTML = `<div class="row" style="margin-bottom:14px">
+    <!-- The primary control on this screen, and it had no accessible name whatsoever: a screen
+         reader announced "combo box" and nothing else. -->
+    <label class="sr-only" for="c-select">Choose a customer</label>
     <select class="field__select grow" id="c-select" style="max-width:520px">
       <option value="">Choose a customer…</option>
       ${CUSTOMERS.map(c => `<option value="${esc(c.id)}" ${SELECTED?.id === c.id ? 'selected' : ''}>
@@ -187,6 +190,12 @@ function openEntry() {
         </optgroup>
       </select>
       <span class="field__hint" id="type-hint"></span></label>
+    <!-- Sits directly under the amount, because it is about the amount. It used to be the last
+         element before the buttons: at 375px the refusal ("₹8,000.00 is held, so ₹20,000.00 cannot
+         be returned") rendered roughly 900px below the fold while the operator looked at a greyed
+         out "Record it" and a field reading 20000. He taps, nothing happens, and the reason is off
+         screen. Measured signed in on Walkthrough Wedding. -->
+    <div class="note" id="dep-note" hidden></div>
     <div class="grid2">
       <label class="field"><span class="field__label">Amount (₹) *</span>
         <input class="field__input" id="f-amt" type="number" min="0" step="0.01" inputmode="decimal"></label>
@@ -209,7 +218,6 @@ function openEntry() {
         balance, and forcing a job onto the payment would be inventing a fact.</span></label>
     <label class="field"><span class="field__label">Note</span>
       <input class="field__input" id="f-notes"></label>
-    <div class="note" id="dep-note" hidden></div>
     <div class="sheet__foot">
       <button class="btn" data-sheet-close type="button">Cancel</button>
       <button class="btn btn--primary" id="save">Record it</button>

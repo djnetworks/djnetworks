@@ -184,6 +184,48 @@ deleted. Harmless, but they read as live paths to anyone tracing what a delete w
 
 ## Screens (prompt 6 and after)
 
+**A `reversal` cannot undo an `upcoming` charge, so the documented compensating mechanism only half
+works.** `decisions.md` accepts reversal entries as the price of posting revenue on confirmation.
+But `v_customer_balance.upcoming` counts only billed types (`rental`, `transport`, `labour`, `misc`,
+`damage`) at `state = 'upcoming'`, and `reversal` is not one of them — so a reversal posted against
+an upcoming charge changes neither `receivable` nor `upcoming`, and a reversal posted as `due` drives
+`receivable` negative instead. Measured while trying to undo three stray rows: an `upcoming` of
+43,060.00 could not be reduced by any ledger entry the schema permits. Deleting is blocked by the
+append-only guard, correctly. Whatever posting looks like, it needs a way to be undone that the
+balance view actually honours.
+
+**A damage charge recorded on return never reaches the customer's balance.** The return screen writes
+an `order_charge` for the excess over the deposit — verified, ₹2,000 on DJN-2609-0007 — but revenue
+posts to `ledger_entry` only at order confirmation, so the charge exists on the order and is invisible
+to `receivable`. The customer was billed ₹10,800 and owes ₹12,800.
+
+**`rental_order.deposit_amount` and `v_customer_balance.deposit_held` share a label and are different
+quantities.** The order form's "Deposit held" is the *agreed* figure typed when the job was booked;
+the ledger's is money actually received as `deposit_in`. On a fresh order the first says ₹8,000 and
+the second says ₹0. Renaming the order field to "Deposit agreed" would cost nothing and remove the
+collision.
+
+**No way to remove a product photo.** A blurry first shot in a dark godown becomes the primary image
+and the product's face on the portal permanently. Needs a decision about deleting the storage object
+and about `0006`'s sync trigger when the primary row goes.
+
+**A pooled write-off proposes ₹0.** `decisions.md` says a lost *unit* proposes its own purchase cost;
+pooled stock has no per-piece cost, though `product.default_purchase_cost` exists. Whether a customer
+is charged for lost cables is chachu's call.
+
+**The portal ledger shows unsigned amounts** — "Payment received ₹5,000.00" sits beside "Equipment
+hire ₹10,800.00" with direction carried only by the label. The operator ledger signs them. May be
+deliberate for a customer view.
+
+**"Cancel order" is a full-width red button, first in the sticky bar, the same weight as Save.** It is
+`confirm()`-guarded, so this is layout judgement rather than a defect — but one-handed at a van it is
+the most dangerous button on the screen and the easiest to hit.
+
+**Creating a product closes the sheet**, so photographing the box you are standing next to means
+finding it in the list and reopening it.
+
+
+
 **The portal code has no rate limiting, and that is the weak point of the portal.** `fn_portal_view`
 is callable by `anon` over `/rest/v1/rpc/fn_portal_view` with no throttle. The code is eight
 characters from a 32-symbol alphabet — about 10^12 combinations, which is far too many to guess by
