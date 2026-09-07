@@ -121,10 +121,12 @@ function openEditor(c) {
              address: '', city: 'Ahmedabad', pincode: '', id_proof_type: '', id_proof_url: '', active: true };
   const b = c.id ? BALANCES.get(c.id) : null;
 
-  openSheet(`
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
     <div class="sheet__head">
       <h2 class="sheet__title">${isNew ? 'Add customer' : esc(c.business_name || c.name)}</h2>
-      <button class="btn btn--ghost" id="close-sheet" aria-label="Close">✕</button>
+      <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
     </div>
     <div class="grid2">
       <label class="field"><span class="field__label">Name *</span>
@@ -201,11 +203,10 @@ function openEditor(c) {
       <span>Active</span></label>
 
     <div class="sheet__foot">
-      <button class="btn" id="cancel">Close</button>
+      <button class="btn" data-sheet-close type="button">Close</button>
       <button class="btn btn--primary" id="save">${isNew ? 'Add customer' : 'Save changes'}</button>
-    </div>`, isNew ? 'Add customer' : 'Edit customer');
-
-  $('#cancel').addEventListener('click', () => $('#sheet-host').innerHTML = '');
+    </div></div>
+  </div>`);
   $('#issue-code')?.addEventListener('click', () => issueCode(c));
   $('#save').addEventListener('click', async () => {
     const row = {
@@ -236,7 +237,7 @@ function openEditor(c) {
     // A brand new customer gets a code immediately: it is the only moment chachu has the person's
     // attention on WhatsApp, and the code cannot be read back later.
     if (isNew) { await load(); openEditor(CUSTOMERS.find(x => x.id === res.data.id)); await issueCode(res.data); }
-    else { $('#sheet-host').innerHTML = ''; await load(); }
+    else { sheet.close(); await load(); }
   });
   if (isNew) focusField('#f-name');
 }

@@ -161,10 +161,12 @@ function signed(e) {
 function openEntry() {
   const b = BALANCES.get(SELECTED.id) ?? { deposit_held: 0 };
   const custOrders = ORDERS.filter(o => o.customer_id === SELECTED.id);
-  openSheet(`
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
     <div class="sheet__head">
       <h2 class="sheet__title">Record something — ${esc(SELECTED.business_name || SELECTED.name)}</h2>
-      <button class="btn btn--ghost" id="close-sheet" aria-label="Close">✕</button>
+      <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
     </div>
     <label class="field"><span class="field__label">What is it? *</span>
       <select class="field__select" id="f-type">
@@ -209,11 +211,10 @@ function openEntry() {
       <input class="field__input" id="f-notes"></label>
     <div class="note" id="dep-note" hidden></div>
     <div class="sheet__foot">
-      <button class="btn" id="cancel">Cancel</button>
+      <button class="btn" data-sheet-close type="button">Cancel</button>
       <button class="btn btn--primary" id="save">Record it</button>
-    </div>`, 'Record a ledger entry');
-
-  $('#cancel').addEventListener('click', () => $('#sheet-host').innerHTML = '');
+    </div></div>
+  </div>`);
 
   const HINTS = {
     payment: 'Reduces what they owe.',
@@ -289,7 +290,7 @@ function openEntry() {
       return;
     }
     toast('Recorded.');
-    $('#sheet-host').innerHTML = '';
+    sheet.close();
     await load();
   });
   focusField('#f-amt');

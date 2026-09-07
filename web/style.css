@@ -152,9 +152,20 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 /* ---------- stat tiles ----------
    Was a .row of .card.grow with flex-basis 220px, so at 375px every tile took a full row: five
    counters became 600px of scrolling before the piece list came into view. */
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stats {
+  display: grid; gap: 12px; margin-bottom: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+/* Three money tiles do not fit 375px: ₹5,800.00 was clipped to "₹5,800.0" on the portal, which is
+   a wrong number rather than an ugly one. Below 560px they stack, and the figure shrinks a step so
+   a six-figure deposit still fits. */
+@media (max-width: 560px) {
+  .stats { grid-template-columns: 1fr; gap: 8px; }
+  .stats .card { padding: 10px 14px; }
+  .stat__n { overflow-wrap: anywhere;  font-size: 24px; }
+}
 .stats .card { margin: 0; padding: 10px 12px; }
-.stat__n { font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stat__n { overflow-wrap: anywhere;  font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .stat__n--bad { color: var(--bad); }
 
 /* ---------- badges ---------- */

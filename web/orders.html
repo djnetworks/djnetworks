@@ -221,8 +221,8 @@ async function openOrder(o) {
 
   const panel = `
     <div class="sheet__head">
-      <h2 class="sheet__title">${isNew ? 'New order' : esc(o.order_no)}</h2>
-      <button class="btn btn--ghost" id="close-sheet" aria-label="Close">✕</button>
+      <h2 class="sheet__title" id="sheet-title">${isNew ? 'New order' : esc(o.order_no)}</h2>
+      <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
     </div>
 
     ${frozen ? `<div class="note note--warn">
@@ -306,12 +306,17 @@ async function openOrder(o) {
       ${o.id && o.status === 'confirmed' ? `<button class="btn btn--danger" id="cancel-order">Cancel order</button>` : ''}
       ${o.id ? `<a class="btn" href="dispatch.html?order=${esc(o.id)}">Dispatch</a>
                 <a class="btn" href="return.html?order=${esc(o.id)}">Return</a>` : ''}
-      <button class="btn" id="cancel">Close</button>
+      <button class="btn" data-sheet-close type="button">Close</button>
       <button class="btn btn--primary" id="save">${isNew ? 'Create order' : 'Save changes'}</button>
     </div>`;
 
-  openSheet(panel, isNew ? 'New order' : `Order ${o.order_no}`);
-  $('#cancel').addEventListener('click', () => $('#sheet-host').innerHTML = '');
+  // openSheet expects the full .sheet / .sheet__panel shell and closes on [data-sheet-close].
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
+      ${panel}
+    </div>
+  </div>`);
 
   if (isNew) {
     const d = new Date();
@@ -351,10 +356,10 @@ async function openOrder(o) {
                + `but anything already dispatched stays out until it is returned.`)) return;
     const { error } = await sb.from('rental_order').update({ status: 'cancelled' }).eq('id', o.id);
     if (error) { toast(error.message, 'error'); return; }
-    toast('Order cancelled.'); $('#sheet-host').innerHTML = ''; await load();
+    toast('Order cancelled.'); sheet.close(); await load();
   });
 
-  $('#save').addEventListener('click', () => save(o, isNew, frozen));
+  $('#save').addEventListener('click', () => save(o, isNew, frozen, sheet));
   if (isNew) focusField('#f-cust');
 }
 
@@ -582,7 +587,7 @@ async function checkAvailability() {
 // Save
 // ---------------------------------------------------------------------------
 
-async function save(o, isNew, frozen) {
+async function save(o, isNew, frozen, sheet) {
   const btn = $('#save');
   const order = {
     order_no: $('#f-no').value.trim(),
@@ -701,7 +706,7 @@ async function save(o, isNew, frozen) {
     }
 
     toast(isNew ? `${order.order_no} created and posted as upcoming.` : 'Order saved.');
-    $('#sheet-host').innerHTML = '';
+    sheet.close();
     await load();
   } catch (err) {
     btn.disabled = false; btn.textContent = isNew ? 'Create order' : 'Save changes';

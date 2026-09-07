@@ -6,3 +6,6 @@ node_modules/
 supabase/.branches/
 supabase/.temp/
 *.log
+
+# Local dev session token, never committed.
+web/.dev-session.json
