@@ -184,6 +184,15 @@ deleted. Harmless, but they read as live paths to anyone tracing what a delete w
 
 ## Screens (prompt 6 and after)
 
+**No Content-Security-Policy, because every screen's code is an inline `<script type="module">`.**
+A `script-src` would have to allow `'unsafe-inline'`, which permits exactly the injection a CSP
+exists to prevent — a header that looks like protection and is not. Product names arrive from a
+Google Sheet import, so the injection surface is real, and `esc()` on every interpolation is
+currently the only thing holding it. Fixing it properly means moving each page's module into its
+own `.js` file, then a strict `script-src 'self'`. Worth doing before the importer ships.
+
+
+
 **A `reversal` cannot undo an `upcoming` charge, so the documented compensating mechanism only half
 works.** `decisions.md` accepts reversal entries as the price of posting revenue on confirmation.
 But `v_customer_balance.upcoming` counts only billed types (`rental`, `transport`, `labour`, `misc`,

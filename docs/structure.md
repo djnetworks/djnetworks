@@ -78,8 +78,18 @@ Build order is dependency order. Built so far, as static pages under `web/`:
 | 11 · Payments and ledger | `ledger.html` | built |
 | 12 · Customer portal | `portal.html` | built |
 
-Plus `index.html` (today) and `analysis.html` (the reports below). **None of these has been operated
-by a signed-in user** — there is no account yet.
+Plus `index.html` (today), `analysis.html` (the reports below) and `customers.html` for form 5.
+
+**All of these have now been operated by a signed-in operator** — a complete job was walked end to
+end in a browser on 2026-09-07, and the offline dispatch path was exercised with the network down.
+Access is enforced by membership of the `operator` table (`0017`), not by whether a Supabase signup
+toggle happens to be off: a stranger who self-registers gets a valid session and reads zero rows.
+
+The development fixture in `supabase/seed/dev_seed.sql` is the reset button. It truncates the tables
+it owns and re-seeds them, which is the only way to clear test data — `DELETE` is blocked on
+`movement`, `unit`, `rental_order`, `ledger_entry` and `repair_job` by design, and the append-only
+guard should never be disabled to tidy up. `0009` kept `TRUNCATE` for `postgres` and `service_role`
+for exactly this.
 
 **1 · Categories and subcategories.** Two editable lists, seeded. The work is chachu striking out
 what he does not own.

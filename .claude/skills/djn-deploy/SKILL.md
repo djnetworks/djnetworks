@@ -7,6 +7,27 @@ description: Deploy changes to the DJ Network's rental system — migrations, Ed
 
 Project ref `hjidocpqcrfbjucvqggu`, region `ap-south-1`.
 
+## Frontend hosting — Cloudflare Pages
+
+`web/` is deployed to Cloudflare Pages, connected to the private GitHub repo, auto-deploying on
+every push to `main`. **No build step**: build command empty, output directory `web`.
+
+GitHub Pages was rejected, not merely unavailable: it needs the repo public on a free plan, and
+publishing the repo would publish `docs/`, the backlog and every migration. The publishable key is
+safe to publish — `0017` made membership of `operator` the thing policies test, so a stranger with
+the key reads nothing — but that is a reason the *key* is safe, not a reason the *schema* should be.
+
+Cache-busting on deploy, in this order, or the fix does not reach the phone:
+
+1. bump the `?v=` string on every asset link in every HTML file
+2. bump `APP_VERSION` in `web/config.js`
+3. bump `CACHE` in `web/sw.js` — the shell is cache-first, so a stale service worker outlives
+   everything else. `sw.js` itself is served `no-cache` via `web/_headers` so it can always be
+   replaced.
+
+`web/_headers` carries the security headers Cloudflare applies. There is deliberately no CSP; see
+the comment in that file.
+
 ## Order of operations
 
 Always in this order. Skipping it produces a frontend calling a view that does not exist yet.

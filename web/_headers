@@ -1,0 +1,41 @@
+# Cloudflare Pages reads this file and applies these headers to matching paths.
+# It is not used by the local node dev server, so anything here is only live once deployed.
+#
+# NOTE ON CONTENT-SECURITY-POLICY, deliberately absent.
+#
+# Every screen's code lives in an inline <script type="module"> block, so a script-src that did any
+# real work would have to allow 'unsafe-inline' — which permits exactly the injection a CSP exists
+# to stop, and would be a header that looks like protection while providing almost none. Getting a
+# real CSP here means moving each page's module into its own .js file first. That is a genuine
+# improvement and it is in docs/backlog.md; it is not something to fake with a header.
+#
+# What follows are the headers that are unambiguously worth setting.
+
+/*
+  # Stop a browser second-guessing a declared content type — the classic route to executing an
+  # uploaded "image" as script.
+  X-Content-Type-Options: nosniff
+
+  # Never send our URLs (which carry order ids) to another origin.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # The customer portal shows one customer their balance. It must never be framed inside somebody
+  # else's page, where a transparent overlay could harvest the access code as it is typed.
+  X-Frame-Options: DENY
+
+  # The product screen uses the phone camera to photograph a box in the godown; nothing here needs
+  # a microphone, a location or a payment API.
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=()
+
+  # HSTS. Cloudflare serves Pages over HTTPS already; this stops a downgrade on a hostile network,
+  # which is the realistic threat for a phone on somebody else's wifi at a venue.
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# The service worker must never be served stale, or a deploy cannot reach a phone that already has
+# the old one — the shell is cache-first and sw.js is the only thing that can replace it.
+/sw.js
+  Cache-Control: no-cache
+
+# The vendored Supabase client is versioned by its query string and never changes in place.
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable

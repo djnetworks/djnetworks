@@ -25,7 +25,12 @@ prefetch in signal, dispatch with no connection, queue surviving a page teardown
 reconnect, movements landing. Access control is enforced by an `operator` allowlist (`0017`), not by
 a signup toggle — a stranger who self-registers reads zero rows from every table.
 
-**Still not deployed.** GitHub Pages is unavailable on a private repo on the current plan.
+**Hosting: Cloudflare Pages**, connected to this private repo, auto-deploying on push to `main`.
+No build step — build command empty, output directory `web`. GitHub Pages was rejected rather than
+merely unavailable: on a free plan it requires the repo to be public, and publishing the repo would
+publish `docs/`, the backlog and every migration. `0017` makes the publishable key safe to ship;
+that is not a reason to ship the schema. Cache-busting on every deploy is in the `djn-deploy` skill
+and it has three steps, not one.
 
 What exists:
 
