@@ -72,6 +72,104 @@ export const trackLabel = m => ({
 }[m] ?? m);
 
 // ---------------------------------------------------------------------------
+// BROWSE-FIRST LISTS.
+//
+// Every list screen used to show NOTHING until you searched or picked a name from a dropdown. That
+// assumes you already know what you are looking for, which is exactly backwards for a man who
+// opens Customers to remind himself who the decorator from last month was. A screen that answers
+// only questions you can already phrase is not a browsable system, it is a lookup table.
+//
+// So: cards arrive on load, search FILTERS them, and tapping one opens the detail. This helper is
+// the one place that shape is defined, so eleven screens cannot each invent a slightly different
+// row that behaves slightly differently under a thumb.
+//
+// It also owns tap rule 1: the card opens the detail, and anything marked `.card-action` inside it
+// stops the event and does its own thing. Both halves live here so neither can be forgotten.
+// ---------------------------------------------------------------------------
+
+/**
+ * @param host      element to render into
+ * @param rows      array of data
+ * @param render    row => { thumb?, title, sub?, ref?, right?, id }
+ * @param onOpen    (row) => void — the card's own tap
+ */
+export function cardList(host, rows, render, onOpen) {
+  host.className = 'card-list';
+  host.innerHTML = rows.map((r, i) => {
+    const c = render(r, i);
+    return `<div class="card-row tappable" data-i="${i}" role="button" tabindex="0">
+      ${c.thumb !== undefined ? `<span class="card-row__thumb">
+        ${c.thumb ? `<img src="${esc(c.thumb)}" alt="" loading="lazy">` : ''}
+        <span class="card-row__code">${esc(c.code ?? '')}</span></span>` : ''}
+      <span class="card-row__main">
+        <span class="card-row__title">${c.title}</span>
+        ${c.sub ? `<span class="card-row__sub">${c.sub}</span>` : ''}
+        ${c.ref ? `<button class="card-row__ref card-action" data-copy="${esc(c.ref)}"
+                     type="button" title="Copy ${esc(c.ref)}">${esc(c.ref)}</button>` : ''}
+      </span>
+      ${c.right ? `<span class="card-row__right">${c.right}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  host.onclick = (e) => {
+    // TAP RULE 1. An inline action is a separate control: it handles itself and the card does not
+    // also fire. Without this one tap does two different things depending on the pixel.
+    const action = e.target.closest('.card-action');
+    if (action) {
+      e.stopPropagation();
+      if (action.dataset.copy) copyRef(action);
+      return;
+    }
+    const row = e.target.closest('.card-row');
+    if (row) onOpen(rows[Number(row.dataset.i)]);
+  };
+  host.onkeydown = (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const row = e.target.closest('.card-row');
+    if (row && !e.target.closest('.card-action')) { e.preventDefault(); onOpen(rows[Number(row.dataset.i)]); }
+  };
+}
+
+/** The order number's real job is being pasted into a WhatsApp message. */
+async function copyRef(btn) {
+  try { await navigator.clipboard.writeText(btn.dataset.copy); }
+  catch { /* insecure context or refused: the number is still on screen to read */ }
+  btn.classList.add('is-copied');
+  setTimeout(() => btn.classList.remove('is-copied'), 1400);
+}
+
+// ---------------------------------------------------------------------------
+// TAP RULE 3, the half that is not CSS.
+//
+// A control that writes disables itself for the duration and carries an idempotency key. The key
+// is generated ONCE, here, before the work starts — not inside the retry, and not regenerated when
+// the offline queue replays, because a fresh id on every attempt is precisely the duplicate that
+// 0022's unique index exists to refuse.
+// ---------------------------------------------------------------------------
+export const newRequestId = () => (crypto.randomUUID
+  ? crypto.randomUUID()
+  : 'r-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+
+/** Runs `fn` with the button visibly busy and un-tappable. Returns whatever fn returns. */
+export async function guardedWrite(btn, busyLabel, fn) {
+  if (!btn) return fn();
+  if (btn.dataset.busy === '1') return;                 // the second tap, arriving anyway
+  const was = btn.textContent;
+  btn.dataset.busy = '1';
+  btn.classList.add('is-busy');
+  btn.disabled = true;
+  if (busyLabel) btn.textContent = busyLabel;
+  try {
+    return await fn();
+  } finally {
+    delete btn.dataset.busy;
+    btn.classList.remove('is-busy');
+    btn.disabled = false;
+    if (busyLabel) btn.textContent = was;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // PERMISSIONS, IN THE CLIENT.
 //
 // READ THIS BEFORE USING IT: what is below is CONVENIENCE, NOT THE BOUNDARY. Every key is enforced
@@ -93,19 +191,19 @@ export async function loadPermissions() {
   // A failure here must not read as "you may do everything". An empty object denies every key,
   // which is the safe direction and matches what the database would do anyway.
   PERMS = (error || !data || data.active === false) ? {} : (data.permissions ?? {});
+  // The name came back in the same select. whoAmI() used to fetch it again, one more serial round
+  // trip in front of the first paint of every screen, for a column already sitting in `data`.
+  operatorName = (error || !data) ? '' : (data.display_name ?? '');
   return PERMS;
 }
 
 /** True if this operator holds the key. Absent means denied — no wildcard, no implication. */
 export const can = key => PERMS?.[key] === true;
 
-/** The operator's name for the top bar, once loadPermissions() has run. */
+/** The operator's name for the top bar. Filled by loadPermissions() from the same row. */
 export let operatorName = '';
-export async function whoAmI() {
-  const { data } = await sb.from('operator').select('display_name').maybeSingle();
-  operatorName = data?.display_name ?? '';
-  return operatorName;
-}
+/** Kept for callers outside this file; it no longer costs a request. */
+export async function whoAmI() { await loadPermissions(); return operatorName; }
 
 // ---------------------------------------------------------------------------
 // THE CUSTOMER PICKER.
@@ -548,10 +646,30 @@ export async function requireSession(onReady) {
 
   const paint = async (session) => {
     if (session) {
+      // THE PERMISSION READ HAPPENS BEHIND THE WAITING STATE, NOT IN FRONT OF IT.
+      //
+      // This used to hide #gate and reveal an EMPTY #app first and read permissions second, so on
+      // a slow link the screen was a blank cream rectangle with no text for the whole round trip —
+      // measured at 1.2s with a deliberately slowed read, and a godown link is worse. Worse than
+      // the blank: boot.js's nine-second net checks `!!placeholder && app.hidden`, and this line
+      // had just deleted the placeholder and un-hidden #app, so the one thing that would have
+      // turned an endless wait into a sentence was disarmed at exactly the moment it was needed.
+      //
+      // The "Starting up…" block in the HTML stays up until there is something to replace it with.
+      await loadPermissions();
+      // THE NAV IS PAINTED HERE, once, from the permissions this person actually holds. chrome()
+      // runs at module top level, before any of them are known, and paints an empty bar of the
+      // right height rather than a guess that re-flows. Granting somebody a module therefore needs
+      // a page reload before it shows — see docs/structure.md, and the Team screen says so next to
+      // the toggle.
+      paintNav();
+      initNav();
+      // Already fetched by loadPermissions() — the same row, in the same select. It was read a
+      // second time here, which put another serial round trip in front of the first paint.
+      $('#who').textContent = operatorName || session.user.email || '';
       gate.hidden = true;
       gate.innerHTML = '';
       app.hidden = false;
-      $('#who').textContent = session.user.email ?? '';
       $('#signout').hidden = false;
       try {
         await onReady(session);
@@ -694,44 +812,128 @@ export function wordmark({ large = false, invert = false, href = null } = {}) {
 // Page chrome shared by every screen.
 // ---------------------------------------------------------------------------
 
+// The modules, in fixed order. Each names the permission key that makes it real — the nav is
+// re-flowed at login to what this person actually holds, and a hidden module must not leave a gap
+// where it was (Maitri's lesson: fixed positions with holes read as a broken app, and the thumb
+// learns the wrong place).
+//
+// `key: null` means every active operator sees it: Today and the enquiry screen answer questions
+// rather than change anything.
+const MODULES = [
+  { href: 'index.html',     label: 'Today',     icon: '\u25C9', key: null },
+  { href: 'ask.html',       label: 'Can I?',    icon: '\u2713', key: null },
+  { href: 'orders.html',    label: 'Orders',    icon: '\u2637', key: 'orders.write' },
+  { href: 'dispatch.html',  label: 'Send out',  icon: '\u2191',  key: 'sendout.write' },
+  { href: 'return.html',    label: 'Return',    icon: '\u2193',  key: 'returns.write' },
+  { href: 'products.html',  label: 'Products',  icon: '\u25A6', key: 'products.write' },
+  { href: 'units.html',     label: 'Equipment', icon: '\u25A3', key: 'equipment.write' },
+  { href: 'customers.html', label: 'Customers', icon: '\u263A', key: 'customers.write' },
+  { href: 'ledger.html',    label: 'Ledger',    icon: '\u20B9',  key: 'ledger.view' },
+  { href: 'analysis.html',  label: 'Numbers',   icon: '\u2211', key: 'numbers.view' },
+  { href: 'team.html',      label: 'Team',      icon: '\u2687', key: 'admin.team' },
+];
+
+// How many fit across the bottom before it stops being thumb-sized. Beyond this the rest go under
+// "More", which is one tap for the things done weekly and keeps the daily ones at a fixed position.
+const NAV_SLOTS = 5;
+
+/**
+ * Page chrome. A slim top bar carrying identity and the connection state, and the navigation at
+ * the BOTTOM where a thumb is.
+ *
+ * The top tab strip this replaces put ten destinations in a horizontally scrolling row: at 375px
+ * five of them were off screen with no affordance saying so, and all of them were at the far end
+ * of a one-handed reach. That problem is retired here rather than patched.
+ *
+ * WHAT IS SHOWN IS DECIDED AT LOGIN, from permissions already in memory. Granting somebody a
+ * module therefore needs a page reload before it appears — documented in docs/structure.md, and
+ * the Team screen says so where the toggle is.
+ */
+let NAV_ACTIVE = 'index.html';
+
 export function chrome(active) {
-  const tabs = [
-    ['index.html', 'Today'],
-    // The phone-call screen sits second, right after Today: it is the single most common
-    // interaction in a rental business and it must be reachable while a customer is talking.
-    ['ask.html', 'Can I say yes'],
-    ['orders.html', 'Orders'],
-    ['dispatch.html', 'Send out'],
-    ['return.html', 'Return'],
-    ['products.html', 'Products'],
-    ['units.html', 'Pieces'],
-    ['customers.html', 'Customers'],
-    ['ledger.html', 'Ledger'],
-    ['analysis.html', 'Numbers'],
-  ];
+  NAV_ACTIVE = active;
   return `
   <header class="topbar">
     <span class="topbar__brand">${wordmark({ href: 'index.html' })}</span>
-    <nav class="topbar__nav" aria-label="Screens">
-      ${tabs.map(([href, label]) =>
-        // aria-current, not just a colour: the active tab has to say where he is to a screen
-        // reader as well as to an eye.
-        `<a class="topbar__tab${href === active ? ' is-active' : ''}" href="${href}"${
-          href === active ? ' aria-current="page"' : ''}>${label}</a>`).join('')}
-    </nav>
     <span class="conn" id="conn" hidden></span>
     <span class="topbar__who" id="who"></span>
-    <button class="btn btn--ghost" id="signout" hidden>Sign out</button>
+    <button class="btn btn--ghost btn--sm" id="signout" hidden>Sign out</button>
   </header>
+  <div id="nav-host">${navMarkup()}</div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>`;
 }
 
-// The tab strip scrolls sideways on a phone, so the tab you are on can start off screen.
-// Called by every screen right after chrome() is written into the DOM.
-export function revealActiveTab() {
-  const el = $('.topbar__tab.is-active');
-  el?.scrollIntoView({ block: 'nearest', inline: 'center' });
+/** Re-render the nav in place once permissions are known. */
+export function paintNav() {
+  navReady();
+  const host = $('#nav-host');
+  if (host) host.innerHTML = navMarkup();
 }
+
+// False until loadPermissions() has answered. Until then this file does not know which modules
+// this person holds, and GUESSING MOVES THE THUMB TARGET. chrome() runs at module top level, so
+// the bar used to paint Today + Can I? at 195px each and then re-flow to six items at 65px: with
+// a 1.2s permission read — an ordinary godown round trip — "Today" travelled 65px left and
+// "Can I?" landed exactly where "Today" had been, so a tap made during the wait opened the wrong
+// screen. An empty bar of the right height reserves the space without offering a target that is
+// about to move. Nothing shifts when the answer arrives.
+let NAV_KNOWN = false;
+export function navReady() { NAV_KNOWN = true; }
+
+function navMarkup() {
+  const active = NAV_ACTIVE;
+  if (!NAV_KNOWN) return `<nav class="nav nav--pending" aria-hidden="true"></nav>`;
+  const mine = MODULES.filter(m => !m.key || can(m.key));
+  const bar = mine.slice(0, NAV_SLOTS);
+  const more = mine.slice(NAV_SLOTS);
+  // The active destination is always ON the bar, even if it lives under More — otherwise the
+  // screen you are looking at is not highlighted anywhere.
+  //
+  // A SWAP, NOT AN OVERWRITE. This assigned into bar[NAV_SLOTS - 1] and dropped whatever was
+  // there, so on customers.html the bar read Today · Can I? · Orders · Send out · Customers and
+  // "Return" appeared in neither the bar nor the More sheet — gone from the navigation entirely,
+  // on all six screens that live under More. The displaced module is the last one on the bar, so
+  // in MODULES order it precedes everything left in `more`; unshift puts it back in its own place.
+  if (more.some(m => m.href === active)) {
+    const i = more.findIndex(m => m.href === active);
+    const displaced = bar[NAV_SLOTS - 1];
+    bar[NAV_SLOTS - 1] = more.splice(i, 1)[0];
+    more.unshift(displaced);
+  }
+  const item = (m) => `<a class="nav__item${m.href === active ? ' is-active' : ''}" href="${m.href}"${
+    m.href === active ? ' aria-current="page"' : ''}>
+      <span class="nav__icon" aria-hidden="true">${m.icon}</span>
+      <span class="nav__label">${esc(m.label)}</span></a>`;
+
+  return `
+  <nav class="nav" aria-label="Screens" style="--nav-slots:${bar.length + (more.length ? 1 : 0)}">
+    ${bar.map(item).join('')}
+    ${more.length ? `<button class="nav__item" id="nav-more" type="button" aria-haspopup="true" aria-expanded="false">
+        <span class="nav__icon" aria-hidden="true">\u22EF</span><span class="nav__label">More</span></button>` : ''}
+  </nav>
+  ${more.length ? `<div class="nav-more" id="nav-more-sheet" hidden>
+      <div class="nav-more__panel">${more.map(m => `<a class="item" href="${m.href}">
+        <span class="item__main"><span class="item__title">${esc(m.label)}</span></span></a>`).join('')}
+      </div></div>` : ''}`;
+}
+
+/** Wires the More sheet. Called by every screen right after chrome() is written into the DOM. */
+export function initNav() {
+  const btn = $('#nav-more'), sheet = $('#nav-more-sheet');
+  if (!btn || !sheet) return;
+  const close = () => { sheet.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.addEventListener('click', () => {
+    sheet.hidden = !sheet.hidden;
+    btn.setAttribute('aria-expanded', String(!sheet.hidden));
+  });
+  sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+}
+
+// The scrolling tab strip is gone, so nothing has to be scrolled into view any more. Kept as a
+// no-op for one release because every screen calls it; remove when they have all been touched.
+export function revealActiveTab() {}
 
 // ---------------------------------------------------------------------------
 // Connection and the write queue.

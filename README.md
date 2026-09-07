@@ -8,6 +8,7 @@ Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 - **What is still unanswered:** `docs/open-questions.md`
 - **Found and not fixed:** `docs/backlog.md`
 - **Where the look comes from:** `docs/design.md` — provisional tokens, and what is still missing.
+- **Verification that rolls itself back:** `supabase/probes/`
 
 ## Status
 
@@ -40,8 +41,8 @@ What exists:
 
 | | |
 |---|---|
-| Database | 17 tables, 14 views, 27 functions. Migrations `0001`–`0021`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
-| Screens | 11 static pages under `web/`, no build step. Ten behind an operator sign-in, plus the customer portal. |
+| Database | 17 tables, 14 views, 29 functions. Migrations `0001`–`0023`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
+| Screens | 12 static pages under `web/`, no build step. Eleven behind an operator sign-in, plus the customer portal. Bottom navigation, re-flowed at login to the modules each person holds. |
 | Offline | Vendored Supabase client, service worker for the app shell, IndexedDB for queued writes, explicit per-job prefetch. |
 | Sheet | Read-only mirror OUT, deployed as the `sheet-mirror` Edge Function with `sheet/DataSync.gs`. The bulk import lane is NOT built. |
 | Fixture | `supabase/seed/dev_seed.sql` — development data, not the catalogue. |

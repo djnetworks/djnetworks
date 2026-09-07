@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DJ Network's — Rental System</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
-<link rel="stylesheet" href="style.css?v=2026-09-08-3">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
+<link rel="stylesheet" href="style.css?v=2026-09-08-6">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
-<script src="boot.js?v=2026-09-08-3" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
+<script src="boot.js?v=2026-09-08-6" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -34,8 +34,8 @@
 <script type="module">
 import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, todayLocal,
          initOffline, revealActiveTab, jobLine, waLink, waMessage, loadPermissions, can }
-  from './app.js?v=2026-09-08-3';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-3';
+  from './app.js?v=2026-09-08-6';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-6';
 
 $('#chrome').innerHTML = chrome('index.html');
 revealActiveTab();
@@ -61,14 +61,14 @@ async function checkSignupIsClosed() {
     if (!r.ok) return;
     const s = await r.json();
     if (s.disable_signup === false) {
+      // ONE LINE here. The full instruction lives on the Team screen, which is where the person
+      // reading this goes to act on it — seven lines of it at the top of Today pushed the day's
+      // work below the fold every morning, which is the opposite of what this pass is for.
       const el = document.createElement('div');
       el.className = 'note note--bad';
-      el.style.margin = '0 0 14px';
-      el.innerHTML = 'Anyone can still create an account on this project. They would read nothing '
-        + 'and write nothing \u2014 every table checks the operator list \u2014 but the front door '
-        + 'should be shut too. Supabase dashboard \u2192 Authentication \u2192 Sign In / Providers '
-        + '\u2192 Email \u2192 turn off <strong>Allow new users to sign up</strong>. '
-        + 'People are added by invitation.';
+      el.style.margin = '0 0 8px';
+      el.innerHTML = 'Anyone can still create an account on this project. '
+        + '<a href="team.html">Shut the front door</a>.';
       $('#app')?.prepend(el);
     }
   } catch { /* offline, or the settings endpoint is unreachable: not worth an error */ }
@@ -102,7 +102,7 @@ requireSession(async () => {
     <div class="row" style="margin-top:18px">
       <a class="btn btn--primary" href="ask.html">Can I say yes</a>
       <a class="btn" href="products.html">Products</a>
-      <a class="btn" href="units.html">Pieces</a>
+      <a class="btn" href="units.html">Equipment</a>
     </div>`;
 
   try {
@@ -147,22 +147,37 @@ requireSession(async () => {
       missing.set(r.order_id, list);
     }
 
+    // ONE style attribute. This emitted two when `tone` was set, and the HTML parser keeps the
+    // first and discards the rest — so "Going out today" and "Late", the two sections that carry a
+    // tone, silently lost their margin-bottom and ran into whatever followed. Only the untoned
+    // section was spaced. Measured: margin-bottom 0px, 10px, 0px down the three sections.
     const section = (title, tone, rows, empty, render) => rows.length
-      ? `<div class="card"${tone ? ` style="border-left:4px solid var(--${tone})"` : ''}>
-           <h2 style="font-size:16px;margin:0 0 8px">${esc(title)} <span class="badge">${rows.length}</span></h2>
-           <div class="list">${rows.map(render).join('')}</div>
-         </div>`
-      : `<div class="card"><h2 style="font-size:16px;margin:0 0 4px">${esc(title)}</h2>
-           <p class="field__hint" style="margin:0">${esc(empty)}</p></div>`;
+      ? `<section style="margin-bottom:10px${tone ? `;border-left:3px solid var(--${tone});padding-left:8px` : ''}">
+           <h2>${esc(title)} <span class="badge">${rows.length}</span></h2>
+           <div class="card-list">${rows.map(render).join('')}</div>
+         </section>`
+      : `<section style="margin-bottom:10px"><h2>${esc(title)}</h2>
+           <p class="field__hint" style="margin:0">${esc(empty)}</p></section>`;
 
+    // The card shape, so a job on Today looks like a job everywhere else. CUSTOMER + VENUE is the
+    // headline; the order number is subtext and tappable to copy, because its job is being pasted
+    // into a WhatsApp message. It was inline with the title and wrapped every row to three lines.
+    // A DIV, NOT AN ANCHOR. An <a> cannot contain another <a>: the parser closes the outer one and
+    // reparents the inner, which is exactly how the "Remind" button ended up rendered as a full
+    // width block underneath its own card. The row is a div with a delegated handler and the inline
+    // controls are real links inside it — tap rule 1, and the reason it is a rule rather than a
+    // habit is that this is the second time the same mistake has been made in this file.
     const row = (o, right, href) => {
-      const j = jobLine(o);
-      return `<a class="item" href="${href}">
-        <span class="item__main">
-          <span class="item__title">${j.title}</span>
-          <span class="item__meta">${j.meta}</span>
+      const who = o.customer?.business_name || o.customer?.name || '';
+      return `<div class="card-row tappable" data-go="${esc(href)}" role="button" tabindex="0">
+        <span class="card-row__main">
+          <span class="card-row__title">${esc(who)}${o.venue_name ? ' · ' + esc(o.venue_name) : ''}</span>
+          <span class="card-row__sub">${esc(fmtDate(o.out_date))} → ${esc(fmtDate(o.expected_return_date))}
+            · ${esc(o.days)} day${o.days === 1 ? '' : 's'}</span>
+          <button class="card-row__ref card-action" data-copy="${esc(o.order_no)}" type="button"
+                  title="Copy ${esc(o.order_no)}">${esc(o.order_no)}</button>
         </span>
-        <span class="item__right">${right}</span></a>`;
+        <span class="card-row__right">${right}</span></div>`;
     };
 
     $('#day').innerHTML =
@@ -191,15 +206,18 @@ requireSession(async () => {
           // PREFILLED WhatsApp draft — it never sends; the send button stays his.
           // A div, not an <a>, because a row that is itself a link cannot contain a second one.
           const msg = waMessage('overdue', { order: o, missing: all, daysLate: days });
-          return `<div class="item" style="cursor:default;align-items:flex-start">
-            <a class="item__main" href="return.html?order=${esc(o.id)}" style="color:inherit">
-              <span class="item__title">${jobLine(o).title}</span>
-              <span class="item__meta">${esc(what)}${all.length > 3 ? ' …' : ''}</span>
-              <span class="item__meta">${esc(o.order_no)} · due ${esc(fmtDate(o.expected_return_date))}</span>
-            </a>
-            <span class="item__right" style="display:grid;gap:6px;justify-items:end">
-              <span class="badge badge--out">${esc(days)} day${days === 1 ? '' : 's'} late</span>
-              <a class="btn btn--sm btn--wa" target="_blank" rel="noopener"
+          const who = o.customer?.business_name || o.customer?.name || '';
+          return `<div class="card-row tappable" data-go="return.html?order=${esc(o.id)}"
+                       role="button" tabindex="0">
+            <span class="card-row__main">
+              <span class="card-row__title">${esc(who)}${o.venue_name ? ' · ' + esc(o.venue_name) : ''}</span>
+              <span class="card-row__sub">${esc(what)}${all.length > 3 ? ' …' : ''} · due ${esc(fmtDate(o.expected_return_date))}</span>
+              <button class="card-row__ref card-action" data-copy="${esc(o.order_no)}" type="button"
+                      title="Copy ${esc(o.order_no)}">${esc(o.order_no)}</button>
+            </span>
+            <span class="card-row__right">
+              <span class="badge badge--out">${esc(days)}d late</span>
+              <a class="card-action btn--wa" target="_blank" rel="noopener"
                  href="${esc(waLink(o.customer?.whatsapp, msg))}">Remind</a>
             </span>
           </div>`;
@@ -227,18 +245,21 @@ requireSession(async () => {
       return;
     }
 
+    // EVERY TILE IS A QUESTION THAT ALREADY HAS AN ANSWER SCREEN. They were four numbers you
+    // could read and not act on — the count said 5 out and the only way to see WHICH five was to
+    // go to Equipment and pick a product. Each now lands on exactly those rows.
     const s = $('#summary');
     s.hidden = false;
     s.innerHTML = [
-      ['On the shelf', sum(unitRows, 'units_on_hand'), ''],
-      ['Out with customers', sum(unitRows, 'units_out'), ''],
-      ['At a repair shop', sum(unitRows, 'units_at_repair'), ''],
-      ['Late jobs', lateOrders.length, lateOrders.length ? 'bad' : ''],
-    ].map(([label, n, tone]) => `
-      <div class="card">
+      ['On the shelf', sum(unitRows, 'units_on_hand'), '', 'units.html'],
+      ['Out with customers', sum(unitRows, 'units_out'), '', 'units.html?status=out'],
+      ['At a repair shop', sum(unitRows, 'units_at_repair'), '', 'units.html?status=at_repair'],
+      ['Late jobs', lateOrders.length, lateOrders.length ? 'bad' : '', 'orders.html?filter=late'],
+    ].map(([label, n, tone, href]) => `
+      <a class="card tappable" href="${href}" style="text-decoration:none;color:inherit">
         <div class="item__meta">${esc(label)}</div>
         <div class="stat__n${tone === 'bad' ? ' stat__n--bad' : ''}">${n}</div>
-      </div>`).join('');
+      </a>`).join('');
 
     let html = `<p class="field__hint" style="margin:-6px 0 14px">Numbered pieces only.`;
     if (poolRows.length || consRows.length) {
@@ -263,6 +284,28 @@ requireSession(async () => {
     $('#extra').innerHTML = html;
     $('#sub').textContent = `${fmtDate(today)} · ${going.length} to load, ${backToday.length} due back, ${lateOrders.length} late`;
     checkSignupIsClosed();
+    // TAP RULE 1, on the rows Today builds itself: the card is a link, so an inline control has to
+    // both stop the event and prevent the navigation, or copying the reference opens the return
+    // screen instead.
+    $('#day').addEventListener('click', async (e) => {
+      // An inline control handles itself and the card does not also fire.
+      const b = e.target.closest('.card-row__ref');
+      if (b) {
+        e.preventDefault(); e.stopPropagation();
+        try { await navigator.clipboard.writeText(b.dataset.copy); } catch { /* insecure context */ }
+        b.classList.add('is-copied');
+        setTimeout(() => b.classList.remove('is-copied'), 1400);
+        return;
+      }
+      if (e.target.closest('.card-action')) return;      // Remind: let the link do its own thing
+      const card = e.target.closest('.card-row[data-go]');
+      if (card) location.href = card.dataset.go;
+    });
+    $('#day').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const card = e.target.closest('.card-row[data-go]');
+      if (card && !e.target.closest('.card-action')) { e.preventDefault(); location.href = card.dataset.go; }
+    });
   } catch (err) {
     $('#day').innerHTML = errorBlock(err, 'retry-home');
     $('#retry-home')?.addEventListener('click', () => location.reload());

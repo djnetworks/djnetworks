@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Send out — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
-<link rel="stylesheet" href="style.css?v=2026-09-08-3">
-<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
-<script src="boot.js?v=2026-09-08-3" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
+<link rel="stylesheet" href="style.css?v=2026-09-08-6">
+<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
+<script src="boot.js?v=2026-09-08-6" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -29,8 +29,8 @@
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, registerQueueHandlers, syncNow, revealActiveTab,
-         trackBadge, publicUrl, waLink, waMessage }
-  from './app.js?v=2026-09-08-3';
+         trackBadge, publicUrl, waLink, waMessage, newRequestId, guardedWrite, networkMessage }
+  from './app.js?v=2026-09-08-6';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
@@ -352,7 +352,9 @@ function render() {
         <p class="sub">${esc(cust)} · ${esc(fmtDate(ORDER.out_date))} → ${esc(fmtDate(ORDER.expected_return_date))}
           ${ORDER.venue_name ? '· ' + esc(ORDER.venue_name) : ''}</p>
       </div>
-      <a class="btn btn--ghost btn--sm" href="orders.html">Order</a>
+      <!-- THIS ORDER, not the list. See the same fix in return.html: "Order" went to orders.html,
+           so checking the agreed rate mid-load meant finding the job again in a list. -->
+      <a class="btn btn--ghost btn--sm" href="orders.html?order=${esc(ORDER.id)}">Open the order</a>
     </div>
     <div class="row" id="offline-state" style="margin-bottom:12px"></div>
     <div class="row" id="sent-share" style="margin-bottom:12px" ${LAST_SENT_LINK ? '' : 'hidden'}>
@@ -767,7 +769,15 @@ async function doDispatch() {
   const locId = $('#f-loc').value;
   if (!locId) { toast('Pick where you are loading from.', 'error'); return; }
 
+  // ONE id for the whole tap. Every movement in this batch carries it, so re-sending the batch
+  // collides on the first row and the entire INSERT rolls back — all six or none, which is what
+  // the operator meant. Generated here and carried unchanged into the offline queue: a replay
+  // after a browser restart must present the SAME id as the attempt that may already have landed
+  // (0022). Regenerating it on retry is the duplicate the index exists to refuse.
+  const requestId = newRequestId();
+
   const common = {
+    request_id: requestId,
     order_id: orderId, product_id: null,
     from_kind: 'location', from_id: locId,
     to_kind: 'customer', to_id: CUSTOMER.id,
@@ -840,11 +850,40 @@ async function doDispatch() {
       toast('Connection dropped — held on this phone and sent when the signal returns.');
       PICK.clear(); POOLPICK.clear(); await load();
     } else {
-      toast(msg, 'error');
+      toast(friendly(err), 'error');
     }
   } finally {
     btn.disabled = false; btn.textContent = 'Send these out';
   }
+}
+
+/**
+ * A refusal in words, the way products, orders and units already do it. This screen toasted
+ * err.message raw, so a CHECK constraint reached the operator as
+ *   new row for relation "movement" violates check constraint "movement_qty_positive"
+ * at a van, in poor light. Worse, 0022's idempotency index arrived as a red "duplicate key"
+ * error on a write that HAD SUCCEEDED — the exact wrong reading, because the next thing he does
+ * is load the boxes again by hand.
+ *
+ * Most of the database's own guards raise sentences aimed at a person (0007-0021), so anything
+ * not listed here is passed through with the Postgres prefix stripped.
+ */
+function friendly(e) {
+  const m = e?.message || String(e ?? '');
+  const net = networkMessage(e);
+  if (net) return net;
+  if (e?.code === '23505' || m.includes('uq_movement_request'))
+    return 'This was already sent — the same tap reached the server twice. Nothing went out twice.';
+  if (e?.code === '42501' || m.includes('row-level security'))
+    return 'You are not signed in, or the session expired. Sign in again — nothing was sent.';
+  // A CHECK, a foreign key or a NOT NULL arrives as Postgres boilerplate naming an internal
+  // constraint. Lead with what it means for him; keep the constraint name in brackets for whoever
+  // has to debug it. `violates check constraint "movement_qty_positive"` is not a sentence
+  // anybody standing at a van can act on.
+  const c = m.match(/violates (?:check|foreign key|not-null) constraint "([^"]+)"/);
+  if (c) return `The database refused this, so nothing was sent. Check what is picked and try `
+             + `again — if it keeps refusing, this needs looking at. (${c[1]})`;
+  return m.replace(/^.*?ERROR:\s*/, '');
 }
 
 window.__djn = { reload: load, cacheNow: () => cacheForOffline(false) };

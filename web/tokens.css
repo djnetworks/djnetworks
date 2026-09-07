@@ -121,7 +121,15 @@
      ------------------------------------------------------------------------- */
   --bg:           var(--warm);
   --surface:      var(--white);
+  /* TWO DIFFERENT JOBS, and one value was doing both badly.
+     --border separates things that sit next to each other: a row from the next row, a card from
+     the page. Faint is right there — a strong rule between every row is noise.
+     --edge is the boundary of something you AIM AT: a field, a tile, a button. WCAG 1.4.11 asks
+     3.0:1 for those, and --border measures 1.11:1 against the page. --edge is the bible's own
+     --grey, 3.47:1 on --warm and 3.84:1 on white. It is the value that was REJECTED for 12px text
+     at 3.47:1 and is exactly right for a 2px line you have to hit with a thumb in sunlight. */
   --line:         var(--border);
+  --edge:         var(--grey);
   --ink:          var(--charcoal);
   --ink-soft:     var(--slate);
   /* --ink-faint is defined in section 2, where its measurement lives. */

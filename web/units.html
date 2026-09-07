@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Pieces — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
+<title>Equipment — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
-<link rel="stylesheet" href="style.css?v=2026-09-08-3">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
+<link rel="stylesheet" href="style.css?v=2026-09-08-6">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
-<script src="boot.js?v=2026-09-08-3" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
+<script src="boot.js?v=2026-09-08-6" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -34,8 +34,8 @@
 <script type="module">
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, fmtDate, todayLocal, networkMessage, initOffline,
-         revealActiveTab }
-  from './app.js?v=2026-09-08-3';
+         revealActiveTab, cardList, loadPermissions, publicUrl }
+  from './app.js?v=2026-09-08-6';
 
 $('#chrome').innerHTML = chrome('units.html');
 revealActiveTab();
@@ -45,6 +45,11 @@ revealActiveTab();
 // There is deliberately no unit-ID entry point anywhere on this screen.
 
 let PRODUCTS = [], LOCS = [], STOCK = new Map(), SELECTED = null, UNITS = [];
+// Every numbered product, before ?status= narrows it. Kept so the screen can tell "you own no
+// numbered products" apart from "nothing is in that state today" — they look identical once
+// PRODUCTS is empty, and they are opposite pieces of news.
+let ALL_NUMBERED = [];
+let STATUS_FILTER = null;
 const COSTS = new Map();
 
 // Guards the one race that can lie about the shelf: pick product A, pick product B before A's
@@ -54,13 +59,13 @@ let bodyToken = 0;
 
 initOffline();
 
-requireSession(async () => { await boot(); });
+requireSession(async () => { await loadPermissions(); await boot(); });
 
 async function boot() {
   $('#app').innerHTML = `
     <div class="row row--between">
-      <div><h1>Pieces</h1>
-        <p class="sub">Numbered boxes, and the fastest way to create a lot of them at once.</p></div>
+      <div><h1>Equipment</h1>
+        <p class="sub">Numbered boxes. Tap one to see its pieces.</p></div>
       <button class="btn btn--primary" id="bulk" hidden>Add pieces</button>
     </div>
     <div id="picker"></div>
@@ -86,8 +91,18 @@ async function load() {
     // Only numbered-piece products have pieces at all. Offering a cable here would be offering
     // to create piece numbers for something that has none (rule 13).
     PRODUCTS = (prods.data ?? []).filter(p => p.tracking_mode === 'unit');
+    ALL_NUMBERED = PRODUCTS;
     LOCS = locs.data ?? [];
     STOCK = new Map((stock.data ?? []).map(s => [s.product_id, s]));
+
+    // Landed on from a Today tile: show only the products that actually have a piece in that
+    // state, so "5 out" leads to the five and not to the whole catalogue.
+    STATUS_FILTER = new URLSearchParams(location.search).get('status');
+    if (STATUS_FILTER) {
+      const col = STATUS_FILTER === 'out' ? 'units_out'
+                : STATUS_FILTER === 'at_repair' ? 'units_at_repair' : null;
+      if (col) PRODUCTS = PRODUCTS.filter(p => Number(STOCK.get(p.id)?.[col] ?? 0) > 0);
+    }
 
     const wanted = new URLSearchParams(location.search).get('product');
     SELECTED = PRODUCTS.find(p => p.id === wanted) ?? null;
@@ -105,35 +120,98 @@ async function load() {
   }
 }
 
+/** What the ?status= tile narrowed this screen to, and the way back out of it. */
+const filterLabel = () => STATUS_FILTER === 'out' ? 'out with a customer' : 'at a repair shop';
+const filterNote = () => `<div class="note" style="margin-bottom:8px">
+    Showing only equipment with something ${filterLabel()}.
+    <a href="units.html">Show all equipment</a>.</div>`;
+
+// BROWSE FIRST. This screen used to show a dropdown and the words "Pick a product" — nothing at
+// all until you already knew what you wanted, on the screen whose whole job is telling you what
+// you own. Now the equipment arrives as cards, with the photograph and the counts that matter, and
+// picking one drills in. Product-first is preserved (rule 8): a card IS a product, and a sticker
+// carrying a bare "3" still belongs to nothing on its own.
 function renderPicker() {
   const host = $('#picker');
-  if (!PRODUCTS.length) { host.innerHTML = ''; return; }
-  host.innerHTML = `
-    <div class="row" style="margin-bottom:14px">
-      <label class="field grow" style="margin:0;max-width:520px">
-        <span class="field__label">Product</span>
-        <select class="field__select" id="p-select">
-          <option value="">Choose a product…</option>
-          ${PRODUCTS.map(p => `<option value="${esc(p.id)}" ${SELECTED?.id === p.id ? 'selected' : ''}>
-            ${esc(p.short_code)} — ${esc(p.brand ? p.brand + ' ' : '')}${esc(p.model_name)}</option>`).join('')}
-        </select>
-      </label>
+  // A ?status= filter that matched nothing still has to leave a way back. This returned early and
+  // wiped the note, so the only route off units.html?status=at_repair on a day when nothing is at
+  // a repair shop — the ordinary day — was the nav.
+  if (!PRODUCTS.length) { host.innerHTML = STATUS_FILTER ? filterNote() : ''; return; }
+
+  if (SELECTED) {
+    host.innerHTML = `<div class="row" style="margin-bottom:8px">
+      <button class="btn btn--sm" id="all-equipment" type="button">← All equipment</button>
+      <strong>${esc(SELECTED.short_code)} — ${esc(SELECTED.brand ? SELECTED.brand + ' ' : '')}${esc(SELECTED.model_name)}</strong>
     </div>`;
-  $('#p-select').addEventListener('change', async e => {
-    SELECTED = PRODUCTS.find(p => p.id === e.target.value) ?? null;
-    $('#bulk').hidden = !SELECTED;
-    // Keep the URL honest so a refresh, a bookmark or a shared link lands on the same product.
-    const u = new URL(location.href);
-    if (SELECTED) u.searchParams.set('product', SELECTED.id); else u.searchParams.delete('product');
-    history.replaceState(null, '', u);
-    await renderBody();
-  });
-  $('#bulk').hidden = !SELECTED;
+    $('#all-equipment').addEventListener('click', () => pick(null));
+    $('#bulk').hidden = false;
+    return;
+  }
+
+  $('#bulk').hidden = true;
+  host.innerHTML = `${STATUS_FILTER ? filterNote() : ''}
+    <label class="field" style="margin-bottom:8px">
+      <input class="field__input" id="q" type="search" placeholder="Search code, brand or model…"
+             autocapitalize="none" spellcheck="false" enterkeyhint="search">
+    </label><div id="prod-cards"></div>`;
+  const paint = () => {
+    const q = ($('#q').value || '').trim().toLowerCase();
+    const rows = PRODUCTS.filter(p => !q ||
+      [p.short_code, p.brand, p.model_name].some(v => (v || '').toLowerCase().includes(q)));
+    if (!rows.length) {
+      $('#prod-cards').className = '';
+      $('#prod-cards').innerHTML = `<p class="field__hint">Nothing matches that.</p>`;
+      return;
+    }
+    cardList($('#prod-cards'), rows, p => {
+      const st = STOCK.get(p.id);
+      const out = Number(st?.units_out ?? 0), rep = Number(st?.units_at_repair ?? 0);
+      return {
+        thumb: p.image_url ? publicUrl(p.image_url) : null,
+        code: p.short_code || '?',
+        title: esc(p.brand ? p.brand + ' ' : '') + esc(p.model_name),
+        sub: `${esc(p.short_code)} · ${esc(st?.units_active ?? 0)} piece${(st?.units_active ?? 0) === 1 ? '' : 's'}`
+           + (out ? ` · <strong>${esc(out)} out</strong>` : '')
+           + (rep ? ` · <span class="badge badge--at_repair">${esc(rep)} at repair</span>` : ''),
+        right: `<strong style="font-size:13px">${esc(st?.units_on_hand ?? 0)}</strong>
+                <span class="item__meta">on shelf</span>`,
+      };
+    }, p => pick(p));
+  };
+  $('#q').addEventListener('input', paint);
+  paint();
+}
+
+async function pick(p) {
+  SELECTED = p;
+  const u = new URL(location.href);
+  if (p) u.searchParams.set('product', p.id); else u.searchParams.delete('product');
+  history.replaceState(null, '', u);
+  renderPicker();
+  await renderBody();
 }
 
 async function renderBody() {
   const body = $('#body');
   const token = ++bodyToken;
+
+  // A ?status= filter that matched nothing is GOOD NEWS, and it was reported as the day-one state
+  // below: land on units.html?status=at_repair on a day when nothing is at a repair shop — which
+  // is most days — and the screen read "No numbered products yet" over a catalogue of seven, and
+  // offered to go and create the first one. An empty filter and an empty catalogue are opposite
+  // pieces of news and must never share a state block.
+  if (!PRODUCTS.length && STATUS_FILTER && ALL_NUMBERED.length) {
+    body.className = '';
+    body.innerHTML = stateBlock({
+      icon: '✅',
+      title: STATUS_FILTER === 'out' ? 'Nothing is out with a customer' : 'Nothing is at a repair shop',
+      body: `Every numbered piece of the ${ALL_NUMBERED.length} product${ALL_NUMBERED.length === 1 ? '' : 's'} `
+          + 'you own is accounted for somewhere else.',
+      actionLabel: 'Show all equipment', actionId: 'show-all',
+    });
+    $('#show-all').addEventListener('click', () => location.href = 'units.html');
+    return;
+  }
 
   // Day-one state: no numbered products exist at all. This is the FIRST thing this screen ever
   // shows in production, so it names what is missing and links to the thing that fixes it.
@@ -150,16 +228,8 @@ async function renderBody() {
     return;
   }
 
-  if (!SELECTED) {
-    body.className = '';
-    body.innerHTML = stateBlock({
-      icon: '👆',
-      title: 'Pick a product',
-      body: 'Pieces are always found through their product — a sticker carries a bare number like “3”, '
-          + 'which on its own belongs to nothing.',
-    });
-    return;
-  }
+  // Nothing selected is no longer a dead end: the cards above ARE the screen.
+  if (!SELECTED) { body.className = ''; body.innerHTML = ''; return; }
 
   body.className = 'skeleton';
   body.innerHTML = '<div class="skeleton__row"></div><div class="skeleton__row"></div>';

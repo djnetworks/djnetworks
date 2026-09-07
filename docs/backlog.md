@@ -429,3 +429,35 @@ PostgREST's `select *`. Worth doing only if somebody without `numbers.view` ever
 callable from a browser, so today a person is added by hand with the service key. The screen comes
 with Pass G's navigation, which re-flows to the modules a person actually holds.
 
+## From Pass G
+
+**The fifth navigation slot changes identity.** On Today, Orders, Send out, Return and Can I say
+yes it is *Return*; on Products, Equipment, Customers, Ledger, Numbers and Team it is that screen,
+because the active destination is swapped onto the bar so it can be highlighted. Every module stays
+reachable — verified, all eleven from all eleven — but the thumb learns a position that moves. The
+two alternatives are a sixth fixed slot, or highlighting **More** when the active screen lives
+inside it and leaving the bar alone.
+
+**"11 late" on Orders and "4d late" on Today are the same word for different things** — one counts
+pieces, the other counts days. Same order, two screens, one label.
+
+**Nothing lists what is queued offline.** The pill says `Offline · 1 waiting` and is an inert
+`<span>`; `db.js` has `allPending()` and `discard()` with no screen behind them. `flush()` stops at
+the first failure with a single transient toast, so a permanently-failing write shows as a pill
+that never clears and cannot be inspected or dropped.
+
+**Five copies of `friendly()`.** orders, products, units, dispatch and return each translate
+Postgres errors their own way and only one calls `networkMessage()`. It belongs in `app.js`; it is
+a five-file refactor and was not worth doing inside this pass.
+
+**`label > button` at `dispatch.html`.** The "All N" button on a counted-stock line is a labelable
+descendant of a `<label>` that is not its control — an invalid content model. Chrome behaves
+correctly (focus stays, the quantity sets, no keyboard appears); iOS Safari is the device that
+matters and was not testable here. The fix is moving the button out of the label.
+
+**The signed-in write walk from Pass G is unverified.** The dev session's refresh token was spent
+during the review and the only way back in is a password, which is not something to automate. The
+database half is verified — idempotency both ways, permissions both ways per table, the fixture
+assertions — and the DOM half is verified against the real stylesheet. What is not verified is a
+human tapping "Send these out" and "Record returns" end to end on this build.
+

@@ -264,6 +264,39 @@ match to ±0.01, and 38 further pairs the CSS renders but the file does not clai
 skeleton shimmer was 1.036:1 and invisible — now 1.22:1 — and `--line` is 1.11:1 against the ground
 where WCAG 1.4.11 wants 3.0, which is a token decision and not one to take unilaterally.
 
+## Density, measured
+
+Pixels from the top of a 375px viewport to the first row of real content — the cost of chrome,
+heading and blurb before anything useful appears. Measured before and after Pass G.
+
+| screen | before | after | |
+|---|---|---|---|
+| Today | 372 | **211** | −43% |
+| Orders | 336 | **217** | −35% |
+| Can I say yes | 512 | **407** | −21% |
+| Send out | 176 | **141** | −20% |
+| Return | 152 | **121** | −20% |
+| Customers | 198 | **165** | −17% |
+| Ledger | 254 | **213** | −16% |
+| Products | 254 | **217** | −15% |
+| Numbers | 555 | **484** | −13% |
+| Equipment | *nothing rendered* | **173** | a dead end became a list |
+
+Equipment is the one that matters most and has no percentage: it showed a dropdown and the words
+"Pick a product" until you already knew what you wanted, on the screen whose job is telling you
+what you own.
+
+Where the height went: card padding 16px → 11px, list gaps 10px → 6px, row padding 12px → 9px,
+`h1` 22px → 19px, field margins 14px → 10px, and the top bar from 59px of scrolling tab strip to
+40px of identity. On Today the four count tiles moved below the three date sections, and on Orders
+the day-count convention moved from the subtitle to the field it governs.
+
+**Nothing under 44px moved.** `.nav__item` is 63×52, `.btn` 44, `.card-action` 44 — it was 36 after
+the first cut and was put back. The reference chip is the exception and it is deliberate: it stays
+21px tall because it is subtext, and its TAP AREA is 44px, extended past the text with a
+pseudo-element. The thing you see and the thing you hit are allowed to differ; the thing you hit
+is the one that has to be 44.
+
 ## What a real Brand Kit would replace
 
 `web/tokens.css`, and the three derived values in it that exist only because the bible's semantic

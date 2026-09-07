@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Team — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
+<meta name="theme-color" content="#2B7379">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
+<link rel="stylesheet" href="style.css?v=2026-09-08-6">
+<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
+<script src="boot.js?v=2026-09-08-6" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+
+<script type="module">
+import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, toast, openSheet,
+         initOffline, revealActiveTab, loadPermissions, can, cardList, guardedWrite }
+  from './app.js?v=2026-09-08-6';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-6';
+
+$('#chrome').innerHTML = chrome('team.html');
+revealActiveTab();
+initOffline();
+
+// ---------------------------------------------------------------------------
+// THE TEAM SCREEN.
+//
+// MODULES, NOT KEYS. The database holds eleven granular permissions because that is the right
+// granularity for a policy; a person setting somebody up should not be asked eleven questions.
+// Nine toggles cover all eleven, and the two that bundle are the two that always travel together.
+//
+// The one place granularity survives is money: "see it" and "post to it" are separate, because a
+// bookkeeper who reconciles and an owner who bills are different jobs and the whole reason
+// ledger.view exists as its own key.
+//
+// What this screen CANNOT do, and why: it cannot create an account. That needs the auth admin API
+// and the service key, and a browser must never hold one — a key that can create an account can
+// create an admin. So an account is made once in the Supabase dashboard, and this screen decides
+// what it may do. Said on the screen rather than discovered.
+// ---------------------------------------------------------------------------
+
+const MODULES = [
+  { id: 'jobs',      label: 'Jobs',              keys: ['orders.write'],
+    hint: 'Create and change orders, lines and charges.' },
+  { id: 'van',       label: 'Send out & return', keys: ['sendout.write', 'returns.write'],
+    hint: 'Record what leaves and what comes back. The everyday job at the van.' },
+  { id: 'undo',      label: 'Undo a movement',   keys: ['movement.correct'],
+    hint: 'Take back a dispatch or a return recorded in error. It never deletes anything — it '
+        + 'writes a correction that says why — but it changes what every screen believes is on '
+        + 'the shelf. Give it to whoever answers for the count.' },
+  { id: 'catalogue', label: 'Catalogue',         keys: ['products.write', 'equipment.write'],
+    hint: 'Products, photos, pieces, locations, vendors and repairs.' },
+  { id: 'customers', label: 'Customers',         keys: ['customers.write'],
+    hint: 'Customer records and portal codes.' },
+  { id: 'seemoney',  label: 'See money',         keys: ['ledger.view'],
+    hint: 'Balances and the ledger. Without it, money is blank rather than zero everywhere.' },
+  { id: 'postmoney', label: 'Post to the ledger', keys: ['ledger.write'],
+    hint: 'Record payments, deposits and charges. Implies seeing money — posting to a ledger you '
+        + 'cannot read is a state nobody means to create.' },
+  { id: 'reports',   label: 'Reports',           keys: ['numbers.view'],
+    hint: 'What each product earns and how hard it works.' },
+  { id: 'team',      label: 'Manage the team',   keys: ['admin.team'],
+    hint: 'Add people and decide what they may do. There must always be at least one.' },
+];
+
+let MEMBERS = [];
+
+requireSession(async () => {
+  await loadPermissions();
+  if (!can('admin.team')) {
+    $('#app').innerHTML = `<h1>Team</h1>` + stateBlock({
+      icon: '🔒', title: 'Only somebody who manages the team can open this',
+      body: 'Adding people and deciding what they may do needs the "manage the team" permission. '
+          + 'This account does not have it.',
+    });
+    return;
+  }
+  await boot();
+});
+
+async function boot() {
+  $('#app').innerHTML = `
+    <div class="row row--between">
+      <div><h1>Team</h1><p class="sub">Who has an account, and what each of them may do.</p></div>
+      <button class="btn btn--primary" id="add" type="button">Add someone</button>
+    </div>
+    <div id="warn"></div>
+    <div id="list" class="card-list"><div class="skeleton__row"></div></div>
+    <p class="field__hint" style="margin-top:10px">
+      A change takes effect on that person's next sign-in or page reload — the navigation is built
+      once, at login, from the modules they hold. Ask them to reload if they are already in.
+    </p>`;
+  $('#add').addEventListener('click', () => openMember(null));
+  checkSignupIsClosed();
+  await load();
+}
+
+// The same warning as Today, because this is the screen the person who can act on it is already
+// looking at. Config that lives outside the repo gets forgotten unless the app keeps asking.
+async function checkSignupIsClosed() {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_PUBLISHABLE_KEY } });
+    if (!r.ok) return;
+    const s = await r.json();
+    if (s.disable_signup === false) {
+      $('#warn').innerHTML = `<div class="note note--bad" style="margin-bottom:8px">
+        <strong>Anyone can still create an account on this project.</strong> They would read nothing
+        and write nothing — every table checks this list — but people should arrive by invitation
+        only. Supabase dashboard → Authentication → Sign In / Providers → Email → turn off
+        <em>Allow new users to sign up</em>.</div>`;
+    }
+  } catch { /* offline: not worth an error on this screen */ }
+}
+
+async function load() {
+  try {
+    const { data, error } = await sb.from('operator')
+      .select('user_id,display_name,permissions,active,note,created_at').order('created_at');
+    if (error) throw error;
+    MEMBERS = data ?? [];
+    render();
+  } catch (err) {
+    $('#list').className = '';
+    $('#list').innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', load);
+  }
+}
+
+const held = (perms, m) => m.keys.every(k => perms?.[k] === true);
+
+function render() {
+  const admins = MEMBERS.filter(m => m.active && m.permissions?.['admin.team'] === true).length;
+  cardList($('#list'), MEMBERS, m => {
+    const mods = MODULES.filter(x => held(m.permissions, x));
+    return {
+      title: esc(m.display_name || '(no name)')
+           + (m.active ? '' : ' <span class="badge badge--muted">inactive</span>'),
+      sub: mods.length
+        ? mods.map(x => `<span class="badge">${esc(x.label)}</span>`).join(' ')
+        : '<span class="item__meta">no modules yet — they can sign in and see nothing</span>',
+      right: m.permissions?.['admin.team'] === true
+        ? '<span class="badge badge--unit">admin</span>' : '',
+    };
+  }, m => openMember(m));
+
+  if (admins === 1) {
+    $('#list').insertAdjacentHTML('afterend',
+      `<p class="field__hint" id="last-admin">One person manages the team. Give "Manage the team" to
+       somebody else before taking it away from them — the system refuses to leave nobody able to
+       grant anything.</p>`);
+  }
+}
+
+function openMember(m) {
+  const isNew = !m;
+  const perms = { ...(m?.permissions ?? {}) };
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="t-title" tabindex="-1">
+      <div class="sheet__head">
+        <h2 class="sheet__title" id="t-title">${isNew ? 'Add someone' : esc(m.display_name || 'Member')}</h2>
+        <button class="btn btn--ghost btn--sm" data-sheet-close type="button">Close</button>
+      </div>
+
+      ${isNew ? `<div class="note" style="margin-bottom:10px">
+        <strong>This screen cannot create an account.</strong> That needs the service key, and a key
+        that can create an account can create an admin — so a browser never holds one. Create the
+        person in the Supabase dashboard under <em>Authentication → Users</em> with Auto Confirm
+        ticked, copy their user id, and paste it here.</div>
+        <label class="field"><span class="field__label">User id *</span>
+          <input class="field__input" id="t-uid" placeholder="00000000-0000-0000-0000-000000000000"
+                 spellcheck="false" autocapitalize="none"></label>` : ''}
+
+      <label class="field"><span class="field__label">Name *</span>
+        <input class="field__input" id="t-name" value="${esc(m?.display_name ?? '')}"></label>
+
+      <div class="card card--sunk">
+        <strong>What they may do</strong>
+        <p class="field__hint" style="margin:2px 0 8px">Nine toggles, eleven permissions underneath.
+          Nobody should have to tick eleven boxes.</p>
+        ${MODULES.map(x => `
+          <label class="field field--inline" style="align-items:flex-start;margin-bottom:8px">
+            <input type="checkbox" class="t-mod" data-id="${esc(x.id)}" ${held(perms, x) ? 'checked' : ''}>
+            <span><strong>${esc(x.label)}</strong>
+              <span class="field__hint" style="margin-top:1px">${esc(x.hint)}</span></span>
+          </label>`).join('')}
+      </div>
+
+      ${!isNew ? `<label class="field field--inline">
+        <input type="checkbox" id="t-active" ${m.active ? 'checked' : ''}>
+        <span>Active. Turn this off instead of deleting — the movements and ledger entries this
+          person wrote keep a valid author.</span></label>` : ''}
+
+      <div class="sheet__foot">
+        <button class="btn" data-sheet-close type="button">Cancel</button>
+        <button class="btn btn--primary" id="t-save" type="button">${isNew ? 'Add them' : 'Save'}</button>
+      </div>
+    </div>
+  </div>`);
+
+  $('#t-save').addEventListener('click', () => guardedWrite($('#t-save'), 'Saving…', async () => {
+    const name = $('#t-name').value.trim();
+    if (!name) { toast('A name, so the list is readable.', 'error'); return; }
+
+    // Toggles back into keys. The database never sees a module — it sees the eleven.
+    const next = {};
+    for (const el of $$('.t-mod')) {
+      if (!el.checked) continue;
+      const mod = MODULES.find(x => x.id === el.dataset.id);
+      for (const k of mod.keys) next[k] = true;
+    }
+
+    try {
+      if (isNew) {
+        const uid = $('#t-uid').value.trim();
+        if (!uid) { toast('Paste the user id from the dashboard.', 'error'); return; }
+        const { error } = await sb.rpc('fn_team_add',
+          { p_user_id: uid, p_display_name: name, p_permissions: next });
+        if (error) throw error;
+        toast('Added. They see the new modules after they reload.');
+      } else {
+        const { error } = await sb.rpc('fn_team_set_permissions', {
+          p_user_id: m.user_id, p_permissions: next,
+          p_display_name: name, p_active: $('#t-active').checked,
+        });
+        if (error) throw error;
+        toast('Saved. They see the change after they reload.');
+      }
+      sheet.close();
+      await load();
+    } catch (err) {
+      // 0021's and 0023's refusals are written to be read by a person — the last-admin guard in
+      // particular. Show them as they are rather than replacing them with something vaguer.
+      toast(err?.message || 'Could not save that.', 'error');
+    }
+  }));
+}
+</script>
+</body>
+</html>

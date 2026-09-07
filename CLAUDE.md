@@ -81,6 +81,19 @@ These are not style preferences. Each one exists because breaking it has already
     They were one design flaw, not four — `unit` was built first and `pool` was bolted on beside it.
     Read pooled quantities through `v_pool_stock` and never re-derive them somewhere else.
 
+14. **A gated view returns zero ROWS, not zero rupees.** Any aggregate over a permission-gated
+    table must fail loudly rather than return a plausible number. `v_customer_balance` left-joins
+    `ledger_entry`, so letting RLS hide those rows would have shown every customer owing ₹0.00 —
+    and every customer owing nothing looks like good news, so nobody investigates it. Zero rows is
+    a refusal a screen can recognise and explain; zero rupees is a lie with a decimal point. This is
+    why `0021`'s gated views are wrappers carrying an explicit permission test.
+
+15. **A fallback that assumes one cause hides every other cause.** `dispatch.html` reported a code
+    bug as "no signal" for a whole commit, because its catch assumed offline and logged nothing —
+    and the bug it was hiding was a wrong quantity leaving the godown. A fallback logs the real
+    error and only claims a cause it has evidence for: if `navigator.onLine` is true, it is not the
+    signal.
+
 ---
 
 ## Who applies schema changes

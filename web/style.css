@@ -25,72 +25,82 @@ body {
    own colour at higher specificity, so this reaches only the links that had none. */
 a { color: var(--accent); }
 
-/* ---------- top bar ---------- */
+/* ---------- top bar ----------
+   Slim, and it carries identity and connection only. Everything you NAVIGATE to is at the bottom
+   where a thumb is. This bar was 59px of tab strip with five destinations scrolled off the right
+   edge and no affordance saying so; it is 40px now and holds nothing you have to reach for. */
 .topbar {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px; min-height: 40px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 20;
 }
-.topbar__brand { font-weight: 700; color: var(--ink); text-decoration: none; }
-/* Six tabs do not fit 375px. Wrapping would push the sticky bar back to three rows and a fifth
-   of the screen — the thing that was just fixed — so the strip scrolls sideways instead and the
-   current tab is scrolled into view on load. */
-.topbar__nav {
-  display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none;
-  -webkit-overflow-scrolling: touch; flex: 1 1 auto; min-width: 0;
-}
-.topbar__nav::-webkit-scrollbar { display: none; }
-.topbar__tab { flex: none; white-space: nowrap; }
-.topbar__tab {
-  padding: 8px 12px; border-radius: var(--radius); text-decoration: none;
-  color: var(--ink-soft); font-weight: 600; min-height: var(--tap);
-  display: inline-flex; align-items: center;
-}
-.topbar__tab.is-active { background: var(--accent-soft); color: var(--accent); }
-.topbar__who { margin-left: auto; color: var(--ink-faint); font-size: 13px; }
-/* Scoped to the bar, not applied to every button: a two-word label wrapping inside Sign out
-   made the sticky header 24px taller on every screen, and the bar is the one element that is
-   on screen all the time. A long label elsewhere is still allowed to wrap rather than push the
-   page sideways. */
+.topbar__brand { --wm: 16px; text-decoration: none; }
+.topbar__who { margin-left: auto; color: var(--ink-faint); font-size: 12px; }
 .topbar .btn { white-space: nowrap; }
-/* The portal bar has no tab strip to fill the middle, so without this the wordmark and the
-   Sign out button sat shoulder to shoulder in the top-left corner. */
-.topbar--portal .topbar__brand { margin-right: auto; }
-
-/* On a phone the bar wrapped to THREE rows once signed in — measured at 159px on a 375x812
-   screen, a fifth of the display, sticky, on every screen. The brand is a link to Home and the
-   Home tab already goes there; the email address identifies the only user this system has to
-   himself. Both are decoration on a phone, and the tabs are the function. Dropping them puts the
-   whole bar back on one row. */
+/* The operator's name is what pushed Sign out to the right edge, and it is hidden on a phone — so
+   Sign out came to rest 8px from the wordmark, which is a link to Today. Measured at 390px: brand
+   ends at 147, Sign out starts at 155, and 154px of bar to the right of it was empty. A thumb
+   aiming at home and landing on Sign out costs a re-login standing at the van. */
 @media (max-width: 620px) {
-  /* nowrap, and this is the whole reason the bar is one row at 375px. A wrapping flex line
-     BREAKS before it SHRINKS, so the tab strip — whose flex-basis is its full content width —
-     pushed Sign out onto a second row even though the strip is scrollable and min-width:0.
-     Measured on a 375x812 screen: two rows before, one after. */
-  .topbar { padding: 6px 10px; gap: 6px; flex-wrap: nowrap; }
-  /* The wordmark is hidden only where the tabs need the room. The customer portal's bar carries
-     no tabs at all, so hiding it there bought no space and left a customer looking at an empty
-     white strip above their own ledger — the one page where the name of the business is the whole
-     point. Who-you-are stays hidden on both: it is the operator's own email on one, and on the
-     other the customer's name is repeated one line below in the page itself. */
-  .topbar:not(.topbar--portal) .topbar__brand { display: none; }
   .topbar__who { display: none; }
-  .topbar__nav { flex: 1 1 auto; }
-  .topbar__tab { padding: 8px 10px; }
+  .topbar #signout { margin-left: auto; }
+}
+
+/* ---------- bottom navigation ----------
+   FIXED GRID COLUMNS, and the grid is sized to what this person can actually reach: the template
+   is set from --nav-slots at render time, so a hidden module closes up instead of leaving a hole.
+   A gap where a destination used to be reads as a broken app, and worse, the thumb learns the
+   wrong position. Maitri's lesson, and the reason the nav is re-flowed at login rather than
+   rendered once for everybody and hidden with CSS.
+
+   The safe-area inset is not decoration: on a phone with a home indicator the bottom 34px is not
+   tappable, and without it the whole nav sits under the gesture bar. */
+.nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: grid; grid-template-columns: repeat(var(--nav-slots, 5), 1fr);
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* Before permissions are known: the same 52px of reserved space, and nothing in it to aim at.
+   See navMarkup() — a guessed bar re-flows and moves the target under the thumb. */
+.nav--pending { min-height: 52px; }
+.nav__item {
+  display: grid; place-items: center; gap: 1px;
+  min-height: 52px; padding: 6px 2px;
+  border: 0; background: transparent; font: inherit; cursor: pointer;
+  color: var(--ink-faint); text-decoration: none;
+}
+.nav__icon { font-size: 17px; line-height: 1; }
+.nav__label { font-size: 10px; font-weight: 600; letter-spacing: -.01em; }
+.nav__item.is-active { color: var(--accent); }
+.nav__item.is-active .nav__label { font-weight: 700; }
+.nav__item:active { background: var(--accent-soft); }
+.nav__item:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+/* Everything past the fifth destination. One tap, and the daily five never move. */
+.nav-more { position: fixed; inset: 0; background: rgba(51, 39, 27, .45); z-index: 29; display: grid; place-items: end stretch; }
+.nav-more__panel {
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding: 10px 10px calc(62px + env(safe-area-inset-bottom, 0px));
+  display: grid; gap: 6px; max-height: 70vh; overflow: auto;
 }
 
 /* ---------- layout ---------- */
-.wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
-.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+/* padding-bottom clears the fixed nav; without it the last row of every list is unreachable. */
+.wrap { max-width: 1100px; margin: 0 auto; padding: 10px 12px calc(72px + env(safe-area-inset-bottom, 0px)); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .row--between { justify-content: space-between; }
 .grow { flex: 1 1 220px; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-.sub { color: var(--ink-soft); margin: 0 0 16px; }
+h1 { font-size: 19px; margin: 0 0 2px; letter-spacing: -.02em; }
+h2 { font-size: 15px; margin: 0 0 6px; }
+.sub { color: var(--ink-soft); font-size: 13px; margin: 0 0 8px; }
 
 /* ---------- buttons ---------- */
 .btn {
-  min-height: var(--tap); padding: 10px 16px; border-radius: var(--radius);
-  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  min-height: var(--tap); padding: 8px 14px; border-radius: var(--radius);
+  /* --edge, not --line: a button is a thing you aim at, and --line is 1.11:1 against the page. */
+  border: 1px solid var(--edge); background: var(--surface); color: var(--ink);
   font: inherit; font-weight: 600; cursor: pointer;
 }
 .btn:hover { border-color: var(--ink-faint); }
@@ -128,38 +138,42 @@ a.btn, a.item { text-decoration: none; }
 .file-btn.is-busy input { cursor: progress; }
 
 /* ---------- fields ---------- */
-.field { display: block; margin-bottom: 14px; }
-.field__label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+.field { display: block; margin-bottom: 10px; }
+.field__label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 2px; }
 .field__hint { display: block; font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
 .field__input, .field__select, .field__area {
-  width: 100%; min-height: var(--tap); padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: var(--radius);
+  width: 100%; min-height: var(--tap); padding: 8px 10px;
+  /* --edge. A field is the thing most often aimed at one-handed in sunlight, and at 1.11:1 its
+     boundary was effectively invisible — you found the box by finding the label above it. */
+  border: 1px solid var(--edge); border-radius: var(--radius);
   font: inherit; background: var(--surface); color: var(--ink);
 }
 .field__area { min-height: 80px; resize: vertical; }
 .field__input:focus, .field__select:focus, .field__area:focus {
   outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent);
 }
-.field--inline { display: flex; align-items: center; gap: 8px; }
+/* The label is the tap target, not the 20px box: it was 26px tall, and "Can be hired out" and
+   "Active in the catalogue" are the two flags that decide whether a product is offered at all. */
+.field--inline { display: flex; align-items: center; gap: 8px; min-height: var(--tap); }
 .field--inline input[type=checkbox] { width: 20px; height: 20px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
 
 /* ---------- cards / list ---------- */
 .card {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius-card); padding: 16px; margin-bottom: 14px;
+  border-radius: var(--radius-card); padding: 11px 12px; margin-bottom: 8px;
   box-shadow: var(--shadow-card);
 }
 /* A card nested inside a sheet — the ID-document block, the portal-code block, an order line.
    It was six copies of style="background:#fbfcfd", a cool grey that read as a smudge once the
    ground turned warm. One class, one token. */
 .card--sunk { background: var(--sunk); box-shadow: none; }
-.list { display: grid; gap: 10px; }
+.list { display: grid; gap: 6px; }
 .item {
   display: flex; gap: 12px; align-items: center; text-align: left; width: 100%;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card);
-  padding: 12px; cursor: pointer; font: inherit; color: inherit; min-height: var(--tap);
+  padding: 9px 10px; cursor: pointer; font: inherit; color: inherit; min-height: var(--tap);
 }
 .item:hover { border-color: var(--accent); }
 .item__thumb {
@@ -172,7 +186,7 @@ a.btn, a.item { text-decoration: none; }
 }
 .item__main { flex: 1 1 auto; min-width: 0; }
 .item__title { font-weight: 600; }
-.item__meta { color: var(--ink-soft); font-size: 13px; }
+.item__meta { color: var(--ink-soft); font-size: 12px; line-height: 1.35; }
 .item__right { text-align: right; flex: none; color: var(--ink-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
 
 /* Visible to a screen reader, not to an eye. Used for labels on controls whose purpose is obvious
@@ -203,7 +217,7 @@ a.btn, a.item { text-decoration: none; }
      one for money. */
   .stats--count { grid-template-columns: 1fr 1fr; }
 }
-.stats .card { margin: 0; padding: 10px 12px; }
+.stats .card { margin: 0; padding: 8px 10px; }
 .stat__n { overflow-wrap: anywhere;  font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .stat__n--bad { color: var(--bad); }
 
@@ -241,7 +255,7 @@ a.btn, a.item { text-decoration: none; }
 /* ---------- state blocks (loading / empty / error) ---------- */
 .state {
   background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius-card);
-  padding: 40px 24px; text-align: center;
+  padding: 24px 16px; text-align: center;
 }
 .state--error { border-color: var(--bad); background: var(--bad-bg); }
 .state__icon { font-size: 28px; margin-bottom: 8px; }
@@ -349,11 +363,11 @@ a.btn, a.item { text-decoration: none; }
 /* The "Make primary" button used to be overlaid on the image at 84x26 — a quarter of the height
    a thumb needs. Stacked below the photo instead, at full target height. */
 .thumb { display: grid; gap: 4px; width: 96px; }
-.thumb img { width: 96px; height: 96px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--line); background: var(--tint-neutral); }
+.thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--edge); background: var(--tint-neutral); }
 .thumb.is-primary img { border: 2px solid var(--accent); }
 .thumb__btn { width: 100%; font-size: 12px; padding: 4px 6px; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.note { font-size: 13px; color: var(--teal-deep); background: var(--foam); padding: 10px 12px; border-radius: var(--radius); }
+.note { font-size: 12.5px; line-height: 1.45; color: var(--teal-deep); background: var(--foam); padding: 8px 10px; border-radius: var(--radius); }
 .note--warn { background: var(--tint-amber); color: var(--warn); }
 .note--bad { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
 
@@ -410,10 +424,10 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 /* ---------- dispatch piece grid ----------
    The whole point of the dispatch screen: tap 6 out of 8, never search 300. Big square targets,
    thumb-sized, legible at arm's length in a dark godown. */
-.pieces { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.pieces { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .piece {
-  min-width: 72px; min-height: 72px; padding: 8px;
-  border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  min-width: 66px; min-height: 66px; padding: 6px;
+  border: 2px solid var(--edge); border-radius: var(--radius); background: var(--surface);
   font: inherit; cursor: pointer; display: grid; place-items: center; gap: 2px;
 }
 .piece__no { font-size: 26px; font-weight: 700; line-height: 1; }
@@ -426,12 +440,24 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 
 /* ---------- sticky action bar ----------
    The primary action stays under the thumb. On the first build of the intake sheet it sat 219px
-   below the fold, under five optional fields. */
+   below the fold, under five optional fields.
+
+   IT STICKS ABOVE THE NAV, NOT AT bottom: 0. The nav is position: fixed at z-index 30 and this bar
+   is z-index 10 in a different stacking context, so `bottom: 0` parked the bar UNDER it: measured
+   at 390x844, "Record returns" sat at y 797-841 with the nav starting at 800, and
+   elementFromPoint at the button's own centre returned .nav__item. Tapping the primary action
+   navigated away instead of recording the return, on both send-out and return. The offset is the
+   nav's 52px min-height plus the same safe-area inset the nav itself adds. */
+/* The bleed is 12, not 16. It bleeds sideways to reach the edge of whatever contains it, and both
+   containers it is used in — .wrap on send-out, return and the enquiry screen — carry 12px of
+   horizontal padding since the density pass took .card down to 11px 12px. At -16 it hung 4px off
+   BOTH edges of a 390px screen, so the document scrolled sideways (scrollWidth 394 against
+   clientWidth 390) and dragged the fixed nav out with it. */
 .dispatch-bar {
-  position: sticky; bottom: 0; background: var(--surface);
-  border-top: 1px solid var(--line); padding: 12px 16px;
-  margin: 16px -16px 0; z-index: 10;
-  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  position: sticky; bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--line); padding: 12px;
+  margin: 16px -12px 0; z-index: 10;
 }
 .dispatch-bar .field__hint { margin: 0 0 8px; }
 /* The over-selection message shares the sticky bar with the button it has just disabled, so it
@@ -439,15 +465,27 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    adjacent reason is the thing that makes an operator tap twice and then give up. */
 .dispatch-bar__warn { color: var(--bad); }
 
-/* ---------- return rows ---------- */
+/* ---------- return rows ----------
+   TICKING A PIECE BACK IN IS THE MOST REPEATED ACTION IN THIS APP, done one-handed with a box in
+   the other hand. The target was the 26px checkbox or an inline <label> whose box was the 18px
+   line of text around "SPK-18 · piece 3" — measured 214x18. The row's own 12px of padding was
+   dead space either side of it.
+
+   So the padding moves off the row and onto the two children, which makes the label a BLOCK that
+   fills the row: 295x42 instead of 214x18, with the row height, the list height and the position
+   of every visible glyph unchanged (measured 60px row / 119px list, before and after). 42 and not
+   44 because 18px of text plus the row's existing 24px budget is 42, and buying the last two
+   pixels would push every row down; the target more than doubled without moving anything. */
 .ret-row {
-  display: flex; gap: 12px; align-items: flex-start; padding: 12px 0;
+  display: flex; gap: 12px; align-items: flex-start; padding: 0;
   border-bottom: 1px solid var(--line);
 }
 .ret-row:last-child { border-bottom: none; }
-.ret-row__tick { flex: none; }
+.ret-row__tick { flex: none; padding: 12px 0; }
 .ret-row__tick input { width: 26px; height: 26px; }
-.ret-row__main { flex: 1 1 auto; min-width: 0; }
+.ret-row__main { flex: 1 1 auto; min-width: 0; padding-bottom: 12px; }
+/* The whole line, not the words. `for` already points at the checkbox; this gives it a box. */
+.ret-row__main > label { display: block; padding: 12px 0 0; }
 .ret-row__no { font-size: 20px; font-weight: 700; }
 .ret-detail { margin-top: 10px; padding-left: 4px; border-left: 2px solid var(--line); padding-left: 12px; }
 
@@ -525,3 +563,103 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 }
 .btn--wa::before { content: "\1F4AC"; margin-right: 6px; }
 .btn--wa:hover { border-color: #0B5F55; }
+
+/* ---------- TAPPABLE: three rules, fixed here rather than discovered per screen ----------
+
+   1 · NESTED ACTIONS. A card opens the detail. Anything else inside it is a SEPARATE control and
+       must look like one and stop the event. Without both halves, one tap does different things
+       depending on which pixel it landed on, which is how an operator learns not to trust a
+       screen. `.card-action` is the marker; the JS half is stopPropagation in app.js's cardList().
+
+   2 · AFFORDANCE. If every surface is live, nothing reads as live. A tappable card gets a border
+       you can see, a pressed state and a cursor; a panel that is merely a container gets none of
+       them and must never be given a click handler.
+
+   3 · DOUBLE-TAP WRITES. Every write control shows a pressed state, disables itself in flight and
+       carries an idempotency key (0022). The visual half stops the second tap being tempting; the
+       key stops it counting when it happens anyway — and the offline queue makes it likelier,
+       because a replayed write is a second arrival by construction. */
+
+.tappable {
+  cursor: pointer;
+  border: 1px solid var(--edge);
+  transition: transform .06s ease, background-color .06s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.tappable:active { transform: scale(.985); background: var(--accent-soft); }
+.tappable:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* A container is not a control. Stated so that adding a handler to one is a visible mistake. */
+.card:not(.tappable) { cursor: default; }
+
+/* An inline action inside a card. It has to READ as a separate thing or rule 1 is only half done. */
+.card-action {
+  flex: none; align-self: center;
+  /* 44, like everything else. It was 36 after the density pass — small enough to look tidy in a
+     card and too small to hit one-handed, which is the trade this project does not make. */
+  min-height: var(--tap); padding: 5px 10px; border-radius: var(--radius);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--edge); background: var(--surface); color: var(--accent);
+  font: inherit; font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap;
+  cursor: pointer;
+}
+.card-action:active { background: var(--accent-soft); }
+.card-action:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* In flight. Not merely disabled — disabled alone looks like "this was never available". */
+.btn.is-busy, .card-action.is-busy { opacity: .7; cursor: progress; pointer-events: none; }
+.btn:active:not(:disabled) { transform: scale(.98); }
+
+/* ---------- cards ----------
+   Browse-first: a list arrives full and search filters it. Each card carries WHAT IT IS and WHAT
+   NEEDS ATTENTION, and nothing else — the detail is one tap away and does not need pre-loading
+   into the row. */
+.card-list { display: grid; gap: 6px; }
+.card-row {
+  display: flex; align-items: flex-start; gap: 9px;
+  background: var(--surface); border-radius: var(--radius-card);
+  padding: 9px 10px; text-align: left; width: 100%; font: inherit; color: inherit;
+  box-shadow: var(--shadow-card);
+}
+.card-row__thumb {
+  position: relative; flex: none; width: 40px; height: 40px;
+  border-radius: var(--radius); overflow: hidden; background: var(--tint-neutral);
+  display: grid; place-items: center;
+}
+.card-row__thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.card-row__code {
+  font-size: 9px; font-weight: 700; color: var(--ink-faint); text-align: center;
+  padding: 0 2px; overflow-wrap: anywhere; line-height: 1.05;
+}
+.card-row__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
+.card-row__title { font-weight: 700; font-size: 14.5px; line-height: 1.25; }
+.card-row__sub { color: var(--ink-soft); font-size: 12px; line-height: 1.35; }
+/* The order number lives here: demoted to subtext, and tappable to copy, because its whole job is
+   being pasted into a WhatsApp message. */
+/* The reference chip stays visually small — it is subtext, and making it 44px tall would put a
+   band of whitespace under every card. The TAP AREA is 44px instead, extended past the text with a
+   pseudo-element. The thing you see and the thing you hit are allowed to differ; the thing you hit
+   is the one that has to be 44. */
+.card-row__ref {
+  position: relative;
+  /* justify-self, because this is a GRID ITEM inside .card-row__main and a grid item stretches.
+     inline-flex is blockified to flex there, so the button's box ran the full width of the card
+     even though its text did not: measured on Orders at 390px, the invisible hit area owned
+     x 18-308 of a 12-378 card and 44px of its 77px height — 46% of every card copied the order
+     number instead of opening the order, and the only feedback was the word COPY changing. The
+     box now hugs its own text, and the ::before below is what makes that text a 44px target. */
+  justify-self: start;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums;
+  background: none; border: 0; padding: 2px 0; font-family: inherit; cursor: pointer;
+  min-height: auto;
+}
+.card-row__ref::before {
+  content: ""; position: absolute; left: -6px; right: -6px;
+  top: 50%; height: 44px; transform: translateY(-50%);
+}
+.card-row__ref::after { content: "copy"; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+.card-row__ref.is-copied::after { content: "copied"; color: var(--ok); opacity: 1; }
+.card-row__right { flex: none; display: grid; gap: 4px; justify-items: end; text-align: right; }
+
+/* Empty and loading, at card density. */
+.card-list .skeleton__row { height: 58px; }

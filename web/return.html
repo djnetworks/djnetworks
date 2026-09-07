@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Return — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
-<link rel="stylesheet" href="style.css?v=2026-09-08-3">
-<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
-<script src="boot.js?v=2026-09-08-3" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
+<link rel="stylesheet" href="style.css?v=2026-09-08-6">
+<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
+<script src="boot.js?v=2026-09-08-6" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -28,8 +28,9 @@
 
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
-         errorBlock, toast, initOffline, registerQueueHandlers, revealActiveTab, waLink, waMessage }
-  from './app.js?v=2026-09-08-3';
+         errorBlock, toast, initOffline, registerQueueHandlers, revealActiveTab, waLink, waMessage,
+         newRequestId, guardedWrite, cardList, loadPermissions, can, networkMessage }
+  from './app.js?v=2026-09-08-6';
 
 $('#chrome').innerHTML = chrome('return.html');
 revealActiveTab();
@@ -177,7 +178,11 @@ function render() {
       <div><h1>${esc(ORDER.order_no)}</h1>
         <p class="sub">${esc(cust)} · due back ${esc(fmtDate(ORDER.expected_return_date))}
           ${overdue ? '<span class="badge badge--out">overdue</span>' : ''}</p></div>
-      <a class="btn btn--ghost btn--sm" href="orders.html">Order</a>
+      <!-- THIS ORDER, not the list of orders. It said "Order" and went to orders.html, so the one
+           question asked from this screen — what was agreed on this job — landed on six cards to
+           search through, and coming back lost every tick. orders.html?order=<id> opens that
+           order's sheet directly; it is the same deep link the Today cards use. -->
+      <a class="btn btn--ghost btn--sm" href="orders.html?order=${esc(ORDER.id)}">Open the order</a>
     </div>
     <div class="card">
       <div class="grid2">
@@ -519,7 +524,13 @@ async function doReturn() {
   const when = $('#f-date').value || todayLocal();
   if (!locId) { toast('Pick where it is coming back to.', 'error'); return; }
 
+  // ONE id for the whole tap, shared by every movement this return writes — returns, write-offs
+  // and all. Re-sending the batch collides on the first row and the whole INSERT rolls back, which
+  // is right: recording six pieces back twice is the same six pieces, not twelve. Carried
+  // unchanged into the offline queue, never regenerated on replay (0022).
+  const requestId = newRequestId();
   const base = {
+    request_id: requestId,
     order_id: orderId, from_kind: 'customer', from_id: CUSTOMER.id, moved_on: when,
   };
   const movements = [], lost = [], charges = [];
@@ -585,10 +596,36 @@ async function doReturn() {
       await store.enqueue('return_gear', payload, label);
       toast('Connection dropped — held on this phone and sent when the signal returns.');
       TICK.clear(); await load();
-    } else { toast(msg, 'error'); }
+    } else { toast(friendly(err), 'error'); }
   } finally {
     btn.disabled = false; btn.textContent = 'Record returns';
   }
+}
+
+/**
+ * A refusal in words. Same helper as dispatch.html, and for the same reason: this toasted
+ * err.message raw, so a CHECK constraint reached the operator as
+ *   new row for relation "movement" violates check constraint "movement_qty_positive"
+ * and 0022's idempotency index reached him as a red "duplicate key" error on a return that had
+ * already been recorded — which reads as "it did not save" and invites him to tick it all again.
+ * The database's own guards raise sentences (0007-0021); those pass through.
+ */
+function friendly(e) {
+  const m = e?.message || String(e ?? '');
+  const net = networkMessage(e);
+  if (net) return net;
+  if (e?.code === '23505' || m.includes('uq_movement_request'))
+    return 'This was already recorded — the same tap reached the server twice. Nothing was counted twice.';
+  if (e?.code === '42501' || m.includes('row-level security'))
+    return 'You are not signed in, or the session expired. Sign in again — nothing was recorded.';
+  // A CHECK, a foreign key or a NOT NULL arrives as Postgres boilerplate naming an internal
+  // constraint. Lead with what it means for him; keep the constraint name in brackets for whoever
+  // has to debug it. `violates check constraint "movement_qty_positive"` is not a sentence
+  // anybody standing at a van can act on.
+  const c = m.match(/violates (?:check|foreign key|not-null) constraint "([^"]+)"/);
+  if (c) return `The database refused this, so nothing was recorded. Check what is ticked and try `
+             + `again — if it keeps refusing, this needs looking at. (${c[1]})`;
+  return m.replace(/^.*?ERROR:\s*/, '');
 }
 
 async function closeOrder() {

@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orders — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
-<link rel="stylesheet" href="style.css?v=2026-09-08-3">
-<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
-<script src="boot.js?v=2026-09-08-3" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
+<link rel="stylesheet" href="style.css?v=2026-09-08-6">
+<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
+<script src="boot.js?v=2026-09-08-6" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -30,14 +30,15 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, initOffline, revealActiveTab, fulfilLabel, waLink, waMessage,
-         customerPicker }
-  from './app.js?v=2026-09-08-3';
+         customerPicker, cardList, loadPermissions, guardedWrite }
+  from './app.js?v=2026-09-08-6';
 
 $('#chrome').innerHTML = chrome('orders.html');
 revealActiveTab();
 initOffline();
 
 let ORDERS = [], CUSTOMERS = [], PRODUCTS = [], FULFIL = new Map(), TIERS = [], SETTINGS = {};
+let LATE_ONLY = false;
 let POSTED = new Map();   // order_id -> net posted charge
 
 requireSession(async () => { await boot(); });
@@ -45,7 +46,7 @@ requireSession(async () => { await boot(); });
 async function boot() {
   $('#app').innerHTML = `
     <div class="row row--between">
-      <div><h1>Orders</h1><p class="sub" id="count-line">Jobs agreed, out, and finished.</p></div>
+      <div><h1>Orders</h1><p class="sub" id="count-line"></p></div>
       <button class="btn btn--primary" id="new-order">New order</button>
     </div>
     <div class="row" id="filters" hidden>
@@ -55,7 +56,7 @@ async function boot() {
       <input class="field__input grow" id="q" type="search" placeholder="Search order number, customer or venue…"
              autocapitalize="none" spellcheck="false">
       <label class="sr-only" for="f-state">Filter by what has gone out</label>
-      <select class="field__select" id="f-state" style="max-width:220px">
+      <select class="field__select" id="f-state" style="max-width:150px">
         <option value="">All</option>
         <option value="live">Live (not closed or cancelled)</option>
         <option value="nothing_dispatched">Nothing sent yet</option>
@@ -65,11 +66,18 @@ async function boot() {
         <option value="all_returned">All back</option>
       </select>
     </div>
+    <!-- A filter that came in on the URL has to SAY SO. ?filter=late arrives from Today's "Late
+         jobs" tile, hid five of six orders, and left the dropdown reading "All" — a screen in a
+         state it does not admit to, with no way out but editing the address bar. Same shape of
+         note units.html shows for ?status=out. -->
+    <div id="late-note" hidden></div>
     <div id="list" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
   $('#new-order').addEventListener('click', () => openOrder(null));
 
   $('#q').addEventListener('input', renderList);
   $('#f-state').addEventListener('change', renderList);
+  // Landed on from Today's "Late jobs" tile. A tile that is a query has to arrive AS that query.
+  LATE_ONLY = new URLSearchParams(location.search).get('filter') === 'late';
   await load();
 
   // Handed over from ask.html: dates and a basket, never a customer and never a saved row. The
@@ -169,18 +177,33 @@ function renderList() {
     return;
   }
   $('#filters').hidden = false;
+  const lateNote = $('#late-note');
+  lateNote.hidden = !LATE_ONLY;
+  if (LATE_ONLY) {
+    lateNote.className = 'note';
+    lateNote.style.marginBottom = '8px';
+    lateNote.innerHTML = `Showing only jobs with something still out past the day it was promised.
+      <button class="btn btn--sm" id="clear-late" type="button">Show all orders</button>`;
+    $('#clear-late').addEventListener('click', clearLate);
+  }
   const q = ($('#q').value || '').trim().toLowerCase();
   const st = $('#f-state').value;
   const rows = ORDERS.filter(o => {
     const f = FULFIL.get(o.id);
     if (st === 'live' && ['closed', 'cancelled'].includes(o.status)) return false;
     if (st && st !== 'live' && f?.fulfilment_state !== st) return false;
+    // Late is not a stored state: it is something still at a customer past the day it was promised
+    // (rule 2 — never inferred the other way, from a date alone).
+    if (LATE_ONLY && !(f && f.qty_outstanding > 0 && o.expected_return_date < todayLocal())) return false;
     if (!q) return true;
     const cust = CUSTOMERS.find(c => c.id === o.customer_id);
     return [o.order_no, o.venue_name, cust?.name, cust?.business_name]
       .some(v => (v || '').toLowerCase().includes(q));
   });
-  $('#count-line').textContent = `${rows.length} of ${ORDERS.length} order${ORDERS.length === 1 ? '' : 's'}. ${dayCountLabel()}`;
+  // The day-count convention was appended here and read on every visit to a screen that is not
+  // about it. It is still stated where days are actually entered — line 466, in the order sheet,
+  // beside the field it governs.
+  $('#count-line').textContent = `${rows.length} of ${ORDERS.length} order${ORDERS.length === 1 ? '' : 's'}`;
 
   if (!rows.length) {
     list.className = '';
@@ -189,46 +212,48 @@ function renderList() {
       body: `Nothing matches this filter. There are ${ORDERS.length} orders in total.`,
       actionLabel: 'Clear the filters', actionId: 'clear',
     });
-    $('#clear').addEventListener('click', () => { $('#q').value = ''; $('#f-state').value = ''; renderList(); });
+    // LATE_ONLY is a filter too. It was left out here, so "Clear the filters" cleared the two
+    // visible ones and left the invisible one on — the empty state cleared itself and stayed empty.
+    $('#clear').addEventListener('click', () => {
+      $('#q').value = ''; $('#f-state').value = '';
+      if (LATE_ONLY) clearLate(); else renderList();
+    });
     return;
   }
 
-  list.className = 'list';
-  list.innerHTML = rows.map(o => {
+  // CUSTOMER + WHAT first, the order number DEMOTED to subtext and tappable to copy — its real
+  // job is being pasted into a WhatsApp message, which is why it is not deleted and also not the
+  // headline. The status badge, the fulfilment label and the charge-posted marker were three
+  // badges on every row answering questions nobody arrives with; what survives is what is late
+  // and what is still out.
+  cardList(list, rows, o => {
     const f = FULFIL.get(o.id);
     const cust = CUSTOMERS.find(c => c.id === o.customer_id);
-    const late = f && f.qty_outstanding > 0 && new Date(o.expected_return_date) < new Date(new Date().toDateString());
-    return `<button class="item" data-id="${esc(o.id)}">
-      <span class="item__main">
-        <span class="item__title">${esc(o.order_no)} — ${esc(cust?.business_name || cust?.name || 'unknown customer')}</span>
-        <span class="item__meta">
-          ${esc(fmtDate(o.out_date))} → ${esc(fmtDate(o.expected_return_date))} · ${esc(o.days)} day${o.days === 1 ? '' : 's'}
-          ${o.venue_name ? '· ' + esc(o.venue_name) : ''}
-        </span>
-        <span class="item__meta">
-          <span class="badge badge--${esc(o.status)}">${esc(o.status)}</span>
-          ${f ? `<span class="badge">${esc(fulfilLabel(f.fulfilment_state))}</span>` : ''}
-          ${late ? '<span class="badge badge--out">overdue</span>' : ''}
-          ${POSTED.get(o.id) ? '<span class="badge badge--muted">charge posted</span>' : ''}
-        </span>
-      </span>
-      <!-- What is STILL out, not what was ever sent. Dispatched-over-ordered read "43/43 out" on
-           DJN-2609-0004 while 27 of the 43 were already back and 11 were the real problem, and
-           "4/4 out" on a closed order with nothing out at all. The number on an overdue row has
-           to be the number of things to chase. -->
-      <span class="item__right">${!f ? ''
-        : f.qty_outstanding > 0 ? `<strong>${f.qty_outstanding} still out</strong>`
-        // A cancelled or closed order will never dispatch anything more, whatever its lines still
-        // say. It read "2 to go out" on a cancelled job, which is an instruction to load a van for
-        // a job that is not happening. v_order_fulfilment reports the arithmetic; deciding it is
-        // not actionable is this screen's job.
-        : ['closed', 'cancelled'].includes(o.status) ? 'nothing out'
-        : f.qty_undispatched > 0 ? `${f.qty_undispatched} to go out`
-        : 'all back'}</span>
-    </button>`;
-  }).join('');
-  $$('.item', list).forEach(b =>
-    b.addEventListener('click', () => openOrder(ORDERS.find(o => o.id === b.dataset.id))));
+    const late = f && f.qty_outstanding > 0
+      && o.expected_return_date < todayLocal();
+    return {
+      title: esc(cust?.business_name || cust?.name || 'unknown customer')
+           + (o.venue_name ? ` <span class="card-row__sub">· ${esc(o.venue_name)}</span>` : ''),
+      sub: `${esc(fmtDate(o.out_date))} → ${esc(fmtDate(o.expected_return_date))} · ${esc(o.days)} day${o.days === 1 ? '' : 's'}`
+         + (o.status !== 'confirmed' ? ` · <span class="badge badge--${esc(o.status)}">${esc(o.status)}</span>` : ''),
+      ref: o.order_no,
+      right: !f ? ''
+        : late ? `<span class="badge badge--out">${esc(f.qty_outstanding)} late</span>`
+        : f.qty_outstanding > 0 ? `<strong style="font-size:13px">${esc(f.qty_outstanding)} out</strong>`
+        : ['closed', 'cancelled'].includes(o.status) ? '<span class="item__meta">nothing out</span>'
+        : f.qty_undispatched > 0 ? `<span class="item__meta">${esc(f.qty_undispatched)} to load</span>`
+        : '<span class="item__meta">all back</span>',
+    };
+  }, o => openOrder(o));
+}
+
+/** Drop the late-only filter, and take it out of the URL so a reload does not bring it back. */
+function clearLate() {
+  LATE_ONLY = false;
+  const u = new URL(location.href);
+  u.searchParams.delete('filter');
+  history.replaceState(null, '', u);
+  renderList();
 }
 
 function setOrderUrl(id) {

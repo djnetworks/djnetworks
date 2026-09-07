@@ -193,3 +193,27 @@ confidently, which this system treats as worse than a refusal.
 `fn_portal_snapshot` — a permission predicate inside it evaluates `auth.uid()` as NULL on an anon
 portal request and would break the customer portal for everybody.
 
+### The navigation is at the bottom and re-flows at login
+Fixed grid columns sized to the modules this person holds, so a hidden destination closes up rather
+than leaving a gap.
+**Why:** a gap where a destination used to be reads as a broken app and teaches the thumb the wrong
+position — Maitri's lesson. And ten destinations in a scrolling top strip put five off screen at
+375px with no affordance, at the far end of a one-handed reach.
+**Cost:** the nav is built once, at login, so granting somebody a module needs a page reload before
+it appears. Said on the Team screen next to the toggle rather than left to be discovered.
+
+### Lists arrive full; search filters
+**Why:** a screen that shows nothing until you type assumes you can already phrase the question.
+Equipment was the worst of it — a dropdown and the words "Pick a product" on the screen whose whole
+job is telling you what you own.
+**Cost:** every list screen now loads its rows on arrival. At this fleet size that is nothing; at
+ten thousand pieces it becomes a paging problem, and the card shape is where paging would go.
+
+### A tap that writes carries an idempotency key
+One `request_id` per tap, shared by every row in the batch, generated before the work starts and
+carried unchanged through the offline queue (`0022`).
+**Why:** tap, nothing visibly happens on a bad link, tap again — and six pieces are recorded as
+having gone out twelve times, with nothing deletable to fix it. The offline queue makes this more
+likely rather than less: a replayed write is a second arrival by construction.
+**Cost:** a batch is all-or-nothing on replay. That is what the operator meant by one tap.
+

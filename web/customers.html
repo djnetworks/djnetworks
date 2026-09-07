@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Customers — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-3" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-3" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-3">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-3">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-3">
-<link rel="stylesheet" href="style.css?v=2026-09-08-3">
-<script src="vendor/supabase.js?v=2026-09-08-3" defer></script>
-<script src="boot.js?v=2026-09-08-3" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
+<link rel="stylesheet" href="style.css?v=2026-09-08-6">
+<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
+<script src="boot.js?v=2026-09-08-6" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -25,8 +25,8 @@
 
 <script type="module">
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
-         openSheet, focusField, initOffline, revealActiveTab, loadPermissions, can }
-  from './app.js?v=2026-09-08-3';
+         openSheet, focusField, initOffline, revealActiveTab, loadPermissions, can, cardList }
+  from './app.js?v=2026-09-08-6';
 
 $('#chrome').innerHTML = chrome('customers.html');
 revealActiveTab();
@@ -101,27 +101,30 @@ function renderList() {
     return;
   }
 
-  list.className = 'list';
-  list.innerHTML = rows.map(c => {
+  // A CARD carries what identifies the person and what needs attention. The type badge, the city
+  // and the portal-code state were on every row and answer no question anybody arrives with; they
+  // are one tap away in the detail. What stays: the name, the number he will search by, and money
+  // that is actually owed.
+  cardList(list, rows, c => {
     const b = BALANCES.get(c.id);
-    return `<button class="item" data-id="${esc(c.id)}">
-      <span class="item__main">
-        <span class="item__title">${esc(c.business_name || c.name)}</span>
-        <span class="item__meta">${c.business_name ? esc(c.name) + ' · ' : ''}${esc(c.whatsapp)}
-          ${c.city ? '· ' + esc(c.city) : ''}</span>
-        <span class="item__meta">
-          <span class="badge">${esc(c.type)}</span>
-          ${c.portal_code_hash ? '<span class="badge badge--available">portal code issued</span>' : ''}
-          ${c.active ? '' : '<span class="badge badge--muted">inactive</span>'}
-        </span>
-      </span>
-      <span class="item__right">
-        ${b ? `owes ${esc(money(b.receivable))}<br><span class="item__meta">deposit ${esc(money(b.deposit_held))}</span>` : ''}
-      </span>
-    </button>`;
-  }).join('');
-  $$('.item', list).forEach(b =>
-    b.addEventListener('click', () => openEditor(CUSTOMERS.find(c => c.id === b.dataset.id))));
+    const owed = Number(b?.receivable ?? 0);
+    const held = Number(b?.deposit_held ?? 0);
+    // RULE 6 ON A LIST ROW. The receivable was a bare red rupee figure with no word next to it,
+    // and the deposit — the customer's own money, which this business owes back — vanished the
+    // moment there was also something owed. One unlabelled number in that position reads as "the
+    // balance", which is exactly the blended figure that must never appear. Both are named, both
+    // are shown, and they are on separate lines so nobody can read them as a sum.
+    const money_ = v => `<span style="font-variant-numeric:tabular-nums">${esc(money(v))}</span>`;
+    return {
+      title: esc(c.business_name || c.name),
+      sub: `${c.business_name ? esc(c.name) + ' · ' : ''}${esc(c.whatsapp)}`
+         + (c.active ? '' : ' · <span class="badge badge--muted">inactive</span>'),
+      right: (owed > 0
+        ? `<strong class="stat__n--bad" style="font-size:13px">${money_(owed)}<span class="item__meta"> owed</span></strong>`
+        : '')
+        + (held > 0 ? `<span class="item__meta">${money_(held)} deposit held</span>` : ''),
+    };
+  }, c => openEditor(c));
 }
 
 function openEditor(c) {

@@ -94,6 +94,45 @@ Plus three screens that are not forms:
   a number across.
 - `analysis.html` — the reports below.
 
+## Navigation and density
+
+**The nav is at the bottom and it is permission-shaped.** Ten destinations in a horizontally
+scrolling top strip put five of them off screen at 375px with no affordance saying so, and all of
+them at the far end of a one-handed reach. `chrome()` now renders a slim top bar carrying identity
+and the connection state only; everything you navigate to is a fixed bottom bar sized by
+`--nav-slots`, with anything past the fifth under **More**.
+
+**It is re-flowed at login, not hidden with CSS.** `MODULES` in `web/app.js` names the permission
+key behind each destination; `paintNav()` runs once `loadPermissions()` resolves and rebuilds the
+bar from what this person holds, so a hidden module closes up rather than leaving a gap. A gap
+reads as a broken app and, worse, teaches the thumb the wrong position.
+
+**Granting somebody a module needs a page reload before it appears.** The nav is built once, at
+login. The Team screen says so next to the toggle.
+
+**Browse-first, not search-first.** Customers, Orders, Products and Equipment arrive as cards and
+search FILTERS them. Equipment used to show a dropdown and the words "Pick a product" — nothing at
+all until you already knew what you wanted, on the screen whose job is telling you what you own.
+`cardList()` in `app.js` is the one place the row shape is defined.
+
+**A card carries what identifies the thing and what needs attention, and nothing else.** The order
+number is subtext with tap-to-copy, because its job is being pasted into a WhatsApp message — the
+briefing requires an ID in every message, so it is demoted rather than deleted.
+
+**Three tap rules, fixed once in `style.css` rather than discovered per screen.** A card opens the
+detail and an inline `.card-action` stops the event and looks like a separate control; `.tappable`
+is the only thing that reads as live, so a container never gets a handler; and every write control
+shows a pressed state, disables in flight and carries an idempotency key (`0022`) — the offline
+queue makes a second arrival likelier, not rarer, because a replay is one by construction.
+
+**`--edge` and `--border` are different jobs.** `--border` (#E7E8E6, 1.11:1) separates a row from
+the next row, where faint is right. `--edge` (#828282, 3.47:1 on the page) is the boundary of
+something you AIM at — a field, a tile, a button — where WCAG 1.4.11 asks for 3.0. It is the bible's
+own `--grey`, rejected for 12px text at 3.47:1 and exactly right for a 2px line hit with a thumb
+in sunlight.
+
+---
+
 ## Permissions
 
 `0021`. `authenticated` no longer means "may do everything". The `operator` row carries a JSONB
