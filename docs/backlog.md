@@ -15,6 +15,29 @@ the truth can no longer read this database at all.
 
 ---
 
+## The decision that removes three entries below
+
+**Before the first real customer is billed — post revenue on dispatch instead of confirmation, and
+make the forward book a view over confirmed order lines rather than ledger rows. That removes the
+upcoming/due state and the reversal mechanism entirely. Three entries above trace to this one
+decision.**
+
+The trigger is the first real bill, not a date. Everything works today on a fixture; none of it has
+met a customer who queries an invoice.
+
+What traces to it: the damage charge recorded on return that never reaches the balance; the
+`deposit_amount` / `deposit_held` label collision; and the whole reversal apparatus that `0018` had
+to make work — a `reversal` now carries its target's state and subtracts in the right bucket, but
+the reason it exists at all is that a charge is written to the ledger before the gear has moved.
+Post on dispatch and the forward book becomes a query over `order_line` for confirmed orders whose
+`out_date` has not passed: nothing to reverse, nothing to keep in step, and no `state` column
+carrying a meaning the ledger cannot enforce.
+
+`docs/decisions.md` chose confirmation-time posting deliberately, for a forward book that is useful.
+This does not undo that — it keeps the forward book and stops paying for it in ledger rows.
+
+---
+
 ## BLOCKING — do not deploy until this is done
 
 **Self-registration is open, and the publishable key is about to become public.** Measured
@@ -192,16 +215,6 @@ currently the only thing holding it. Fixing it properly means moving each page's
 own `.js` file, then a strict `script-src 'self'`. Worth doing before the importer ships.
 
 
-
-**A `reversal` cannot undo an `upcoming` charge, so the documented compensating mechanism only half
-works.** `decisions.md` accepts reversal entries as the price of posting revenue on confirmation.
-But `v_customer_balance.upcoming` counts only billed types (`rental`, `transport`, `labour`, `misc`,
-`damage`) at `state = 'upcoming'`, and `reversal` is not one of them — so a reversal posted against
-an upcoming charge changes neither `receivable` nor `upcoming`, and a reversal posted as `due` drives
-`receivable` negative instead. Measured while trying to undo three stray rows: an `upcoming` of
-43,060.00 could not be reduced by any ledger entry the schema permits. Deleting is blocked by the
-append-only guard, correctly. Whatever posting looks like, it needs a way to be undone that the
-balance view actually honours.
 
 **A damage charge recorded on return never reaches the customer's balance.** The return screen writes
 an `order_charge` for the excess over the deposit — verified, ₹2,000 on DJN-2609-0007 — but revenue

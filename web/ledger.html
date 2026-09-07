@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-7">
-<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
-<script src="boot.js?v=2026-09-07-7" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-8">
+<script src="vendor/supabase.js?v=2026-09-07-8" defer></script>
+<script src="boot.js?v=2026-09-07-8" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -19,7 +19,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, openSheet, focusField, initOffline, revealActiveTab }
-  from './app.js?v=2026-09-07-7';
+  from './app.js?v=2026-09-07-8';
 
 $('#chrome').innerHTML = chrome('ledger.html');
 revealActiveTab();
@@ -121,9 +121,15 @@ async function renderBody() {
   // ---------------------------------------------------------------------------
   body.innerHTML = `
     <div class="stats" style="margin-bottom:14px">
-      <div class="card"><div class="item__meta">Owed now</div>
-        <div class="stat__n${Number(b.receivable) > 0 ? ' stat__n--bad' : ''}">${money(b.receivable)}</div>
-        <div class="field__hint">Billed, dispatched, unpaid.</div></div>
+      <!-- A negative receivable is a real state, not an error: it means they have paid for more
+           than they have been charged, usually because a charge was reversed after payment. Labelling
+           that "Owed now −₹6,000" in red reads as a debt going the wrong way. It is a credit, and it
+           says so. -->
+      <div class="card"><div class="item__meta">${Number(b.receivable) < 0 ? 'In credit' : 'Owed now'}</div>
+        <div class="stat__n${Number(b.receivable) > 0 ? ' stat__n--bad' : ''}">${money(Math.abs(Number(b.receivable)))}</div>
+        <div class="field__hint">${Number(b.receivable) < 0
+          ? 'Paid more than charged. This is owed back to them, or set against their next job.'
+          : 'Billed, dispatched, unpaid.'}</div></div>
       <div class="card"><div class="item__meta">Upcoming</div>
         <div class="stat__n">${money(b.upcoming)}</div>
         <div class="field__hint">Booked but not yet out. Not a debt yet.</div></div>
@@ -209,6 +215,13 @@ function openEntry() {
       <label class="field"><span class="field__label">Reference</span>
         <input class="field__input" id="f-ref" placeholder="UPI ref, cheque no."></label>
     </div>
+    <div class="field" id="reversal-target-wrap" hidden>
+      <label class="field__label" for="f-reverses">Which charge is being reversed? *</label>
+      <select class="field__select" id="f-reverses"></select>
+      <span class="field__hint">A reversal undoes one specific charge, and cannot exceed what is left
+        of it. It takes that charge's own state, so reversing an upcoming booking reduces the forward
+        book and reversing a due charge reduces what is owed — never the wrong one.</span>
+    </div>
     <label class="field"><span class="field__label">Against which job?</span>
       <select class="field__select" id="f-order">
         <option value="">Not against a job — on account</option>
@@ -269,13 +282,45 @@ function openEntry() {
     $('#dep-note').innerHTML =
       `${money(b.deposit_held)} is held for this customer. Nothing above that can be returned or kept.`;
   };
-  $('#f-type').addEventListener('change', syncType);
+  // Only a billed charge can be reversed, and only by what is left of it. Computed here from the
+  // entries already loaded so the operator sees the ceiling before typing rather than after.
+  const BILLED = ['rental', 'transport', 'labour', 'misc', 'damage'];
+  const reversibleLeft = (e) => Number(e.amount) - ENTRIES
+    .filter(x => x.type === 'reversal' && x.reverses_entry_id === e.id)
+    .reduce((n, x) => n + Number(x.amount), 0);
+
+  const syncReversalTarget = () => {
+    const isRev = $('#f-type').value === 'reversal';
+    $('#reversal-target-wrap').hidden = !isRev;
+    if (!isRev) return;
+    const targets = ENTRIES.filter(e => BILLED.includes(e.type) && reversibleLeft(e) > 0);
+    $('#f-reverses').innerHTML = targets.length
+      ? targets.map(e => `<option value="${esc(e.id)}" data-left="${esc(reversibleLeft(e))}">
+          ${esc(fmtDate(e.entry_date))} · ${esc(e.type)} ${esc(money(e.amount))}
+          ${e.state === 'upcoming' ? '(upcoming)' : '(due)'}
+          ${e.order?.order_no ? '· ' + esc(e.order.order_no) : ''}
+          ${reversibleLeft(e) !== Number(e.amount) ? '· ' + esc(money(reversibleLeft(e))) + ' left' : ''}
+        </option>`).join('')
+      : '<option value="">Nothing left to reverse on this account</option>';
+    const first = $('#f-reverses').selectedOptions[0];
+    if (first?.dataset.left) { $('#f-amt').value = first.dataset.left; checkAmount(); }
+  };
+  $('#f-reverses')?.addEventListener('change', () => {
+    const o = $('#f-reverses').selectedOptions[0];
+    if (o?.dataset.left) { $('#f-amt').value = o.dataset.left; checkAmount(); }
+  });
+  $('#f-type').addEventListener('change', () => { syncType(); syncReversalTarget(); });
   $('#f-amt').addEventListener('input', checkAmount);
-  syncType();
+  syncType(); syncReversalTarget();
 
   $('#save').addEventListener('click', async () => {
     const amt = Number($('#f-amt').value || 0);
     if (!(amt > 0)) { toast('Enter an amount.', 'error'); focusField('#f-amt'); return; }
+    if ($('#f-type').value === 'reversal' && !$('#f-reverses').value) {
+      toast('Pick the charge this reverses. A reversal that names nothing cannot be checked against '
+          + 'what it undoes, and leaves nobody able to say why a balance is what it is.', 'error');
+      focusField('#f-reverses'); return;
+    }
     const btn = $('#save'); btn.disabled = true; btn.textContent = 'Recording…';
     const row = {
       customer_id: SELECTED.id,
@@ -283,8 +328,11 @@ function openEntry() {
       entry_date: $('#f-date').value || todayLocal(),
       type: $('#f-type').value,
       amount: amt,
-      // Anything recorded here has happened. `upcoming` is written only by the order screen, when
-      // revenue posts on confirmation and the gear has not gone out yet.
+      // A reversal names the charge it undoes; 0018's trigger then copies that charge's state, so
+      // an upcoming booking is undone in the forward book and a due charge in the receivable.
+      // Everything else recorded here has already happened, so it is `due` — `upcoming` is written
+      // only by the order screen, when revenue posts on confirmation and nothing has gone out yet.
+      reverses_entry_id: $('#f-type').value === 'reversal' ? ($('#f-reverses').value || null) : null,
       state: 'due',
       payment_mode: $('#f-mode').value || null,
       reference: $('#f-ref').value.trim() || null,

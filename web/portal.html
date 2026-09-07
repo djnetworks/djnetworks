@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Your bookings — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-7">
-<script src="vendor/supabase.js?v=2026-09-07-7" defer></script>
-<script src="boot.js?v=2026-09-07-7" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-8">
+<script src="vendor/supabase.js?v=2026-09-07-8" defer></script>
+<script src="boot.js?v=2026-09-07-8" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -25,8 +25,8 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-07-7';
-import { $, esc, money, fmtDate, toast } from './app.js?v=2026-09-07-7';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-07-8';
+import { $, esc, money, fmtDate, toast } from './app.js?v=2026-09-07-8';
 
 // ---------------------------------------------------------------------------
 // The customer portal. This page is opened by people who are not staff, on a link sent over
@@ -133,9 +133,11 @@ function render(d) {
          directions and are never added. Upcoming is separate again: a wedding customer opening
          this three weeks early must see a booking, not a debt. -->
     <div class="stats" style="margin-bottom:6px">
-      <div class="card"><div class="item__meta">To pay now</div>
-        <div class="stat__n${Number(bal.receivable) > 0 ? ' stat__n--bad' : ''}">${money(bal.receivable)}</div>
-        <div class="field__hint">For jobs that have gone out.</div></div>
+      <div class="card"><div class="item__meta">${Number(bal.receivable) < 0 ? 'We owe you' : 'To pay now'}</div>
+        <div class="stat__n${Number(bal.receivable) > 0 ? ' stat__n--bad' : ''}">${money(Math.abs(Number(bal.receivable)))}</div>
+        <div class="field__hint">${Number(bal.receivable) < 0
+          ? 'You have paid more than we have charged. We will return it or set it against your next booking.'
+          : 'For jobs that have gone out.'}</div></div>
       <div class="card"><div class="item__meta">Upcoming bookings</div>
         <div class="stat__n">${money(bal.upcoming)}</div>
         <div class="field__hint">Agreed for a future date. Nothing to pay yet.</div></div>
