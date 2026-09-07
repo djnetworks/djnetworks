@@ -68,20 +68,20 @@ Build order is dependency order. Built so far, as static pages under `web/`:
 
 | Form | Screen | State |
 |---|---|---|
-| 1 · Categories and subcategories | — | seeded by `0005`, no screen; chachu has not pruned the 187 |
-| 2 · Product master | `products.html` | built, not driven signed in |
+| 1 · Categories and subcategories | — | seeded by `0005`, no screen and none planned; chachu has not pruned the 187 |
+| 2 · Product master | `products.html` | built, driven signed in |
 | 3 · Unit intake | `units.html` | built, bulk create is the primary path |
 | 4 · Locations | — | seeded by `0004`, no screen yet |
 | 5 · Customers | `customers.html` | built, issues the portal code |
 | 6 · Order | `orders.html` | built |
 | 7 · Dispatch | `dispatch.html` | built, offline-capable with explicit prefetch |
-| 8 · Return | `return.html` | built |
+| 8 · Return | `return.html` | built — condition, deduction, write-off, and damage photographs (`0028`) |
 | 9 · Internal transfer | `transfer.html` | built — "Load the van", one action for a whole load |
-| 10 · Repair | — | not built |
+| 10 · Repair | — | **not built** — the one gap |
 | 11 · Payments and ledger | `ledger.html` | built |
 | 12 · Customer portal | `portal.html` | built |
 
-Plus three screens that are not forms:
+Plus four screens that are not forms:
 
 - `index.html` — **Today**. The app is organised by entity; his day is organised by date. Three
   sections lead — going out today, coming back today, late — and the counts follow them. The counts
@@ -94,6 +94,12 @@ Plus three screens that are not forms:
   `orders.html`, which regenerates every rate from today's rate card (rule 5) rather than carrying
   a number across.
 - `analysis.html` — the reports below.
+- `team.html` — **Team**. Who has an account and what each of them may do. Nine toggles over
+  `0021`'s eleven keys: nobody should be asked eleven questions, and the two that bundle are the two
+  that always travel together. Money is the one place the granularity survives, because seeing a
+  balance and posting to it are different jobs. It **cannot create an account** — that needs the
+  service key, and a key that can create an account can create an admin, so the screen says where to
+  do it instead of failing quietly.
 
 ## Navigation and density
 
@@ -319,8 +325,35 @@ model payer. A piece shows where it is, who has it, and everything that has happ
 corrections, from `v_unit_history`. Dead stock stays a report — forgotten gear surfaces nowhere else
 by definition.
 
+**Damage photographs, and the second bucket (`0028`).** `movement.photos` existed from `0002` and
+nothing ever wrote to it. It now takes a key inside a **private** bucket, `return-photos`, and the
+privacy is the point rather than a precaution: `product-images` is public because the portal shows
+it, and a photograph of a cracked cabinet is taken inside somebody's wedding hall. It is their
+property and their event, and a public bucket is world-readable at a URL that only has to be
+guessed once.
+
+Two permissions open it — `returns.write`, because the man recording the return is holding the
+phone, and `ledger.view`, because the deduction gets argued about a week later over the telephone
+and the person defending the number has to be able to open the picture. Every look is a signed URL
+with a two-minute life. **The portal never serves them**, and `0028` fails at apply time if
+`fn_portal_snapshot` ever names the column.
+
+The photograph is taken *in the row, under the deduction*, because that is the only moment anybody
+is looking at the damage. It uploads immediately and the path is held until "Record returns" — it
+has to work that way, since `movement` is append-only and a photograph therefore lands in the INSERT
+or never lands at all. That draws a line worth naming: **until a movement points at a key it is a
+draft, and after that it is evidence.** Unattached, the man who took it may retake or remove it;
+attached, nobody can, and the correction path is the only way to say the record is wrong. Same shape
+as `0019`.
+
+Rule 14 applies to a picture as much as to a rupee: `photo_count` is visible to everybody, `photos`
+is **NULL** rather than `[]` without one of the two keys. "Two photos, not visible from this
+account" is a refusal a screen can explain; an empty list says nobody photographed the damage, which
+is a different and far more comfortable claim.
+
 **10 · Repair.** Unit, vendor, date sent, fault, estimated cost, then date back, actual cost,
-outcome. A unit at a repair shop leaves availability with no extra rule.
+outcome. A unit at a repair shop leaves availability with no extra rule. **Not built** — the only
+form of the twelve that has no screen and no substitute.
 
 **11 · Payments and ledger.** One ledger per customer, typed entries. Rental charges post on order
 confirmation as `upcoming` and become `due` at dispatch. Payments need not attach to an order —

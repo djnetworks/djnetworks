@@ -11,6 +11,25 @@
 -- payer. Four numbers and the operator does the judging (docs/decisions.md, "always pays" becomes
 -- numbers).
 
+-- ---------------------------------------------------------------------------
+-- THIS FILE WAS EDITED AFTER IT HAD ALREADY BEEN APPLIED. See 0027.
+--
+-- What ran against the database on 2026-09-08 wrapped the two money columns in coalesce(..., 0).
+-- That is rule 14 broken inside the migration that cites rule 14: without ledger.view the gated
+-- wrapper returns zero ROWS, so the coalesce turned "you may not see this money" into "this
+-- customer owes nothing" — which looks like good news and is therefore never investigated.
+--
+-- I fixed it by editing this file rather than by writing a follow-up, reasoning that it was
+-- uncommitted and there is only one database. That reasoning is convenient, not sound: an applied
+-- migration is a record of what ran, and editing one makes the schema stop matching its own
+-- history whether or not the end state is correct. The Supabase CLI keeps a `statements` array per
+-- applied migration for exactly this reason.
+--
+-- The file is LEFT IN ITS CORRECTED FORM deliberately, so a fresh replay from 0001 is right first
+-- time. 0027 restates the view so a database that already ran the wrong text converges to the same
+-- place. Either path arrives at the same view; only this note says they took different roads.
+-- ---------------------------------------------------------------------------
+
 create or replace view v_customer_figures with (security_invoker = on) as
 with jobs as (
   select o.customer_id,

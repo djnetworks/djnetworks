@@ -455,16 +455,38 @@ descendant of a `<label>` that is not its control — an invalid content model. 
 correctly (focus stays, the quantity sets, no keyboard appears); iOS Safari is the device that
 matters and was not testable here. The fix is moving the button out of the label.
 
-**The signed-in write walk from Pass G is unverified.** The dev session's refresh token was spent
-during the review and the only way back in is a password, which is not something to automate. The
-database half is verified — idempotency both ways, permissions both ways per table, the fixture
-assertions — and the DOM half is verified against the real stylesheet. What is not verified is a
-human tapping "Send these out" and "Record returns" end to end on this build.
+---
 
-**The offline queue can only be replayed on the screen that made the write.** `registerQueueHandlers`
-is called by `dispatch.html` and `return.html`, so a queued dispatch sitting on Today reports
-*No handler for "dispatch" — this version of the app cannot replay it* and the pill stays stuck
-until the operator happens to open Send out. The new queue sheet makes that visible instead of
-silent, which is the improvement; the fix is registering both handlers in `app.js` so any screen
-can drain the queue, and it means moving the two insert bodies out of their screens.
+## From the return-photos pass (`0028`)
 
+**A damage photograph can only be taken on a NUMBERED piece, not on counted stock.** `movement.photos`
+accepts a photo on any row and the return screen writes write-offs for pooled products — twenty
+cables lost at a venue is a money conversation like any other. But `v_unit_history`, the only view
+that reads photos back, filters `unit_id is not null`, so a photograph attached to a pooled row
+would be uploaded, charged against a deposit, and viewable on no screen. The control is therefore
+hidden on counted-stock rows rather than offered and quietly useless — rule 13, honoured by
+declining rather than by pretending. The fix is a `v_order_history` that reads
+`v_movement_effective` for a whole job, pooled rows included, which is also the read path a repair
+screen will want.
+
+**A photograph cannot be added to a return after it is recorded.** `movement` is append-only, so
+`photos` lands in the INSERT or not at all. The only way in afterwards is `0019`'s correction — undo
+the return, record it again with the picture — which is a heavy instrument for "I forgot to
+photograph it". Accepted for now because the camera sits in the row under the deduction and the
+summary warns when money comes off a deposit with no photograph. If it turns out to bite, the answer
+is a `movement_attachment` table rather than making `photos` updatable, because a mutable evidence
+column on an append-only row is the worst of both.
+
+**Nothing sweeps orphaned photographs.** A picture uploads the moment it is taken; if the return is
+then abandoned the file stays in the bucket with no movement pointing at it. The path starts with
+the order id so an orphan is traceable, and `0028`'s policy lets an unattached file be removed — but
+there is no job that does it, and nothing on any screen shows that these exist.
+
+**A photograph needs signal; the return does not.** The return itself queues offline and replays,
+but there is no offline path for the file — the screen says so in as many words rather than failing
+into a red box, which is the improvement over saying nothing. Holding the blob in IndexedDB and
+uploading on reconnect is the fix, and it means the queue carrying binary rather than JSON.
+
+**`photos` has a `caption` in its contract and nothing writes one.** The shape allows
+`{path, at, caption}` and the return screen sends only the first two. A caption is what turns "a
+photograph of a speaker" into "the crack on the back panel, left corner" a week later on the phone.

@@ -17,6 +17,16 @@ set -a && . ./.env && set +a && PGPASSWORD="$DB_PASSWORD" psql \
   -f supabase/probes/0021_permissions_probe.sql
 ```
 
+`0028` is a shell script rather than SQL, because the thing it has to prove — that an outsider is
+refused — only exists over HTTP. Reading the policy would prove nothing; `product-images` carries a
+policy that looks almost identical and is world-readable on purpose. It reads `.env` itself:
+
+```bash
+./supabase/probes/0028_return_photos_probe.sh
+```
+
 | Probe | What it proves |
 |---|---|
 | `0021_permissions_probe.sql` | Every table, both directions: an owner reads and writes; a staff account holding two keys reads 0 ledger rows and is refused everywhere it should be; an account with no operator row reads 0 rows from all seventeen. It creates two throwaway `auth.users` rows and rolls them back. |
+| `0027_customer_figures_probe.sql` | Rule 14 on money that is joined, not selected. The owner reads a real receivable for a customer who owes something; an account holding only `sendout.write`/`returns.write` reads **NULL** for the same customer while still reading the job counts. It refuses to run at all against a database with no customer owing money — against a settled account, "hidden" and "settled" are indistinguishable and it would pass while the bug was present. |
+| `0028_return_photos_probe.sh` | The private bucket, in real HTTP. Anonymous with no key, anonymous holding the publishable key, the guessed `/object/public/` URL and a signed-in account with neither permission are all refused; the operator uploads, reads, mints a signed URL that serves the bytes with no key at all, and that link stops working when it expires. Builds and destroys its own throwaway identity — including the `auth.identities` row without which GoTrue answers 500 and the arm degrades into a skip — and proves that identity is a *working* account by reading orders with it. Removes its test object through the Storage API, which is also the assertion that an unattached photo may be removed and an attached one may not. |

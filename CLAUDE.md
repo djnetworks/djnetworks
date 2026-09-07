@@ -153,6 +153,10 @@ The mitigations, and they are weaker than a second session:
   it was found by reading the date on a repeated job, not by a test. The same applies to
   `current_date` in SQL called from the browser — that is UTC too, which is why every movement
   carries the phone's local date.
+- **Nothing in the database compares `current_date` to a stored date.** Every date the app writes is
+  the phone's local calendar day; `current_date` is UTC. Between midnight and 05:30 IST — the hours
+  a van is loaded — they are different days. Use `fn_today()`. This shipped as Today saying 4 days
+  overdue while the portal said 3 about the same job.
 - Views are prefixed `v_`, functions `fn_`.
 - Business conventions that could change (day counting, availability buffer) live in `app_setting`,
   not in code.

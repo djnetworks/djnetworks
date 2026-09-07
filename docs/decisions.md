@@ -265,3 +265,48 @@ get read every time somebody rings up.
 **Cost:** three more queries on three detail views. Dead stock is the exception and stays a report,
 because gear he has forgotten he owns surfaces nowhere else by definition.
 
+
+### 0027 restates a view that 0025 already got right, because the history was wrong
+`0025` shipped `v_customer_figures` with `coalesce(receivable, 0)` — rule 14 broken inside the
+migration that cites rule 14, since the money is joined through a gated wrapper that returns zero
+*rows*, so the coalesce reported every customer as owing nothing to anybody without `ledger.view`.
+That was fixed by **editing `0025` after it had already been applied**, on the reasoning that it was
+uncommitted and there is one database.
+**Why 0027 exists anyway:** that reasoning is convenient rather than sound. An applied migration is
+a record of what ran, and editing one makes the schema stop matching its own history *independently*
+of whether the end state is correct — the CLI keeps a `statements` array per migration exactly so
+that divergence can be detected. `0025` stays in its corrected form so a fresh replay from `0001` is
+right first time; `0027` restates the view so a database that ran the broken text converges to the
+same place. Whichever road a database took, it ends at `0027`.
+**Cost:** a migration whose SQL is redundant — `0026` had already restated the view. Its real
+content is the note and an assertion that fails if either mistake comes back. And on checking,
+`statements` is null for everything from `0019` on, so for `0025` there was nothing to diverge from:
+the edit was not detected, merely unrecorded, which is worse. Those rows were **not** backfilled —
+writing statements one merely believes ran would fabricate the record whose absence is the problem.
+
+### Damage photographs go in a second, private bucket
+`0028`. `product-images` is public because the customer portal shows it.
+**Why not reuse it:** a photograph of a cracked cabinet is taken inside somebody's wedding hall —
+their property, their event, their guests in the background. A public bucket is world-readable at a
+URL that has to be guessed only once, and that is not our picture to publish. Two buckets with
+opposite defaults means nothing has to be remembered at upload time.
+**Cost:** every look is a signed URL and therefore a round trip, and `getPublicUrl` must never be
+called on it — the call succeeds and returns a link that answers 400, which is the worst failure
+available: something that looks like a link.
+
+### A photograph is a draft until a movement points at it, and evidence afterwards
+**Why:** the first version granted neither UPDATE nor DELETE on the bucket, citing rule 12. That
+applied one rule to two different things. Before the return is recorded, a blurry picture of a floor
+taken one-handed in a hall is a draft and the retake is the normal case; after it, the photograph is
+attached to an append-only row and must not move. The policy asks that question directly — *is any
+movement pointing at this key?*
+**Cost:** a `jsonb` containment test on every storage write, which needs a GIN index on
+`movement.photos` to not be a sequential scan over every movement ever recorded.
+
+### Photos are attached at INSERT or not at all
+**Why:** `movement` is append-only, so there is no later moment to attach one. The upload therefore
+happens when the picture is taken and the path is held until "Record returns".
+**Cost:** a forgotten photograph needs `0019`'s correction path to get in — the movement has to be
+undone and rewritten. Judged acceptable because the screen puts the camera in the row, under the
+deduction, which is the only moment anybody is looking at the damage. The counterweight is on
+screen: money coming off a deposit with no photograph shows a warning until there is one.

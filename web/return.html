@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Return — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-12" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-12" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-12">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-13" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-13" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-13">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-12">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-13">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-12">
-<link rel="stylesheet" href="style.css?v=2026-09-08-12">
-<script src="vendor/supabase.js?v=2026-09-08-12" defer></script>
-<script src="boot.js?v=2026-09-08-12" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-13">
+<link rel="stylesheet" href="style.css?v=2026-09-08-13">
+<script src="vendor/supabase.js?v=2026-09-08-13" defer></script>
+<script src="boot.js?v=2026-09-08-13" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -29,8 +29,9 @@
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, revealActiveTab, waLink, waMessage,
-         newRequestId, guardedWrite, cardList, loadPermissions, can, networkMessage }
-  from './app.js?v=2026-09-08-12';
+         newRequestId, guardedWrite, cardList, loadPermissions, can, networkMessage,
+         uploadReturnPhoto, signedPhotoUrl }
+  from './app.js?v=2026-09-08-13';
 
 $('#chrome').innerHTML = chrome('return.html');
 revealActiveTab();
@@ -43,6 +44,9 @@ const orderId = new URLSearchParams(location.search).get('order');
 let ORDER = null, CUSTOMER = null, OUTSTANDING = [], PRODUCTS = new Map(), LOCS = [], LINES = [];
 // Returns written against this job TODAY that have not been corrected — the undo list.
 let TODAY_BACK = [];
+// Damage photographs taken but not yet written: key (the same key TICK uses) -> [{path, at}].
+// They are already IN the bucket; what is pending is the movement row that makes them evidence.
+const PHOTOS = new Map();
 let FULFIL = null;
 let TICK = new Map();   // key -> {kind:'unit'|'pool', ...}
 
@@ -284,6 +288,7 @@ function render() {
                       step="1" inputmode="numeric" value="0">
                <span class="field__hint">Closes the loop: without this, cables lost at a venue read as
                  sitting with the customer for ever and the job can never close.</span></label>`}
+          ${isUnit ? photoBlock(key) : ''}
         </div>
       </div>
     </div>`;
@@ -300,6 +305,8 @@ function render() {
     paint();
   }));
   $$('.r-damage, .r-lostamt, .r-qty, .r-writeoff').forEach(el => el.addEventListener('input', paint));
+  $$('.photo-input').forEach(el => el.addEventListener('change', e => addPhoto(e.target)));
+  $$('.photos').forEach(el => paintStrip(el.dataset.key));
   $('#go').addEventListener('click', doReturn);
 
   // Ticks every row and opens each row's detail, so what is about to be recorded is on screen
@@ -410,6 +417,105 @@ async function undoReturn(btn) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// DAMAGE PHOTOGRAPHS (0028).
+//
+// Here, in the row, under the deduction — not on a separate screen and not afterwards. The moment
+// the number goes in the box is the moment the operator is looking at the crack, and it is the only
+// moment he will ever be looking at it.
+//
+// IT UPLOADS IMMEDIATELY, AND THE PATH IS HELD UNTIL "Record returns". It has to work that way:
+// `movement` is append-only (0009), so photos land in the INSERT that writes the return or they
+// never land at all. Uploading first also means a photograph survives a failed save — the file is
+// in the bucket under the order id, and 0028's policy lets it be replaced or removed right up
+// until a movement points at it.
+// ---------------------------------------------------------------------------
+
+// NUMBERED PIECES ONLY, AND THAT IS A GAP RATHER THAN A DESIGN. `movement.photos` takes a photo on
+// any row, and a write-off of twenty cables lost at a venue is exactly a money conversation. But
+// `v_unit_history` — the only screen that reads photos back — filters `unit_id is not null`, so a
+// photograph on a pooled row would be written, charged for, and viewable nowhere. Collecting
+// evidence that cannot be shown is worse than not offering to collect it. In docs/backlog.md with
+// the read path it needs.
+function photoBlock(key) {
+  return `<div class="photos" data-key="${esc(key)}">
+      <label class="btn btn--sm file-btn photo-btn">
+        Add a photo
+        <input type="file" class="photo-input" accept="image/*" capture="environment"
+               data-key="${esc(key)}">
+      </label>
+      <span class="field__hint">Only staff see these — never the customer's portal. Worth one
+        whenever money comes off the deposit: the argument happens next week, on the telephone.</span>
+      <div class="thumbs photo-strip"></div>
+    </div>`;
+}
+
+async function paintStrip(key) {
+  const host = $(`.photos[data-key="${CSS.escape(key)}"] .photo-strip`);
+  if (!host) return;
+  const list = PHOTOS.get(key) ?? [];
+  if (!list.length) { host.innerHTML = ''; return; }
+  // Mint the links now rather than at upload time: a signed URL lives two minutes, and a return
+  // takes longer than that to record.
+  const urls = await Promise.all(list.map(ph => signedPhotoUrl(ph.path)));
+  host.innerHTML = list.map((ph, i) => `
+    <div class="thumb">
+      ${urls[i] ? `<img src="${esc(urls[i])}" alt="Damage photo ${i + 1}">`
+                : `<div class="thumb__missing" title="${esc(ph.path)}">saved</div>`}
+      <button type="button" class="btn btn--ghost btn--sm thumb__btn photo-drop"
+              data-key="${esc(key)}" data-path="${esc(ph.path)}">Remove</button>
+    </div>`).join('');
+  $$('.photo-drop', host).forEach(b => b.addEventListener('click', () => dropPhoto(b.dataset.key, b.dataset.path, b)));
+}
+
+async function addPhoto(input) {
+  const key = input.dataset.key;
+  const file = input.files?.[0];
+  input.value = '';                       // else the same file twice fires no change event
+  if (!file) return;
+
+  // RULE 15: name the cause we have evidence for. A photograph needs the network — the return
+  // itself does not, and the queue will still carry it — so this says which half is blocked
+  // instead of letting an upload fail into a red box that reads as "the return did not save".
+  if (!navigator.onLine) {
+    toast('No signal, so the photo cannot go up. The return itself will still save and wait on '
+        + 'this phone — but come back and photograph it while the piece is still in front of you.', 'error');
+    return;
+  }
+
+  const btn = input.closest('.file-btn');
+  const label = btn.firstChild?.nodeValue;
+  btn.classList.add('is-busy'); if (btn.firstChild) btn.firstChild.nodeValue = ' Uploading… ';
+  input.disabled = true;
+  try {
+    const path = await uploadReturnPhoto(orderId, file);
+    PHOTOS.set(key, [...(PHOTOS.get(key) ?? []), { path, at: todayLocal() }]);
+    await paintStrip(key);
+    paint();
+  } catch (err) {
+    console.error('[return] photo upload failed', err);
+    toast(`The photo did not upload: ${friendly(err)}`, 'error');
+  } finally {
+    btn.classList.remove('is-busy'); if (btn.firstChild) btn.firstChild.nodeValue = label;
+    input.disabled = false;
+  }
+}
+
+// Removing one BEFORE the return is recorded. After it, 0028 refuses — the photograph is attached
+// to an append-only row and the correction path is the only way to say the record is wrong.
+async function dropPhoto(key, path, btn) {
+  btn.disabled = true; btn.textContent = 'Removing…';
+  const { error } = await sb.storage.from('return-photos').remove([path]);
+  if (error) {
+    console.error('[return] photo remove failed', error);
+    toast(`Could not remove it: ${friendly(error)}`, 'error');
+    btn.disabled = false; btn.textContent = 'Remove'; return;
+  }
+  PHOTOS.set(key, (PHOTOS.get(key) ?? []).filter(ph => ph.path !== path));
+  await paintStrip(key);
+  paint();
+}
+
 function collect() {
   const out = [];
   OUTSTANDING.forEach((r, i) => {
@@ -424,12 +530,14 @@ function collect() {
         lost: !!$('.r-lost', d)?.checked,
         lostAmount: Number($('.r-lostamt', d)?.value || 0),
         inclusions: $$('.r-incl', d).filter(x => x.checked).map(x => x.dataset.item),
+        photos: PHOTOS.get(key) ?? [],
       });
     } else {
       out.push({
         kind: 'pool', row: r,
         qty: Number($('.r-qty', d)?.value || 0),
         writeoff: Number($('.r-writeoff', d)?.value || 0),
+        photos: PHOTOS.get(key) ?? [],
       });
     }
   });
@@ -457,7 +565,18 @@ function paint() {
     ${excess > 0 ? `<p class="field__hint">More damage than deposit. The excess is added to the job as a
       damage charge — the deposit is not allowed to go negative.</p>` : ''}
     ${damage > 0 ? `<p class="field__hint">Nothing is deducted from the deposit ledger automatically here;
-      the deduction is recorded when the deposit is actually settled, on the payments screen.</p>` : ''}`;
+      the deduction is recorded when the deposit is actually settled, on the payments screen.</p>` : ''}
+    ${(() => {
+      // Evidence, counted where the deduction is decided. Money coming off a deposit with no
+      // photograph behind it is the version of this conversation that goes badly next week.
+      const shots = picked.reduce((n, p) => n + (p.photos?.length ?? 0), 0);
+      if (shots) return `<p class="field__hint">${shots} photo${shots === 1 ? '' : 's'} will be
+        attached — staff only, never the portal.</p>`;
+      return damage > 0
+        ? `<p class="note note--warn" style="margin-top:8px">Money is coming off this deposit and
+           there is no photograph. Add one in the row above while the piece is still in front of
+           you — a movement cannot be photographed after it is recorded.</p>` : '';
+    })()}`;
 
   // ---------------------------------------------------------------------------
   // MORE CANNOT COME BACK THAN WENT OUT.
@@ -527,21 +646,25 @@ async function doReturn() {
         // takes it out of "still at the customer" and lets the order close (rule 9).
         movements.push({ ...base, movement_type: 'write_off', unit_id: p.row.unit_id,
           product_id: p.row.product_id, qty: 1, to_kind: 'none',
-          condition_at_move: p.condition, notes: 'lost at the venue' });
+          condition_at_move: p.condition, notes: 'lost at the venue', photos: p.photos });
         lost.push(p.row.unit_id);
         damage += p.lostAmount;
       } else {
         movements.push({ ...base, movement_type: 'return', unit_id: p.row.unit_id,
           product_id: p.row.product_id, qty: 1, to_kind: 'location', to_id: locId,
-          condition_at_move: p.condition, inclusions_checked: p.inclusions });
+          condition_at_move: p.condition, inclusions_checked: p.inclusions, photos: p.photos });
         damage += p.damage;
       }
     } else {
+      // The photograph goes on ONE row, never both: 0028's "is any movement pointing at this key"
+      // test would otherwise be true twice, and a single file would read as two pieces of evidence.
+      // A write-off is the one worth photographing, so it wins when there is one.
       if (p.qty > 0) movements.push({ ...base, movement_type: 'return', unit_id: null,
-        product_id: p.row.product_id, qty: p.qty, to_kind: 'location', to_id: locId });
+        product_id: p.row.product_id, qty: p.qty, to_kind: 'location', to_id: locId,
+        photos: p.writeoff > 0 ? [] : p.photos });
       if (p.writeoff > 0) movements.push({ ...base, movement_type: 'write_off', unit_id: null,
         product_id: p.row.product_id, qty: p.writeoff, to_kind: 'none',
-        notes: 'lost or destroyed at the venue' });
+        notes: 'lost or destroyed at the venue', photos: p.photos });
     }
   }
   if (!movements.length) { toast('Nothing to record.', 'error'); return; }
@@ -562,7 +685,7 @@ async function doReturn() {
     await store.enqueue('return_gear', payload, label);
     toast(`No signal — held on this phone and sent when the signal returns.`);
     btn.disabled = false; btn.textContent = 'Record returns';
-    TICK.clear(); await load(); return;
+    TICK.clear(); PHOTOS.clear(); await load(); return;
   }
   try {
     const { error } = await sb.from('movement').insert(movements);
@@ -576,14 +699,14 @@ async function doReturn() {
       if (u.error) throw u.error;
     }
     toast(`${movements.length} item(s) recorded.`);
-    TICK.clear();
+    TICK.clear(); PHOTOS.clear();
     await load();
   } catch (err) {
     const msg = err?.message || String(err);
     if (/fetch|network|Failed to fetch/i.test(msg)) {
       await store.enqueue('return_gear', payload, label);
       toast('Connection dropped — held on this phone and sent when the signal returns.');
-      TICK.clear(); await load();
+      TICK.clear(); PHOTOS.clear(); await load();
     } else { toast(friendly(err), 'error'); }
   } finally {
     btn.disabled = false; btn.textContent = 'Record returns';

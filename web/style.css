@@ -679,3 +679,23 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    compact one. A small button is small in TYPE, never in target: nowrap keeps it one line and the
    44px minimum keeps it hittable. */
 .btn--sm { white-space: nowrap; }
+
+/* ---------------------------------------------------------------------------
+   DAMAGE PHOTOGRAPHS (0028). Inside the return row, under the deduction.
+
+   The strip reuses .thumbs / .thumb from the catalogue rather than inventing a second photo
+   grid — same 84px square, same 44px Remove button stacked beneath it instead of floated on top
+   of it, because a delete control overlapping a photo on a phone is a mis-tap waiting to happen.
+   --------------------------------------------------------------------------- */
+.photos { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.photos .field__hint { margin-top: 4px; }
+.photos .thumbs:not(:empty) { margin-top: 10px; }
+
+/* A photograph that uploaded but whose signed link could not be minted — an expired session, or an
+   account without the key. It says "saved" rather than showing a broken image, because a broken
+   image reads as "the photo was lost" and would send somebody back to the venue. */
+.thumb__missing {
+  width: 84px; height: 84px; display: grid; place-items: center;
+  border: 1px dashed var(--edge); border-radius: var(--radius);
+  background: var(--tint-neutral); color: var(--ink-faint); font-size: 12px;
+}

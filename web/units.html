@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Equipment — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-12" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-12" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-12">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-13" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-13" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-13">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-12">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-13">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-12">
-<link rel="stylesheet" href="style.css?v=2026-09-08-12">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-13">
+<link rel="stylesheet" href="style.css?v=2026-09-08-13">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-12" defer></script>
-<script src="boot.js?v=2026-09-08-12" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-13" defer></script>
+<script src="boot.js?v=2026-09-08-13" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -34,8 +34,8 @@
 <script type="module">
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, fmtDate, todayLocal, networkMessage, initOffline,
-         revealActiveTab, cardList, loadPermissions, publicUrl }
-  from './app.js?v=2026-09-08-12';
+         revealActiveTab, cardList, loadPermissions, publicUrl, signedPhotoUrl }
+  from './app.js?v=2026-09-08-13';
 
 $('#chrome').innerHTML = chrome('units.html');
 revealActiveTab();
@@ -406,11 +406,51 @@ async function openPiece(unitId, pieceNo) {
             ${h.is_corrected ? `<span class="item__meta">Taken back${
               h.correction_reason ? ': ' + esc(h.correction_reason) : ''}</span>` : ''}
             ${h.notes && !h.is_correction ? `<span class="item__meta">${esc(h.notes)}</span>` : ''}
+            ${photoLine(h)}
           </span>
         </div>`).join('') || '<p class="field__hint">Nothing recorded yet.</p>'}</div>
       <p class="field__hint">A corrected movement stays here, greyed and marked, with the reason
         beside it — never removed. That is what makes an undo safe to have.</p>
     </div>`;
+
+  // Signed links are minted only when a photograph is actually opened. Doing it during the render
+  // above would mint one per row on every sheet open, and each link is a bearer token with a
+  // two-minute life — cheaper and safer to ask when somebody asks.
+  $$('.pc-shots').forEach(b => b.addEventListener('click', () => showShots(b)));
+}
+
+// ---------------------------------------------------------------------------
+// DAMAGE EVIDENCE ON THE PIECE SHEET (0028).
+//
+// RULE 14, WEARING A PHOTOGRAPH. photo_count comes back for everybody, `photos` only for
+// returns.write or ledger.view — and it is NULL, not [], when it is withheld. So this can say
+// "2 photos · not visible from this account", which is a refusal somebody can act on, instead of
+// showing nothing and letting the account conclude that nobody photographed the damage.
+// ---------------------------------------------------------------------------
+function photoLine(h) {
+  if (!h.photo_count) return '';
+  const n = `${h.photo_count} photo${h.photo_count === 1 ? '' : 's'}`;
+  if (h.photos == null) {
+    return `<span class="item__meta">${n} · not visible from this account</span>`;
+  }
+  return `<button type="button" class="btn btn--ghost btn--sm pc-shots"
+            data-paths="${esc(JSON.stringify(h.photos.map(x => x.path)))}">${n}</button>
+          <span class="pc-strip thumbs"></span>`;
+}
+
+async function showShots(btn) {
+  const strip = btn.parentElement.querySelector('.pc-strip');
+  if (strip.childElementCount) { strip.innerHTML = ''; btn.classList.remove('is-open'); return; }
+  btn.disabled = true;
+  const paths = JSON.parse(btn.dataset.paths);
+  const urls = await Promise.all(paths.map(x => signedPhotoUrl(x)));
+  btn.disabled = false; btn.classList.add('is-open');
+  strip.innerHTML = urls.map((u, i) => u
+    // NOT loading="lazy". These appear only after somebody taps "1 photo" — they have already
+    // asked to see them, and inside the sheet the lazy loader never fired: the <img> sat 84px wide
+    // and visible with naturalWidth 0 for ever, while the signed URL it held answered 200.
+    ? `<div class="thumb"><img src="${esc(u)}" alt="Damage photo ${i + 1}" decoding="async"></div>`
+    : `<div class="thumb"><div class="thumb__missing">no access</div></div>`).join('');
 }
 
 const CUSTOMER_NAMES = new Map();

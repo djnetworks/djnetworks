@@ -55,6 +55,50 @@ export const publicUrl = path => !path ? null
   : sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
 
 /**
+ * DAMAGE PHOTOGRAPHS (0028). The other bucket, and everything about it is the opposite.
+ *
+ * `return-photos` is PRIVATE. There is no getPublicUrl for it — the call would succeed and hand
+ * back a URL that answers 400, which is the worst possible failure: a link that looks like a link.
+ * Every look is a signed URL, minted here and dead in two minutes.
+ *
+ * The path is the order id, then a random name. Two consequences worth having: a photograph
+ * uploaded for a return that then failed to save can still be traced to its job, and nothing is
+ * guessable from the piece number on the sticker.
+ */
+export const RETURN_PHOTOS = 'return-photos';
+
+export async function uploadReturnPhoto(orderId, file) {
+  if (!file) throw new Error('No photo chosen.');
+  if (!file.type.startsWith('image/')) throw new Error('That is not a photo.');
+  if (file.size > 10 * 1024 * 1024)
+    throw new Error('That photo is over 10 MB. Take it again at a smaller size.');
+  const ext = (file.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg').split('+')[0];
+  const rand = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
+  const path = `${orderId}/${rand}.${ext}`;
+  const { error } = await sb.storage.from(RETURN_PHOTOS).upload(path, file, { upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+/**
+ * A short-lived link to one photograph.
+ *
+ * Two minutes, not two hours: the URL is a bearer token in a query string, and it goes into an
+ * <img src> that ends up in browser history. It is re-minted every time the sheet is opened, which
+ * costs a round trip and is the correct trade.
+ *
+ * Returns null rather than throwing when the account may not look, so a caller can say "2 photos —
+ * not visible from this account" instead of showing a broken image (rule 14: the refusal has to be
+ * something a screen can recognise).
+ */
+export async function signedPhotoUrl(path, seconds = 120) {
+  if (!path) return null;
+  const { data, error } = await sb.storage.from(RETURN_PHOTOS).createSignedUrl(path, seconds);
+  if (error) return null;
+  return data?.signedUrl ?? null;
+}
+
+/**
  * How a product is tracked, in words the operator uses.
  *
  * `unit`, `pool` and `consumable` are schema words — they are correct in the database and they

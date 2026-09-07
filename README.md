@@ -3,12 +3,12 @@
 Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 
 - **Start here:** `CLAUDE.md` — the rules that are not negotiable, and why each one exists.
-- **The design:** `docs/structure.md` — 16 tables, 12 forms, the derived views.
+- **The design:** `docs/structure.md` — 17 tables, 12 forms, the derived views.
 - **What was decided and what it cost:** `docs/decisions.md`
 - **What is still unanswered:** `docs/open-questions.md`
 - **Found and not fixed:** `docs/backlog.md`
 - **Where the look comes from:** `docs/design.md` — provisional tokens, and what is still missing.
-- **Verification that rolls itself back:** `supabase/probes/`
+- **Verification that rolls itself back:** `supabase/probes/` — three, each asserting on numbers or status codes and each carrying a false-positive control.
 
 ## Status
 
@@ -20,6 +20,24 @@ ways: the owner reads and writes everywhere, a staff account holding only `sendo
 with no `operator` row reads **0** rows from every one of the seventeen. That is what makes the
 publishable key safe to ship in the page source, which it must be. It is not a reason to publish the
 repo — see Hosting below.
+
+**A movement can be taken back, and taking it back is itself a record.** `0019` added a
+`correction` movement that names the row it undoes; nothing is ever deleted and nothing is ever
+edited, because `DELETE` on `movement` is blocked and `UPDATE` is refused by the append-only guard.
+A correction may only name the **current tip** for that piece — you may peel the tip, you may never
+reach into the middle — and `0020` makes the reason mandatory, because a mechanism that can walk
+history backwards indefinitely is protected by one sentence. `v_movement_effective` is the single
+place that knows what still counts, and every derived view reads it.
+
+**Damage photographs live in a second, private bucket.** `0028`. The catalogue bucket is public
+because the portal shows it; a photograph taken inside a customer's wedding hall is not ours to
+publish at a guessable URL. Opened by `returns.write` or `ledger.view` only, through signed URLs
+that last two minutes, and never by the portal — the migration fails at apply time if the portal
+function ever names the column. Proved with real HTTP rather than by reading the policy: anonymous
+with no key, anonymous holding the publishable key, the guessed public-object URL, and a signed-in
+account with neither permission are all refused, while the operator uploads, signs and reads — and
+the signed link stops working when it expires. `supabase/probes/0028_return_photos_probe.sh`, 14
+assertions, self-cleaning.
 
 **Driven end to end by a signed-in operator on 2026-09-07.** A complete job was walked through the
 browser — product, six pieces, customer with a portal code, an order for four, a dispatch of two,
@@ -41,8 +59,8 @@ What exists:
 
 | | |
 |---|---|
-| Database | 17 tables, 15 views, 30 functions. Migrations `0001`–`0026`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
-| Screens | 13 static pages under `web/`, no build step. Twelve behind an operator sign-in, plus the customer portal. Bottom navigation, re-flowed at login to the modules each person holds. |
+| Database | 17 tables, 15 views, 31 functions, 2 storage buckets — one public catalogue, one private for damage evidence. Migrations `0001`–`0028`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
+| Screens | 13 static pages under `web/`, no build step. Twelve behind an operator sign-in, plus the customer portal. Eleven of the twelve forms have a screen — repair is the one that does not. Bottom navigation, re-flowed at login to the modules each person holds. |
 | Offline | Vendored Supabase client, service worker for the app shell, IndexedDB for queued writes, explicit per-job prefetch. |
 | Sheet | Read-only mirror OUT, deployed as the `sheet-mirror` Edge Function with `sheet/DataSync.gs`. The bulk import lane is NOT built. |
 | Fixture | `supabase/seed/dev_seed.sql` — development data, not the catalogue. |
