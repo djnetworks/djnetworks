@@ -514,3 +514,14 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 .pick-head__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
 .pick-head__title { font-weight: 700; font-size: 17px; line-height: 1.25; }
 .pick-head__right { flex: none; text-align: right; color: var(--ink-soft); font-size: 13px; }
+
+/* ---------- WhatsApp share ----------
+   A share button opens a PREFILLED DRAFT and never sends, so it must not look like a send button.
+   It is an ordinary control with WhatsApp's green as a border, not a filled green button that
+   invites a confident tap on a message about somebody's money. */
+.btn--wa {
+  border-color: #128C7E; color: #0B5F55; background: var(--surface);
+  text-decoration: none; white-space: nowrap;
+}
+.btn--wa::before { content: "\1F4AC"; margin-right: 6px; }
+.btn--wa:hover { border-color: #0B5F55; }

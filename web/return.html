@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Return — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-2" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-2" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-2">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-2">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
-<link rel="stylesheet" href="style.css?v=2026-09-08-1">
-<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
-<script src="boot.js?v=2026-09-08-1" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-2">
+<link rel="stylesheet" href="style.css?v=2026-09-08-2">
+<script src="vendor/supabase.js?v=2026-09-08-2" defer></script>
+<script src="boot.js?v=2026-09-08-2" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -28,8 +28,8 @@
 
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
-         errorBlock, toast, initOffline, registerQueueHandlers, revealActiveTab }
-  from './app.js?v=2026-09-08-1';
+         errorBlock, toast, initOffline, registerQueueHandlers, revealActiveTab, waLink, waMessage }
+  from './app.js?v=2026-09-08-2';
 
 $('#chrome').innerHTML = chrome('return.html');
 revealActiveTab();
@@ -58,6 +58,7 @@ const orderId = new URLSearchParams(location.search).get('order');
 let ORDER = null, CUSTOMER = null, OUTSTANDING = [], PRODUCTS = new Map(), LOCS = [], LINES = [];
 // Returns written against this job TODAY that have not been corrected — the undo list.
 let TODAY_BACK = [];
+let FULFIL = null;
 let TICK = new Map();   // key -> {kind:'unit'|'pool', ...}
 
 requireSession(async () => { orderId ? load() : chooser(); });
@@ -120,13 +121,14 @@ async function load() {
   const app = $('#app');
   app.innerHTML = `<div id="head"></div><div id="body" class="skeleton"><div class="skeleton__row"></div></div>`;
   try {
-    const [o, oo, locs, lines, back] = await Promise.all([
+    const [o, oo, locs, lines, ful, back] = await Promise.all([
       sb.from('rental_order').select('*, customer:customer_id(id,name,business_name)').eq('id', orderId).single(),
       // What is still out comes from the view, never from a date. An item is outstanding because
       // no return movement exists for it — rule 2, and the reason this screen cannot guess.
       sb.from('v_order_outstanding').select('*').eq('order_id', orderId),
       sb.from('location').select('id,name,type').eq('active', true).order('name'),
       sb.from('order_line').select('product_id,qty').eq('order_id', orderId),
+      sb.from('v_order_fulfilment').select('qty_returned,qty_dispatched').eq('order_id', orderId).maybeSingle(),
       // v_movement_effective, NOT movement: a return that has already been corrected must not be
       // offered for correcting a second time (0019 refuses it, but offering it would be a button
       // whose only outcome is an error).
@@ -137,6 +139,7 @@ async function load() {
     ]);
     for (const r of [o, oo, locs, lines]) if (r.error) throw r.error;
     TODAY_BACK = back.error ? [] : (back.data ?? []);
+    FULFIL = ful.error ? null : ful.data;
     ORDER = o.data; CUSTOMER = o.data.customer; OUTSTANDING = oo.data ?? []; LOCS = locs.data ?? [];
     LINES = lines.data ?? [];
 
@@ -228,6 +231,7 @@ function render() {
         <span class="field__hint" style="margin:0">Then untick anything that did not come back.</span>
       </div>
       <div id="rows"></div>
+      <div id="short-share" style="margin-top:12px"></div>
     </div>
     <div class="card" id="money"></div>
     <div id="undo"></div>
@@ -236,6 +240,7 @@ function render() {
       <button class="btn btn--primary btn--block" id="go">Record returns</button>
     </div>`;
   renderUndo();
+  renderShortShare();
 
   $('#rows').innerHTML = OUTSTANDING.map((r, i) => {
     const p = PRODUCTS.get(r.product_id);
@@ -331,6 +336,28 @@ function render() {
 // refuses a correction that is not the piece's most recent movement, and a button whose only
 // outcome is an error message is worse than no button.
 // ---------------------------------------------------------------------------
+// "Came back short." Offered only when a return has ALREADY been recorded on this job and
+// something is still out — that is the moment the message is true. Before anything comes back,
+// nothing is short; it has simply not arrived yet, and telling a customer their gear is missing on
+// the morning of their event is how a customer is lost.
+function renderShortShare() {
+  const host = $('#short-share');
+  if (!host) return;
+  const anyBack = TODAY_BACK.length > 0 || (FULFIL?.qty_returned ?? 0) > 0;
+  if (!anyBack || !OUTSTANDING.length) { host.innerHTML = ''; return; }
+  const missing = OUTSTANDING.map(r => {
+    const p = PRODUCTS.get(r.product_id);
+    return r.unit_id
+      ? `${p?.short_code ?? '?'} piece ${r.piece_no}`
+      : `${r.qty_outstanding} \u00D7 ${p?.model_name ?? p?.short_code ?? 'items'}`;
+  });
+  const msg = waMessage('came_back_short', { order: { ...ORDER, customer: CUSTOMER }, missing });
+  host.innerHTML = `<a class="btn btn--wa" target="_blank" rel="noopener"
+      href="${esc(waLink(CUSTOMER?.whatsapp, msg))}">Ask them about the ${esc(missing.length)} still out</a>
+    <span class="field__hint" style="margin-top:6px">Opens a draft listing exactly what has not come
+      back. Nothing is charged for by sending it — it does not send, and it charges nothing either way.</span>`;
+}
+
 function renderUndo(host) {
   const box = host ? (() => { const d = document.createElement('div'); host.appendChild(d); return d; })()
                    : $('#undo');
@@ -361,9 +388,19 @@ async function undoReturn(btn) {
   const what = btn.dataset.what.replace(/<[^>]*>/g, '');
   if (!confirm(`Put ${what} back to being OUT?\n\nThe return stays in the history marked corrected — `
              + `nothing is deleted. Do this only if it did not physically come back.`)) return;
-  const why = (prompt('Why? This is written next to the correction and is what the history will say.',
-                      'not actually returned') || '').trim();
-  if (!why) return;
+  // 0020 requires a reason of at least eight characters and refuses the write without one. Asking
+  // here rather than letting the database refuse means the operator gets the question, not an
+  // error — but the floor is the SAME floor, so the screen cannot drift from the guard.
+  let why = '';
+  for (;;) {
+    why = (prompt('Why? This is written next to the correction and is what the history will say '
+                + 'three weeks later when a customer disputes it.', why || 'not actually returned') || '').trim();
+    if (!why) return;                                   // cancelled — nothing is written
+    if (why.length >= 8) break;
+    alert('A few words, please — at least eight characters. "not back" is enough; "oops" is not.\n\n'
+        + 'The movement stays in the history for ever, flagged, and this sentence is the only '
+        + 'record of what actually happened.');
+  }
   btn.disabled = true; btn.textContent = 'Undoing…';
   try {
     const { error } = await sb.from('movement').insert({

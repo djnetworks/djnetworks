@@ -133,6 +133,16 @@ navigation model belong to a textile trading app with suppliers and buyers, and 
 `pool` and `consumable` are still the column values; only their labels changed, through
 `trackLabel` / `trackBadge` / `fulfilLabel` in `app.js` so no screen can invent its own vocabulary.
 
+### A correction must say why
+`0020` makes `movement.notes` mandatory on a correction — at least a few words, enforced in the
+trigger rather than in the screen that happens to write it.
+**Why:** the mechanism can walk a piece's history back one row at a time, and the only thing that
+makes that safe rather than merely auditable is that each step carries a sentence somebody wrote.
+`0019`'s own worked example is the argument: *return (CORRECTED: the sub never left the hall)* is a
+history somebody can read three weeks later; *return (CORRECTED)* is not.
+**Cost:** an eight-character floor is a floor, not a quality test. It stops the empty string, a
+space and a full stop; it cannot stop "asdfghjk" and does not pretend to.
+
 ### A movement is corrected, never deleted
 `0019` adds a `correction` movement type naming the movement it undoes, and
 `v_movement_effective` — which every derived view and `fn_availability` now read instead of

@@ -71,6 +71,186 @@ export const trackLabel = m => ({
   consumable: 'Used up, never comes back',
 }[m] ?? m);
 
+// ---------------------------------------------------------------------------
+// THE CUSTOMER PICKER.
+//
+// Both screens that choose a customer used a plain <select> listing every customer. That is fine at
+// two and unusable at two hundred, and it fails for the reason that actually matters here: HE WILL
+// HAVE THE PHONE NUMBER, NOT THE SPELLING. Names transliterate inconsistently — Priya/Priyaa,
+// Rakesh/Rakhesh — and he will not remember which way it was typed the day the customer first rang.
+// A number is a number.
+//
+// So: type-to-filter over name, business name AND both phone numbers, matched on DIGITS ONLY for
+// the phone part, so "98250" finds "98250 44556" and a stored "+91 98250-44556" alike.
+//
+// Renders into `host`, calls onPick(customer|null). `customers` needs id, name, business_name and
+// whichever of whatsapp/alt_phone were selected.
+// ---------------------------------------------------------------------------
+export function customerPicker(host, customers, selected, onPick, opts = {}) {
+  const { placeholder = 'Search name or phone number…', required = false, id = 'cp' } = opts;
+  let open = false, q = '';
+
+  const digits = v => String(v ?? '').replace(/\D/g, '');
+  const label = c => c.business_name ? `${c.business_name} — ${c.name}` : c.name;
+  const phones = c => [c.whatsapp, c.alt_phone].filter(Boolean).join(' · ');
+
+  const matches = () => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return customers.slice(0, 30);
+    const nd = digits(needle);
+    return customers.filter(c =>
+      [c.name, c.business_name].some(v => (v || '').toLowerCase().includes(needle))
+      || (nd.length >= 3 && [c.whatsapp, c.alt_phone].some(v => digits(v).includes(nd)))
+    ).slice(0, 30);
+  };
+
+  function paint() {
+    const rows = matches();
+    host.innerHTML = `
+      <div class="field" style="margin-bottom:0;position:relative">
+        <label class="field__label" for="${id}-q">Customer${required ? ' *' : ''}</label>
+        ${selected ? `<div class="row" style="gap:8px;align-items:center">
+            <span class="badge badge--unit" style="font-size:14px;padding:6px 10px">${esc(label(selected))}</span>
+            <span class="field__hint" style="margin:0">${esc(phones(selected))}</span>
+            <button class="btn btn--sm" id="${id}-clear" type="button">Change</button>
+          </div>` : ''}
+        <input class="field__input" id="${id}-q" type="search" placeholder="${esc(placeholder)}"
+               autocapitalize="none" spellcheck="false" inputmode="text"
+               value="${esc(q)}" ${selected ? 'hidden' : ''}>
+        ${!selected ? `<div class="list" style="margin-top:8px;max-height:280px;overflow:auto">
+          ${rows.length ? rows.map(c => `
+            <button class="item ${id}-opt" data-id="${esc(c.id)}" type="button">
+              <span class="item__main">
+                <span class="item__title">${esc(label(c))}</span>
+                <span class="item__meta">${esc(phones(c)) || 'no phone number'}${c.city ? ' · ' + esc(c.city) : ''}</span>
+              </span></button>`).join('')
+          : `<p class="field__hint">No customer matches that.
+               ${digits(q).length >= 3 ? 'Try fewer digits, or ' : ''}<a href="customers.html">add them</a> first.</p>`}
+        </div>` : ''}
+      </div>`;
+    $(`#${id}-q`, host)?.addEventListener('input', e => { q = e.target.value; paint(); });
+    $(`#${id}-clear`, host)?.addEventListener('click', () => { selected = null; q = ''; paint(); onPick(null); });
+    $$(`.${id}-opt`, host).forEach(b => b.addEventListener('click', () => {
+      selected = customers.find(c => c.id === b.dataset.id) ?? null;
+      q = ''; paint(); onPick(selected);
+    }));
+  }
+
+  paint();
+  return { get value() { return selected?.id ?? ''; }, get customer() { return selected; } };
+}
+
+// ---------------------------------------------------------------------------
+// WHATSAPP.
+//
+// The source briefing: "Each order needs an ID that goes into every WhatsApp message about it.
+// WhatsApp is the actual communication channel with customers and staff." Until now nothing
+// generated those messages, so the operator wrote them by hand AND looked up the number — work
+// this app added rather than saved, which is the worst way for a requirement to go missing.
+//
+// A share button OPENS A PREFILLED DRAFT. It never sends. wa.me hands the text to WhatsApp and
+// stops; the send button belongs to the person, and on a message about somebody's money that is
+// not a detail.
+// ---------------------------------------------------------------------------
+
+/** wa.me wants digits only, with a country code. Indian numbers are stored ten-digit. */
+export function waNumber(phone) {
+  const d = String(phone ?? '').replace(/\D/g, '');
+  if (!d) return null;
+  if (d.length === 10) return '91' + d;
+  if (d.length === 12 && d.startsWith('91')) return d;
+  if (d.length === 11 && d.startsWith('0')) return '91' + d.slice(1);
+  return d;                                  // already carries a country code, or is unusual
+}
+
+export function waLink(phone, text) {
+  const n = waNumber(phone);
+  const t = encodeURIComponent(text);
+  // No number: still useful — WhatsApp opens the share sheet and he picks the chat himself.
+  return n ? `https://wa.me/${n}?text=${t}` : `https://wa.me/?text=${t}`;
+}
+
+const rupees = v => '\u20B9' + Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const dash = s => (s == null || s === '' ? '' : String(s));
+
+/**
+ * The four messages, plus the overdue chase. Each returns plain text, and each one carries the
+ * ORDER NUMBER, because that is the only identifier the operator and the customer share.
+ *
+ * `kind` is one of: confirmed · on_its_way · came_back_short · payment_pending · overdue.
+ */
+export function waMessage(kind, ctx = {}) {
+  const o = ctx.order ?? {};
+  const who = ctx.customerName || o.customer?.business_name || o.customer?.name || '';
+  const hi = who ? `Namaste ${who},` : 'Namaste,';
+  // fmtDate returns an em dash for nothing, which is right on a screen and wrong in a sentence —
+  // the account-level reminder read "outstanding on your account (—)". Nothing means nothing here.
+  const when = o.out_date ? fmtDate(o.out_date) : '';
+  const job = [when, o.venue_name].filter(Boolean).join(' · ');
+  // Every message carries something the customer can quote back. Usually one order number; for an
+  // account-level reminder, the orders the balance is actually made of.
+  const refs = ctx.orderRefs?.length ? ctx.orderRefs : (o.order_no ? [o.order_no] : []);
+  const ref = refs.length ? `\n\nRef: ${refs.join(', ')}` : '';
+  const sign = '\n\n— DJ Network\u2019s';
+
+  switch (kind) {
+    case 'confirmed': {
+      const lines = (ctx.lines ?? []).map(l => `\u2022 ${l.qty} \u00D7 ${l.name}`).join('\n');
+      const dep = Number(o.deposit_amount || 0) > 0
+        ? `\nDeposit: ${rupees(o.deposit_amount)}` : '';
+      return `${hi}\n\nYour booking is confirmed.\n\n`
+        + `Date: ${fmtDate(o.out_date)} to ${fmtDate(o.expected_return_date)}`
+        + (o.days ? ` (${o.days} day${o.days === 1 ? '' : 's'})` : '')
+        + (o.venue_name ? `\nVenue: ${o.venue_name}` : '')
+        + (lines ? `\n\n${lines}` : '')
+        + dep + ref + sign;
+    }
+    case 'on_its_way': {
+      const carrier = [dash(ctx.carrierName), dash(ctx.carrierPhone)].filter(Boolean).join(' \u2013 ');
+      const veh = ctx.vehicle ? `\nVehicle: ${ctx.vehicle}` : '';
+      return `${hi}\n\nYour equipment is on its way`
+        + (job ? ` for ${job}` : '') + '.\n\n'
+        + (ctx.count ? `${ctx.count} item${ctx.count === 1 ? '' : 's'} sent.\n` : '')
+        + (carrier ? `Coming with: ${carrier}${veh}\n` : '')
+        + `\nPlease check everything on arrival and tell us straight away if anything is missing.`
+        + ref + sign;
+    }
+    case 'came_back_short': {
+      const items = (ctx.missing ?? []).map(m => `\u2022 ${m}`).join('\n');
+      return `${hi}\n\nThe gear from ${job || 'your job'} has come back, but these are still with you:\n\n`
+        + `${items}\n\nCould you check and let us know? Nothing is charged for yet \u2014 we would `
+        + `rather find it.` + ref + sign;
+    }
+    case 'payment_pending': {
+      // RULE 6, twice. Deposit is the customer's own money being held and is NEVER added to what
+      // is owed, and nothing is chased when the balance is zero or in credit — 0018 made the
+      // credit case reachable, and dunning somebody who has overpaid is how a regular is lost.
+      const owed = Number(ctx.receivable || 0);
+      const held = Number(ctx.depositHeld || 0);
+      return `${hi}\n\nA gentle reminder \u2014 ${rupees(owed)} is outstanding on your account`
+        + (job ? ` (${job})` : '') + '.\n\n'
+        + (held > 0
+            ? `This is separate from the ${rupees(held)} deposit we are holding, which comes back to you.\n\n`
+            : '')
+        + `Please let us know when it suits you to settle.` + ref + sign;
+    }
+    case 'overdue': {
+      const items = (ctx.missing ?? []).map(m => `\u2022 ${m}`).join('\n');
+      const d = Number(ctx.daysLate || 0);
+      return `${hi}\n\nJust a reminder about the gear from ${job || 'your job'} \u2014 it was due back on `
+        + `${fmtDate(o.expected_return_date)}`
+        + (d > 0 ? `, ${d} day${d === 1 ? '' : 's'} ago` : '') + '.\n\n'
+        + (items ? `Still with you:\n${items}\n\n` : '')
+        + `When can we collect?` + ref + sign;
+    }
+    default:
+      return `${hi}${ref}${sign}`;
+  }
+}
+
+/** Can a payment chaser honestly be offered? Rule 6: never at zero, never in credit. */
+export const canChasePayment = receivable => Number(receivable || 0) > 0;
+
 /**
  * HOW A JOB IS NAMED, everywhere it appears.
  *

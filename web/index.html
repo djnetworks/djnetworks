@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DJ Network's — Rental System</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-2" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-2" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-2">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-2">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
-<link rel="stylesheet" href="style.css?v=2026-09-08-1">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-2">
+<link rel="stylesheet" href="style.css?v=2026-09-08-2">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
-<script src="boot.js?v=2026-09-08-1" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-2" defer></script>
+<script src="boot.js?v=2026-09-08-2" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -33,8 +33,8 @@
 
 <script type="module">
 import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, todayLocal,
-         initOffline, revealActiveTab, jobLine }
-  from './app.js?v=2026-09-08-1';
+         initOffline, revealActiveTab, jobLine, waLink, waMessage }
+  from './app.js?v=2026-09-08-2';
 
 $('#chrome').innerHTML = chrome('index.html');
 revealActiveTab();
@@ -149,15 +149,25 @@ requireSession(async () => {
         'Nothing is late. Everything that went out is either back or due later.',
         o => {
           const days = Math.round((new Date(today + 'T00:00:00') - new Date(o.expected_return_date + 'T00:00:00')) / 86400000);
-          const what = (missing.get(o.id) ?? []).slice(0, 3).join(', ');
-          return `<a class="item" href="return.html?order=${esc(o.id)}">
-            <span class="item__main">
+          const all = missing.get(o.id) ?? [];
+          const what = all.slice(0, 3).join(', ');
+          // ONE TAP TO THE CHASE. The reminder is the only thing he does with this list that is
+          // not opening the return screen, and it is the thing he puts off. The link opens a
+          // PREFILLED WhatsApp draft — it never sends; the send button stays his.
+          // A div, not an <a>, because a row that is itself a link cannot contain a second one.
+          const msg = waMessage('overdue', { order: o, missing: all, daysLate: days });
+          return `<div class="item" style="cursor:default;align-items:flex-start">
+            <a class="item__main" href="return.html?order=${esc(o.id)}" style="color:inherit">
               <span class="item__title">${jobLine(o).title}</span>
-              <span class="item__meta">${esc(what)}${(missing.get(o.id) ?? []).length > 3 ? ' …' : ''}</span>
+              <span class="item__meta">${esc(what)}${all.length > 3 ? ' …' : ''}</span>
               <span class="item__meta">${esc(o.order_no)} · due ${esc(fmtDate(o.expected_return_date))}</span>
+            </a>
+            <span class="item__right" style="display:grid;gap:6px;justify-items:end">
+              <span class="badge badge--out">${esc(days)} day${days === 1 ? '' : 's'} late</span>
+              <a class="btn btn--sm btn--wa" target="_blank" rel="noopener"
+                 href="${esc(waLink(o.customer?.whatsapp, msg))}">Remind</a>
             </span>
-            <span class="item__right"><span class="badge badge--out">${esc(days)} day${days === 1 ? '' : 's'} late</span></span>
-          </a>`;
+          </div>`;
         });
 
     // ---- the counts, now secondary ----------------------------------------

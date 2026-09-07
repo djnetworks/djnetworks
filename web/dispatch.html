@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Send out — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-2" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-2" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-2">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-2">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
-<link rel="stylesheet" href="style.css?v=2026-09-08-1">
-<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
-<script src="boot.js?v=2026-09-08-1" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-2">
+<link rel="stylesheet" href="style.css?v=2026-09-08-2">
+<script src="vendor/supabase.js?v=2026-09-08-2" defer></script>
+<script src="boot.js?v=2026-09-08-2" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -29,8 +29,8 @@
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, registerQueueHandlers, syncNow, revealActiveTab,
-         trackBadge, publicUrl }
-  from './app.js?v=2026-09-08-1';
+         trackBadge, publicUrl, waLink, waMessage }
+  from './app.js?v=2026-09-08-2';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
@@ -60,6 +60,8 @@ let PINNED = new Map(), DISPATCHED = new Map(), PICK = new Map(), POOLPICK = new
 let FROM_CACHE = false, CACHED_AT = null;
 // product_id -> object URL for rendering, and product_id -> Blob for the offline record.
 let PHOTOS = new Map(), PHOTO_BLOBS = new Map();
+// Set by a successful send-out; the draft is offered on the screen that reloads underneath it.
+let LAST_SENT_LINK = null;
 
 requireSession(async () => { await boot(); });
 
@@ -342,6 +344,11 @@ function render() {
       <a class="btn btn--ghost btn--sm" href="orders.html">Order</a>
     </div>
     <div class="row" id="offline-state" style="margin-bottom:12px"></div>
+    <div class="row" id="sent-share" style="margin-bottom:12px" ${LAST_SENT_LINK ? '' : 'hidden'}>
+      <a class="btn btn--wa" target="_blank" rel="noopener"
+         href="${esc(LAST_SENT_LINK ?? '#')}">Tell them it is on its way</a>
+      <span class="field__hint" style="margin:0">Opens a draft with the count and the driver's number. It does not send.</span>
+    </div>
     ${['closed', 'cancelled'].includes(ORDER.status) ? `<div class="note note--warn">
       This order is ${esc(ORDER.status)}. Anything already out stays out until it is returned, but
       nothing more should be loaded against it.</div>` : ''}`;
@@ -363,6 +370,15 @@ function render() {
         </select>
         <span class="field__hint">Only pieces sitting at this location are offered below.</span></label>
     </div>
+    <!-- LOAD THE WHOLE ORDER, mirroring "All 6 back" on the return screen. The ordinary job is
+         that everything on the order goes out together; picking six tiles one at a time is the
+         exception dressed as the rule.
+         The count is on the button, never the bare word — the same reason as on the return screen.
+         And it STAGES: the tiles light up, the summary counts them, and the sticky button is still
+         a separate deliberate press. Send-out does not need 0019's correction machinery, because a
+         dispatch recorded in error is undone by the return that follows it; it needs the same
+         stage-then-commit separation, and that it has. -->
+    <div class="row" id="load-all-row" style="gap:8px;margin-bottom:10px"></div>
     <div id="lines"></div>
     <div class="card">
       <strong>Who is taking it</strong>
@@ -530,7 +546,64 @@ function renderLines() {
     POOLPICK.set(inp.dataset.product, n);
     paintSummary();
   }));
-  renderInclusions(); paintSummary(); paintPhotos();
+  renderInclusions(); paintSummary(); paintPhotos(); paintLoadAll();
+}
+
+// ---------------------------------------------------------------------------
+// The order-level "load everything" control.
+//
+// Its number is what WOULD be added by pressing it — not the size of the order — because the two
+// differ constantly: a partly-dispatched job, a shelf that is short, a piece pinned somewhere
+// else. A button reading "Load all 8" that adds 5 is a button that has lied once and will not be
+// trusted again, and this is a screen operated one-handed at a van.
+// ---------------------------------------------------------------------------
+function loadAllPlan() {
+  const picks = [];                 // [unit_id, product_id]
+  const pools = new Map();          // product_id -> qty
+  LINES.forEach((line, i) => {
+    const p = PRODUCTS.get(line.product_id);
+    if (!p) return;
+    const { remaining, sorted } = lineContext(i);
+    if (remaining <= 0) return;
+    if (p.tracking_mode === 'unit') {
+      let want = Math.min(remaining, sorted.length) - pickedOn(line.product_id, sorted);
+      for (const u of sorted) {
+        if (want <= 0) break;
+        if (PICK.has(u.unit_id)) continue;
+        picks.push([u.unit_id, line.product_id]); want--;
+      }
+    } else {
+      const onHand = AVAIL.get(line.product_id) ?? 0;
+      const n = Math.min(remaining, onHand);
+      if (n > (POOLPICK.get(line.product_id) ?? 0)) pools.set(line.product_id, n);
+    }
+  });
+  const adds = picks.length + [...pools.entries()]
+    .reduce((t, [pid, n]) => t + (n - (POOLPICK.get(pid) ?? 0)), 0);
+  return { picks, pools, adds };
+}
+
+function paintLoadAll() {
+  const host = $('#load-all-row');
+  if (!host) return;
+  const { adds } = loadAllPlan();
+  const anyPicked = PICK.size > 0 || [...POOLPICK.values()].some(n => n > 0);
+  host.innerHTML = `
+    ${adds > 0 ? `<button class="btn btn--primary" id="load-all" type="button">Load all ${esc(adds)}</button>` : ''}
+    ${anyPicked ? '<button class="btn btn--sm" id="load-none" type="button">Clear</button>' : ''}
+    <span class="field__hint" style="margin:0">${adds > 0
+      ? 'Then tap off anything that is not going.'
+      : (anyPicked ? 'Everything on the shelf for this job is selected.' : '')}</span>`;
+  $('#load-all')?.addEventListener('click', () => {
+    const { picks, pools } = loadAllPlan();
+    for (const [unitId, productId] of picks) PICK.set(unitId, { product_id: productId, inclusions: null });
+    for (const [pid, n] of pools) POOLPICK.set(pid, n);
+    renderLines();
+  });
+  $('#load-none')?.addEventListener('click', () => {
+    PICK.clear(); POOLPICK.clear();
+    renderLines();
+  });
 }
 
 // How many of THIS line's offered pieces are currently picked. Counted against the tiles on
@@ -719,6 +792,17 @@ async function doDispatch() {
       .update({ state: 'due' }).eq('order_id', orderId).eq('state', 'upcoming');
     if (e2) throw e2;
     toast(`${movements.length} item(s) sent out.`);
+    // The message the customer actually wants, built from what was just recorded: how many items,
+    // who is bringing them, and the number to ring when the van is late. It is a PREFILLED DRAFT
+    // and it is offered rather than sent — see waMessage() in app.js.
+    const sentMsg = waMessage('on_its_way', {
+      order: { ...ORDER, customer: CUSTOMER },
+      count: movements.length,
+      carrierName: common.carrier_name || (common.dispatch_method === 'delivered_by_chachu' ? 'DJ Network\u2019s' : ''),
+      carrierPhone: common.carrier_phone,
+      vehicle: common.vehicle_no,
+    });
+    LAST_SENT_LINK = waLink(CUSTOMER?.whatsapp, sentMsg);
     PICK.clear(); POOLPICK.clear();
     await load();
   } catch (err) {

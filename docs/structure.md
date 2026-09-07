@@ -167,9 +167,25 @@ into the middle while something newer still stands, because a span with a hole i
 everywhere it is read. Corrections are never location-bearing and never silent: `v_unit_history`
 shows the corrected movement flagged, with the reason, alongside the annotation that undid it.
 
+A correction must say **why** (`0020`): at least a few words, refused at the trigger. The mechanism
+can walk history back, and the sentence is the only record of what actually happened.
+
 This is what makes the return screen's **"All 6 back"** safe to have. The count is on the button,
 never the bare word — tapping something that says 6 while holding 5 is a different mistake from
-tapping a word — and the ticks are still separate from the commit.
+tapping a word — and the ticks are still separate from the commit. Send-out mirrors it with
+**"Load all N"**, where N is what pressing it will actually add rather than the size of the order:
+a partly-dispatched job, a short shelf or a piece pinned elsewhere all make those differ, and a
+button that says 8 and adds 5 has lied once and will not be trusted again. Send-out needs no
+correction machinery — a dispatch recorded in error is undone by the return that follows it — but
+it needs the same stage-then-commit separation, and it has it.
+
+**WhatsApp drafts.** `waMessage()` in `web/app.js` builds the five predictable messages — booking
+confirmed, on its way with the driver's number, came back short, payment pending, and the overdue
+reminder on Today. A share button **opens a prefilled draft and never sends**; the send button
+belongs to the person, and on a message about somebody's money that is not a detail. Every message
+carries an order number to quote. The payment chaser sits behind two rule 6 guards: never offered
+when `receivable <= 0` (a credit balance is reachable since `0018`), and the deposit is named
+separately or not at all — it is the customer's own money and is never part of what is owed.
 
 **9 · Internal transfer.** From, to, date, units, moved by, notes. That is the whole form.
 

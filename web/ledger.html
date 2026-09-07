@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-2" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-2" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-2">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-2">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
-<link rel="stylesheet" href="style.css?v=2026-09-08-1">
-<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
-<script src="boot.js?v=2026-09-08-1" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-2">
+<link rel="stylesheet" href="style.css?v=2026-09-08-2">
+<script src="vendor/supabase.js?v=2026-09-08-2" defer></script>
+<script src="boot.js?v=2026-09-08-2" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -25,8 +25,9 @@
 
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
-         errorBlock, toast, openSheet, focusField, initOffline, revealActiveTab, entryLabel }
-  from './app.js?v=2026-09-08-1';
+         errorBlock, toast, openSheet, focusField, initOffline, revealActiveTab, entryLabel,
+         waLink, waMessage, canChasePayment, customerPicker }
+  from './app.js?v=2026-09-08-2';
 
 $('#chrome').innerHTML = chrome('ledger.html');
 revealActiveTab();
@@ -52,7 +53,7 @@ async function boot() {
 async function load() {
   try {
     const [c, b, o] = await Promise.all([
-      sb.from('customer').select('id,name,business_name,whatsapp').eq('active', true).order('name'),
+      sb.from('customer').select('id,name,business_name,whatsapp,alt_phone,city').eq('active', true).order('name'),
       sb.from('v_customer_balance').select('*'),
       sb.from('rental_order').select('id,order_no,customer_id,status,out_date').order('out_date', { ascending: false }),
     ]);
@@ -72,20 +73,16 @@ async function load() {
 function renderPicker() {
   if (!CUSTOMERS.length) { $('#picker').innerHTML = ''; return; }
   $('#picker').innerHTML = `<div class="row" style="margin-bottom:14px">
-    <!-- The primary control on this screen, and it had no accessible name whatsoever: a screen
-         reader announced "combo box" and nothing else. -->
-    <label class="sr-only" for="c-select">Choose a customer</label>
-    <select class="field__select grow" id="c-select" style="max-width:520px">
-      <option value="">Choose a customer…</option>
-      ${CUSTOMERS.map(c => `<option value="${esc(c.id)}" ${SELECTED?.id === c.id ? 'selected' : ''}>
-        ${esc(c.business_name || c.name)}</option>`).join('')}
-    </select></div>`;
-  $('#c-select').addEventListener('change', async e => {
-    SELECTED = CUSTOMERS.find(x => x.id === e.target.value) ?? null;
+    <!-- Searchable by name OR phone number. It was a plain <select> of every customer: fine at two
+         and unusable at two hundred, and it failed on the thing that matters — he has the number,
+         not the spelling. -->
+    <div class="grow" id="cust-pick" style="max-width:520px"></div></div>`;
+  customerPicker($('#cust-pick'), CUSTOMERS, SELECTED, async c => {
+    SELECTED = c;
     $('#add-entry').hidden = !SELECTED;
     history.replaceState({}, '', SELECTED ? `ledger.html?customer=${SELECTED.id}` : 'ledger.html');
     await renderBody();
-  });
+  }, { id: 'lc', placeholder: 'Search name or phone number…' });
   $('#add-entry').hidden = !SELECTED;
 }
 
@@ -126,6 +123,27 @@ async function renderBody() {
   // any real quantity. `upcoming` is separate again: it is billed work that has not gone out yet,
   // and calling it a debt is how a wedding customer is told they owe money three weeks early.
   // ---------------------------------------------------------------------------
+  // THE PAYMENT CHASER, and the two guards it exists behind — both rule 6.
+  //
+  // 1 · Never offered when the balance is zero or in credit. 0018 made the credit case reachable
+  //     (reverse a charge that has already been paid), and a reminder to somebody who has OVERPAID
+  //     is the fastest way to lose a trade regular. canChasePayment() in app.js is the one test.
+  // 2 · The message states the deposit separately or not at all. Deposit held is the customer's
+  //     own money and is never part of what is owed; a message that blended them would chase a
+  //     number that is not any real quantity.
+  // The orders the balance is actually made of, so the customer has something to quote — the
+  // briefing requires an ID in every message, and an on-account balance has no single one.
+  const BILLED_TYPES = ['rental', 'transport', 'labour', 'misc', 'damage'];
+  const refs = [...new Set(ENTRIES
+    .filter(e => e.state === 'due' && BILLED_TYPES.includes(e.type) && e.order?.order_no)
+    .map(e => e.order.order_no))];
+  const chase = canChasePayment(b.receivable)
+    ? waLink(SELECTED?.whatsapp, waMessage('payment_pending', {
+        order: {}, orderRefs: refs, customerName: SELECTED?.business_name || SELECTED?.name,
+        receivable: b.receivable, depositHeld: b.deposit_held,
+      }))
+    : null;
+
   body.innerHTML = `
     <div class="stats" style="margin-bottom:14px">
       <!-- A negative receivable is a real state, not an error: it means they have paid for more
@@ -146,6 +164,12 @@ async function renderBody() {
     </div>
     <p class="field__hint" style="margin-top:-6px">These three are never added together. Owed and held
       are opposite directions, and upcoming has not happened yet.</p>
+    ${chase ? `<div class="row" style="margin:-4px 0 14px">
+      <a class="btn btn--wa" target="_blank" rel="noopener" href="${esc(chase)}">Ask for the ${esc(money(b.receivable))}</a>
+      <span class="field__hint" style="margin:0">Opens a draft. It does not send${
+        Number(b.deposit_held) > 0 ? ', and it names the deposit separately so it is never mistaken for what is owed' : ''}.</span>
+    </div>` : (Number(b.receivable) < 0 ? `<p class="field__hint" style="margin:-4px 0 14px">
+      Nothing to chase — they are in credit. That is money owed back to them.</p>` : '')}
     <div class="card scroll-x">
       <table class="data">
         <thead><tr><th>Date</th><th>What</th><th>Order</th><th>State</th><th>How</th><th style="text-align:right">Amount</th></tr></thead>

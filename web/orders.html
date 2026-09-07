@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orders — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-2" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-2" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-2">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-2">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
-<link rel="stylesheet" href="style.css?v=2026-09-08-1">
-<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
-<script src="boot.js?v=2026-09-08-1" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-2">
+<link rel="stylesheet" href="style.css?v=2026-09-08-2">
+<script src="vendor/supabase.js?v=2026-09-08-2" defer></script>
+<script src="boot.js?v=2026-09-08-2" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -28,9 +28,10 @@
 <div id="sheet-host"></div>
 
 <script type="module">
-import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
-         openSheet, focusField, initOffline, revealActiveTab, fulfilLabel }
-  from './app.js?v=2026-09-08-1';
+import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock, toast,
+         openSheet, focusField, initOffline, revealActiveTab, fulfilLabel, waLink, waMessage,
+         customerPicker }
+  from './app.js?v=2026-09-08-2';
 
 $('#chrome').innerHTML = chrome('orders.html');
 revealActiveTab();
@@ -93,7 +94,7 @@ async function load() {
   try {
     const [ords, custs, prods, ful, tiers, settings, ledger] = await Promise.all([
       sb.from('rental_order').select('*').order('out_date', { ascending: false }),
-      sb.from('customer').select('id,name,business_name,whatsapp,type').eq('active', true).order('name'),
+      sb.from('customer').select('id,name,business_name,whatsapp,alt_phone,city,type').eq('active', true).order('name'),
       sb.from('product').select('id,short_code,brand,model_name,tracking_mode,base_rate_per_day,rentable,active')
         .eq('active', true).order('short_code'),
       sb.from('v_order_fulfilment').select('*'),
@@ -251,6 +252,9 @@ function openFromUrl() {
 // ---------------------------------------------------------------------------
 
 let LINES = [], CHARGES = [], CURRENT = null;
+// The chosen customer, module-level for the same reason LINES is: save() is a top-level
+// function and cannot see the sheet's own scope.
+let PICKED_CUSTOMER = null;
 // product_id -> how much of it has ALREADY left the shelf on this order. Empty for a new order.
 let SENT = new Map();
 
@@ -293,7 +297,12 @@ async function openOrder(o, prefill = null) {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // todayLocal(), not toISOString(). The latter is UTC: before 05:30 IST it names YESTERDAY, so a
+  // new order opened at 6am — which is when a job is booked — defaulted its out date to the day
+  // before. A rental day is a calendar convention, not a clock one (CLAUDE.md, conventions), and
+  // every other screen already used the local helper. Found by reading the date a repeated job
+  // arrived with: 7 Sep on the 8th.
+  const today = todayLocal();
   const pFrom = prefill?.from || today;
   const pTo = prefill?.to || pFrom;
   o = o ?? {
@@ -302,6 +311,14 @@ async function openOrder(o, prefill = null) {
     out_date: pFrom, expected_return_date: pTo, days: dayCount(pFrom, pTo) ?? 1,
     deposit_amount: '', availability_override: false, availability_override_reason: '', notes: '',
   };
+  // From "Repeat this job": lines already re-priced, and the customer carried over because the
+  // whole point is the same decorator booking again.
+  if (prefill?.lines?.length) {
+    LINES = prefill.lines.map(l => ({ ...l, days: dayCount(pFrom, pTo) ?? l.days }));
+    for (const l of LINES) recalcSuggestion(l);
+  }
+  if (prefill?.customer) o.customer_id = prefill.customer.id;
+
   if (prefill?.want?.length) {
     // Quantities and products only. Every rate is REGENERATED from the product's current default,
     // exactly as if the product had just been chosen in the dropdown — CLAUDE.md rule 5:
@@ -347,12 +364,10 @@ async function openOrder(o, prefill = null) {
       <label class="field"><span class="field__label">Order number *</span>
         <input class="field__input" id="f-no" value="${esc(o.order_no)}" ${isNew ? '' : 'readonly'}>
         ${isNew ? '<span class="field__hint" id="no-hint"></span>' : ''}</label>
-      <label class="field"><span class="field__label">Customer *</span>
-        <select class="field__select" id="f-cust" ${isNew ? '' : 'disabled'}>
-          <option value="">Choose…</option>
-          ${CUSTOMERS.map(c => `<option value="${esc(c.id)}" ${c.id === o.customer_id ? 'selected' : ''}>
-            ${esc(c.business_name || c.name)}${c.business_name ? ' (' + esc(c.name) + ')' : ''}</option>`).join('')}
-        </select></label>
+      <!-- Searchable by NAME OR PHONE NUMBER. He will have the number and not the spelling — see
+           customerPicker() in app.js. On a saved order it stays a read-only badge: moving a job to
+           a different customer would move its money with it. -->
+      <div id="cust-pick"></div>
       <label class="field"><span class="field__label">Out date *</span>
         <input class="field__input" id="f-out" type="date" value="${esc(o.out_date)}"></label>
       <label class="field"><span class="field__label">Expected back *</span>
@@ -395,6 +410,7 @@ async function openOrder(o, prefill = null) {
         Lines reserve at PRODUCT level — "2 × 15-inch top", never piece 3 and piece 5. Physical boxes
         attach when the van is loaded, on the Send out screen.
       </p>
+      <div id="repeat-note"></div>
       <div id="lines"></div>
       <div id="avail" style="margin-top:10px"></div>
     </div>
@@ -417,7 +433,12 @@ async function openOrder(o, prefill = null) {
     <div class="sheet__foot">
       ${o.id && o.status === 'confirmed' ? `<button class="btn btn--danger" id="cancel-order">Cancel order</button>` : ''}
       ${o.id ? `<a class="btn" href="dispatch.html?order=${esc(o.id)}">Send out</a>
-                <a class="btn" href="return.html?order=${esc(o.id)}">Return</a>` : ''}
+                <a class="btn" href="return.html?order=${esc(o.id)}">Return</a>
+                <!-- "Booking confirmed" as a prefilled draft. Built from the SAVED lines, not from
+                     what is on screen: a message quoting an edit he has not committed would tell a
+                     customer something the database does not say. -->
+                <a class="btn btn--wa" id="wa-confirm" target="_blank" rel="noopener" href="#">Send confirmation</a>
+                <button class="btn" id="repeat-job" type="button">Repeat this job</button>` : ''}
       <button class="btn" data-sheet-close type="button">Close</button>
       <button class="btn btn--primary" id="save">${isNew ? 'Create order' : 'Save changes'}</button>
     </div>`;
@@ -457,6 +478,35 @@ async function openOrder(o, prefill = null) {
   $('#f-days').addEventListener('input', () => { $('#f-days').dataset.touched = '1'; renderLines(); });
   syncDays();
 
+  // Rebuilt from LINES as they were loaded, so the draft always matches the stored order.
+  const waBtn = $('#wa-confirm');
+  if (waBtn && CURRENT) {
+    const cust = CUSTOMERS.find(c => c.id === CURRENT.customer_id);
+    const named = LINES.map(l => ({
+      qty: l.qty,
+      name: (() => { const p = PRODUCTS.find(x => x.id === l.product_id);
+                     return p ? `${p.brand ? p.brand + ' ' : ''}${p.model_name}` : 'item'; })(),
+    }));
+    waBtn.href = waLink(cust?.whatsapp,
+      waMessage('confirmed', { order: { ...CURRENT, customer: cust }, lines: named }));
+  }
+
+  $('#repeat-job')?.addEventListener('click', () => repeatJob(o));
+
+  // The confirm dialog is gone the second it is dismissed; the rate movement stays on the screen
+  // he is about to quote from.
+  if (prefill?.fromOrderNo) {
+    $('#repeat-note').innerHTML = prefill.changes?.length
+      ? `<div class="note note--warn" style="margin-bottom:10px">
+           <strong>Repeated from ${esc(prefill.fromOrderNo)}, re-priced at today's rates.</strong>
+           ${prefill.changes.map(c => `<div>${esc(c.code)}: ${esc(money(c.was))} → <strong>${esc(money(c.now))}</strong> per day</div>`).join('')}
+           <div class="field__hint" style="margin-top:6px">${esc(prefill.fromOrderNo)} keeps what it was
+             charged — a rate is agreed once, on the order it belongs to.</div>
+         </div>`
+      : `<div class="note" style="margin-bottom:10px">Repeated from ${esc(prefill.fromOrderNo)}.
+           Every rate is unchanged since that job.</div>`;
+  }
+
   $('#add-line').addEventListener('click', () => {
     LINES.push({ product_id: '', qty: 1, days: Number($('#f-days').value) || 1,
                  base_rate: 0, discount_pct: 0, agreed_rate: 0, line_total: 0, is_subhired: false });
@@ -477,7 +527,21 @@ async function openOrder(o, prefill = null) {
   });
 
   $('#save').addEventListener('click', () => save(o, isNew, frozen, sheet));
-  if (isNew) focusField('#f-cust');
+  // The picker paints itself into the sheet and reports back into a plain hidden value, so the
+  // save path below is unchanged: it still reads one customer id and nothing else.
+  PICKED_CUSTOMER = CUSTOMERS.find(c => c.id === o.customer_id) ?? null;
+  if (isNew) {
+    customerPicker($('#cust-pick'), CUSTOMERS, PICKED_CUSTOMER,
+      c => { PICKED_CUSTOMER = c; }, { required: true, id: 'oc' });
+  } else {
+    const c = PICKED_CUSTOMER;
+    $('#cust-pick').innerHTML = `<div class="field" style="margin-bottom:0">
+      <span class="field__label">Customer</span>
+      <div>${esc(c ? (c.business_name ? `${c.business_name} — ${c.name}` : c.name) : '—')}</div>
+      <span class="field__hint">A job cannot be moved to a different customer — the money on it has
+        already been posted to this one.</span></div>`;
+  }
+  if (isNew) focusField('#oc-q');
 }
 
 function renderLines() {
@@ -781,11 +845,62 @@ async function checkAvailability() {
 // Save
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// REPEAT THIS JOB.
+//
+// Wedding season is the same decorator booking roughly the same package again, and duplicating a
+// past job is how he would naturally quote it. Products and quantities carry.
+//
+// THE RATE DOES NOT. order_line.agreed_rate is what was agreed on THAT order and is never a lookup
+// (CLAUDE.md rule 5) — copying it forward would mean every rate rise silently fails to land on
+// exactly the customers who book most often, which is the opposite of what a rate rise is for.
+// So each line is re-priced from the product's current base rate and today's discount ladder, and
+// the screen SAYS what moved, per line, in rupees. A repeat that quietly re-quoted last year is
+// worse than no repeat button, because he would trust it.
+// ---------------------------------------------------------------------------
+function repeatJob(source) {
+  const oldLines = LINES.map(l => ({ ...l }));
+  const changes = [];
+  const fresh = oldLines.map(l => {
+    const p = PRODUCTS.find(x => x.id === l.product_id);
+    const line = {
+      product_id: l.product_id, qty: l.qty, days: l.days,
+      base_rate: Number(p?.base_rate_per_day ?? 0),
+      discount_pct: suggestDiscount(l.days),
+      agreed_rate: 0, line_total: 0, is_subhired: false,
+    };
+    recalcSuggestion(line);
+    if (round2(line.agreed_rate) !== round2(Number(l.agreed_rate))) {
+      changes.push({ code: p?.short_code ?? '?', was: Number(l.agreed_rate), now: line.agreed_rate });
+    }
+    return line;
+  });
+
+  const summary = changes.length
+    ? 'Rates that have moved since then:\n\n'
+      + changes.map(c => `  ${c.code}: ${money(c.was)} → ${money(c.now)} per day`).join('\n')
+      + '\n\nThe new order is quoted at today\'s rates. The old order keeps what it was charged.'
+    : 'Every rate is the same as it was on that job.';
+
+  if (!confirm(`Repeat ${source.order_no}?\n\n`
+    + `${fresh.length} line(s) and their quantities are copied. Dates, venue and the order number `
+    + `are not — this is a new job.\n\n${summary}`)) return;
+
+  CURRENT = null;
+  const cust = CUSTOMERS.find(c => c.id === source.customer_id) ?? null;
+  const today = todayLocal();
+  openOrder(null, {
+    from: today, to: today,
+    lines: fresh, customer: cust, changes,
+    fromOrderNo: source.order_no,
+  });
+}
+
 async function save(o, isNew, frozen, sheet) {
   const btn = $('#save');
   const order = {
     order_no: $('#f-no').value.trim(),
-    customer_id: $('#f-cust').value || null,
+    customer_id: PICKED_CUSTOMER?.id || null,
     out_date: $('#f-out').value || null,
     expected_return_date: $('#f-ret').value || null,
     days: Number($('#f-days').value) || 1,
