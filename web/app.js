@@ -568,7 +568,17 @@ export function errorBlock(err, retryId = 'retry') {
  * @returns {{close: function}}
  */
 export function openSheet(html, onClose) {
-  const host = $('#sheet-host');
+  // CREATE THE HOST IF IT IS NOT THERE. Only five of twelve pages carry a #sheet-host div, and
+  // this used to throw on null — silently, because the click handler had nothing to catch it. It
+  // surfaced when the connection pill became a control: the pill is in the top bar of EVERY page,
+  // tapping it on Today did nothing at all, and nothing was logged. Owning the host here means no
+  // future screen has to remember a div in order for a sheet to open on it.
+  let host = $('#sheet-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'sheet-host';
+    document.body.appendChild(host);
+  }
   const opener = document.activeElement;
   host.innerHTML = html;
 
@@ -890,17 +900,18 @@ function navMarkup() {
   // The active destination is always ON the bar, even if it lives under More — otherwise the
   // screen you are looking at is not highlighted anywhere.
   //
-  // A SWAP, NOT AN OVERWRITE. This assigned into bar[NAV_SLOTS - 1] and dropped whatever was
-  // there, so on customers.html the bar read Today · Can I? · Orders · Send out · Customers and
-  // "Return" appeared in neither the bar nor the More sheet — gone from the navigation entirely,
-  // on all six screens that live under More. The displaced module is the last one on the bar, so
-  // in MODULES order it precedes everything left in `more`; unshift puts it back in its own place.
-  if (more.some(m => m.href === active)) {
-    const i = more.findIndex(m => m.href === active);
-    const displaced = bar[NAV_SLOTS - 1];
-    bar[NAV_SLOTS - 1] = more.splice(i, 1)[0];
-    more.unshift(displaced);
-  }
+  // THE FIVE SLOTS NEVER CHANGE. A bottom bar exists so the thumb stops reading — you learn that
+  // Return is the fifth position and go there without looking. A slot that swaps identity depending
+  // on which screen you happen to be on destroys the only thing the bar is for.
+  //
+  // Two earlier versions were both wrong and the second was subtler: the first OVERWROTE slot five
+  // with the active module and dropped what was there, so "Return" vanished from the navigation
+  // entirely on six of twelve screens. The fix swapped instead of overwriting, which kept every
+  // module reachable — and still moved the target, which is the actual harm.
+  //
+  // So the bar is a pure function of the permissions, computed once. When the current screen lives
+  // under More, MORE is what lights up. Nothing moves, ever.
+  const activeIsUnderMore = more.some(m => m.href === active);
   const item = (m) => `<a class="nav__item${m.href === active ? ' is-active' : ''}" href="${m.href}"${
     m.href === active ? ' aria-current="page"' : ''}>
       <span class="nav__icon" aria-hidden="true">${m.icon}</span>
@@ -909,12 +920,15 @@ function navMarkup() {
   return `
   <nav class="nav" aria-label="Screens" style="--nav-slots:${bar.length + (more.length ? 1 : 0)}">
     ${bar.map(item).join('')}
-    ${more.length ? `<button class="nav__item" id="nav-more" type="button" aria-haspopup="true" aria-expanded="false">
+    ${more.length ? `<button class="nav__item${activeIsUnderMore ? ' is-active' : ''}" id="nav-more"
+        type="button" aria-haspopup="true" aria-expanded="false"${activeIsUnderMore ? ' aria-current="page"' : ''}>
         <span class="nav__icon" aria-hidden="true">\u22EF</span><span class="nav__label">More</span></button>` : ''}
   </nav>
   ${more.length ? `<div class="nav-more" id="nav-more-sheet" hidden>
-      <div class="nav-more__panel">${more.map(m => `<a class="item" href="${m.href}">
-        <span class="item__main"><span class="item__title">${esc(m.label)}</span></span></a>`).join('')}
+      <div class="nav-more__panel">${more.map(m => `<a class="item${m.href === active ? ' is-active' : ''}"
+        href="${m.href}"${m.href === active ? ' aria-current="page"' : ''}>
+        <span class="item__main"><span class="item__title">${esc(m.label)}</span></span>
+        ${m.href === active ? '<span class="item__right">you are here</span>' : ''}</a>`).join('')}
       </div></div>` : ''}`;
 }
 
@@ -953,13 +967,95 @@ export function paintConn(pending) {
   const online = navigator.onLine;
   if (online && !pending) { el.hidden = true; return; }
   el.hidden = false;
-  el.className = 'conn ' + (online ? 'conn--sync' : 'conn--off');
+  // TAPPABLE. It was an inert <span> reporting a number nobody could act on, and flush() stops at
+  // the first failure on purpose — ordered replay is correct, because a return replayed before its
+  // own dispatch makes the movement ledger read backwards. The consequence is that ONE poison item
+  // halts everything behind it, so the queue must be inspectable or the pill becomes a permanent
+  // badge with no way in. This is the feature whose failure mode is a box leaving the godown with
+  // no record; a silent dead end here is the worst place in the app for one.
+  el.className = 'conn conn--tap ' + (online ? 'conn--sync' : 'conn--off');
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
   el.textContent = online
     ? `${pending} to send`
     : (pending ? `Offline · ${pending} waiting` : 'Offline');
-  el.title = online
-    ? 'Connected. Queued writes are being sent.'
-    : 'No connection. Anything you record is kept on this phone and sent when the signal returns.';
+  el.title = 'Tap to see what is waiting to be sent.';
+  el.onclick = openQueue;
+  el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openQueue(); } };
+}
+
+// ---------------------------------------------------------------------------
+// WHAT IS WAITING, AND WHY IT IS STUCK.
+//
+// The real error, verbatim. Rule 15: the queue used to report every failure through one transient
+// toast that said what stopped it and then vanished, and `#conn` afterwards said only a number.
+// A row that cannot replay shows the message the database actually returned, the number of
+// attempts, and when it was made — and can be dropped, deliberately, with a reason that is kept.
+// ---------------------------------------------------------------------------
+export async function openQueue() {
+  const rows = (await store.allPending())
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const blocked = rows.find(r => r.last_error);
+
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="q-title" tabindex="-1">
+      <div class="sheet__head">
+        <h2 class="sheet__title" id="q-title">Waiting to be sent</h2>
+        <button class="btn btn--ghost btn--sm" data-sheet-close type="button">Close</button>
+      </div>
+      ${!rows.length ? '<p class="field__hint">Nothing is waiting. Everything you have recorded is on the server.</p>' : `
+      <p class="field__hint" style="margin-top:0">These are sent in the order you made them and the
+        queue stops at the first one that fails — a return that reached the server before its own
+        dispatch would make the history read backwards. So the first row below is the one holding
+        up the rest.</p>
+      ${blocked ? `<div class="note note--bad">
+        <strong>Stuck on “${esc(blocked.label ?? blocked.kind)}”.</strong>
+        <div style="margin-top:4px">${esc(blocked.last_error)}</div>
+        <div class="field__hint" style="margin-top:4px">${esc(blocked.tries)} attempt${blocked.tries === 1 ? '' : 's'}.
+          Everything after it is waiting on this.</div>
+      </div>` : ''}
+      <div class="card-list" id="q-list">${rows.map((r, i) => `
+        <div class="card-row">
+          <span class="card-row__main">
+            <span class="card-row__title">${esc(r.label ?? r.kind)}</span>
+            <span class="card-row__sub">${esc(fmtDate(new Date(r.created_at).toLocaleDateString('en-CA')))}${
+              r.last_error ? ` · <strong style="color:var(--bad)">${esc(r.last_error)}</strong>`
+                           : (i === 0 ? ' · next to go' : ' · waiting')}</span>
+          </span>
+          <span class="card-row__right">
+            <button class="card-action q-drop" data-id="${esc(r.id)}"
+                    data-label="${esc(r.label ?? r.kind)}" type="button">Discard</button>
+          </span>
+        </div>`).join('')}</div>
+      <p class="field__hint">Discarding does not undo anything physical. If the gear went out, it
+        went out — record it again by hand afterwards, or it is a box with no history.</p>`}
+      <div class="sheet__foot">
+        <button class="btn" data-sheet-close type="button">Close</button>
+        ${rows.length ? '<button class="btn btn--primary" id="q-retry" type="button">Try again now</button>' : ''}
+      </div>
+    </div>
+  </div>`);
+
+  $('#q-retry')?.addEventListener('click', () => guardedWrite($('#q-retry'), 'Sending…', async () => {
+    await syncNow(false);
+    sheet.close();
+    openQueue();
+  }));
+
+  $$('.q-drop').forEach(b => b.addEventListener('click', async () => {
+    const what = b.dataset.label;
+    if (!confirm(`Discard “${what}”?\n\nThis removes it from the queue. It does NOT undo anything `
+               + `that physically happened — if the gear went out, it went out and will have no `
+               + `record until you enter it again.`)) return;
+    const why = (prompt('Why is it being dropped? Kept with the record so this can be answered later.',
+                        'entered again by hand') || '').trim();
+    if (!why) return;
+    await store.discard(Number(b.dataset.id), why);
+    paintConn(await store.pendingCount());
+    sheet.close();
+    openQueue();
+  }));
 }
 
 /** Replay the queue. Safe to call often; does nothing when there is nothing to send. */
@@ -970,8 +1066,11 @@ export async function syncNow(quiet = true) {
   const res = await store.flush(queueHandlers);
   paintConn(await store.pendingCount());
   if (res.failed) {
-    toast(`${res.done} of ${res.total} sent. Stopped at “${res.failed.label ?? res.failed.kind}”: `
-        + `${res.failed.last_error}`, 'error');
+    // The toast is transient and this is a blockage, not an event: it says where to look and the
+    // pill stays tappable behind it. The full error lives in the queue sheet, which does not vanish
+    // after four seconds.
+    toast(`${res.done} of ${res.total} sent. Stuck on “${res.failed.label ?? res.failed.kind}”. `
+        + `Tap the pill in the top bar to see why.`, 'error');
   } else if (res.done && !quiet) {
     toast(`${res.done} queued ${res.done === 1 ? 'change' : 'changes'} sent.`);
   }

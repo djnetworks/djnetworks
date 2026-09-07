@@ -119,6 +119,19 @@ all until you already knew what you wanted, on the screen whose job is telling y
 number is subtext with tap-to-copy, because its job is being pasted into a WhatsApp message — the
 briefing requires an ID in every message, so it is demoted rather than deleted.
 
+**The five nav slots never change.** A bottom bar exists so the thumb stops reading; a slot that
+swaps identity depending on the screen destroys the only thing it is for. When the current screen
+lives under **More**, More is what lights up and the sheet says *you are here*. Two earlier versions
+were wrong — the first overwrote slot five and lost a destination entirely, the second swapped and
+kept everything reachable while still moving the target, which was the actual harm.
+
+**The connection pill opens the queue.** `flush()` replays oldest-first and stops at the first
+failure, and that is correct: a return replayed before its own dispatch makes the movement ledger
+read backwards. The consequence is that one poison item halts everything behind it, so the queue is
+inspectable — what is waiting, the REAL error verbatim, how many attempts — and can be dropped
+deliberately with a reason that is kept in a `discarded` store rather than deleted. Same reasoning
+as `0019`'s corrections, one layer up.
+
 **Three tap rules, fixed once in `style.css` rather than discovered per screen.** A card opens the
 detail and an inline `.card-action` stops the event and looks like a separate control; `.tappable`
 is the only thing that reads as live, so a container never gets a handler; and every write control

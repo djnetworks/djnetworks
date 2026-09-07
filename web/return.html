@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Return — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-6" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-6" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-6">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-10" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-10" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-10">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-6">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-10">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-6">
-<link rel="stylesheet" href="style.css?v=2026-09-08-6">
-<script src="vendor/supabase.js?v=2026-09-08-6" defer></script>
-<script src="boot.js?v=2026-09-08-6" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-10">
+<link rel="stylesheet" href="style.css?v=2026-09-08-10">
+<script src="vendor/supabase.js?v=2026-09-08-10" defer></script>
+<script src="boot.js?v=2026-09-08-10" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -30,7 +30,7 @@
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, registerQueueHandlers, revealActiveTab, waLink, waMessage,
          newRequestId, guardedWrite, cardList, loadPermissions, can, networkMessage }
-  from './app.js?v=2026-09-08-6';
+  from './app.js?v=2026-09-08-10';
 
 $('#chrome').innerHTML = chrome('return.html');
 revealActiveTab();
@@ -561,6 +561,10 @@ async function doReturn() {
     }
   }
   if (!movements.length) { toast('Nothing to record.', 'error'); return; }
+  // 0024: the rows in one tap are numbered, because uniqueness is (request_id, request_seq). A
+  // return of six pieces is six rows sharing one id, and with 0022's index on the id alone they
+  // collided with each other inside their own INSERT.
+  movements.forEach((m, i) => { m.request_seq = i; });
 
   const excess = Math.max(damage - Number(ORDER.deposit_amount || 0), 0);
   if (excess > 0) charges.push({ order_id: orderId, type: 'damage', amount: excess,

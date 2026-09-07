@@ -11,7 +11,10 @@
 // everywhere.
 
 const DB_NAME = 'djn';
-const DB_VERSION = 1;
+// 2: added the `discarded` store. Bumping this is what runs onupgradeneeded on a phone that
+// already has the database — without it the store never appears and every discard silently
+// loses its record on exactly the phones that have been using the app longest.
+const DB_VERSION = 2;
 
 let dbp;
 function db() {
@@ -26,6 +29,12 @@ function db() {
       }
       if (!d.objectStoreNames.contains('cache')) {
         d.createObjectStore('cache', { keyPath: 'key' });
+      }
+      // Queued writes that were deliberately dropped, with the reason. Kept rather than deleted:
+      // every row in the queue is a physical fact, and "what happened to those four pieces" has to
+      // have an answer three weeks later.
+      if (!d.objectStoreNames.contains('discarded')) {
+        d.createObjectStore('discarded', { keyPath: 'id', autoIncrement: true });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -121,7 +130,32 @@ export async function flush(handlers, onProgress) {
   return { done, total: rows.length, failed };
 }
 
-export async function discard(id) { await remove(id); notify(); }
+/**
+ * Drop one queued write, deliberately, with a reason.
+ *
+ * The reason is not decoration. Everything in this queue is a physical fact — a box that left the
+ * godown, a piece that came back — and discarding one means deciding it will be recorded another
+ * way or not at all. `discarded` rows are kept in their own store rather than deleted, so somebody
+ * can answer "what happened to the 4 pieces on DJN-2609-0002" three weeks later. Same reasoning as
+ * 0019's corrections, one layer up.
+ */
+export async function discard(id, reason) {
+  const rows = await allPending();
+  const row = rows.find(r => r.id === id);
+  if (row) {
+    try {
+      await tx('discarded', 'readwrite', s => s.add({
+        ...row, discarded_at: new Date().toISOString(), reason: reason ?? '(no reason given)',
+      }));
+    } catch { /* the store may not exist on an old database version; the drop still proceeds */ }
+  }
+  await remove(id);
+  notify();
+}
+
+export function allDiscarded() {
+  return tx('discarded', 'readonly', s => s.getAll()).catch(() => []);
+}
 
 const listeners = new Set();
 export function onQueueChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }

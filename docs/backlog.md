@@ -461,3 +461,10 @@ database half is verified — idempotency both ways, permissions both ways per t
 assertions — and the DOM half is verified against the real stylesheet. What is not verified is a
 human tapping "Send these out" and "Record returns" end to end on this build.
 
+**The offline queue can only be replayed on the screen that made the write.** `registerQueueHandlers`
+is called by `dispatch.html` and `return.html`, so a queued dispatch sitting on Today reports
+*No handler for "dispatch" — this version of the app cannot replay it* and the pill stays stuck
+until the operator happens to open Send out. The new queue sheet makes that visible instead of
+silent, which is the improvement; the fix is registering both handlers in `app.js` so any screen
+can drain the queue, and it means moving the two insert bodies out of their screens.
+

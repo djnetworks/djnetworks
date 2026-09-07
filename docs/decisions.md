@@ -217,3 +217,28 @@ having gone out twelve times, with nothing deletable to fix it. The offline queu
 likely rather than less: a replayed write is a second arrival by construction.
 **Cost:** a batch is all-or-nothing on replay. That is what the operator meant by one tap.
 
+### The idempotency key is (request_id, request_seq), not request_id alone
+`0024`. One id per tap, and the rows within that tap are numbered.
+**Why:** `0022` put a UNIQUE index on `request_id` alone and asserted in its own comment that a
+six-piece batch would therefore roll back as a unit on replay. It did the opposite — the batch
+collided with ITSELF on the first insert, so a two-piece send-out wrote nothing and told the
+operator "This was already sent". Found by tapping the real button twice and reading the row count:
+zero. The migration's probe missed it because it inserted one row per statement.
+**Cost:** the client has to number the rows. That is one line in each of the two write paths, and
+it is the line that makes all-or-nothing true rather than merely claimed.
+
+### The five bottom-nav slots are fixed, and More lights up instead
+**Why:** the bar exists so the thumb stops reading. Highlighting the active screen by moving it onto
+the bar kept every destination reachable and still moved the target, which is the harm the fixed
+grid was for.
+**Cost:** on six of eleven screens nothing in the bar is highlighted except More. The More sheet
+says "you are here" against the current one.
+
+### A blocked queue is inspectable, and dropping one needs a reason
+**Why:** `flush()` stops at the first failure and must — a return replayed before its own dispatch
+makes the ledger read backwards. So one poison item halts everything behind it, and the pill that
+reported it was an inert span. In the one feature whose failure mode is a box leaving the godown
+with no record, a dead end nobody can open is the worst possible place for one.
+**Cost:** a `discarded` IndexedDB store and a database version bump. Discarding does not undo
+anything physical, which the confirm says in as many words.
+
