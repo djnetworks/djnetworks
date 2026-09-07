@@ -72,6 +72,32 @@ export const trackLabel = m => ({
 }[m] ?? m);
 
 /**
+ * HOW A JOB IS NAMED, everywhere it appears.
+ *
+ * His identity for a job is a DATE, a PERSON and a VENUE. "DJN-2609-0004" is not how anybody
+ * holds a job in their head — "the Patel job at the stadium on the 28th" is — and a list of order
+ * numbers is a list he has to decode one row at a time before he can decide anything.
+ *
+ * The number is NOT dropped, and that is deliberate against the first instinct: it is the only
+ * identifier he and the customer share. She quotes it back on WhatsApp, the portal prints it, and
+ * every message this app generates has to carry something she can quote. So it is demoted to the
+ * reference line rather than deleted from the screen.
+ *
+ * Returns { title, meta }. Both are already escaped and go straight into innerHTML.
+ */
+export function jobLine(o, { showDays = true } = {}) {
+  const who = o?.customer?.business_name || o?.customer?.name
+           || o?.business_name || o?.customer_name || '';
+  const when = fmtDate(o?.out_date);
+  const title = [when, who, o?.venue_name].filter(Boolean).map(esc).join(' · ');
+  const span = o?.out_date && o?.expected_return_date
+    ? `${fmtDate(o.out_date)} → ${fmtDate(o.expected_return_date)}` : '';
+  const days = showDays && o?.days ? `${o.days} day${o.days === 1 ? '' : 's'}` : '';
+  const meta = [esc(o?.order_no ?? ''), esc(span), esc(days)].filter(Boolean).join(' · ');
+  return { title: title || esc(o?.order_no ?? 'a job'), meta };
+}
+
+/**
  * What a ledger entry IS, in the operator's words.
  *
  * The ledger list rendered `e.type.replace(/_/g, ' ')`, so chachu read `rental` and `deposit in`
@@ -454,7 +480,10 @@ export function wordmark({ large = false, invert = false, href = null } = {}) {
 
 export function chrome(active) {
   const tabs = [
-    ['index.html', 'Home'],
+    ['index.html', 'Today'],
+    // The phone-call screen sits second, right after Today: it is the single most common
+    // interaction in a rental business and it must be reachable while a customer is talking.
+    ['ask.html', 'Can I say yes'],
     ['orders.html', 'Orders'],
     ['dispatch.html', 'Send out'],
     ['return.html', 'Return'],

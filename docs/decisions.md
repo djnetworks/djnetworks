@@ -132,3 +132,34 @@ navigation model belong to a textile trading app with suppliers and buyers, and 
 **Cost:** the wording table in `docs/design.md` has to be kept in step with the schema. `unit`,
 `pool` and `consumable` are still the column values; only their labels changed, through
 `trackLabel` / `trackBadge` / `fulfilLabel` in `app.js` so no screen can invent its own vocabulary.
+
+### A movement is corrected, never deleted
+`0019` adds a `correction` movement type naming the movement it undoes, and
+`v_movement_effective` — which every derived view and `fn_availability` now read instead of
+`movement`. Same shape as `0018`'s ledger reversal, one table over.
+**Why it was needed:** the return screen's one-tap "All 6 back" is right — gear comes back at 2am and
+a system filled in from memory on Sunday is wrong in the same direction, only later — but without a
+way out, marking six back while holding five puts a piece on the shelf that is sitting in a hall,
+permanently, with the system's confidence behind it.
+**Cost:** a correction may only ever name the current tip. You may peel; you may not reach into the
+middle. A piece's whole history can therefore be walked back one visible row at a time — accepted,
+because forbidding it strands a piece reading `out` for ever when both its dispatch and its return
+were wrong, and because a correction hides nothing (`v_unit_history` shows it flagged, with the
+reason).
+
+### A job is a date, a person and a venue
+Every screen leads with those three and demotes the order number to the reference line beside them.
+`jobLine()` in `web/app.js` is the only place that decides it.
+**Why the number stays:** it is the one identifier the operator and the customer share — she quotes
+it back on WhatsApp and the portal prints it. The source briefing requires it in every message. It
+is demoted, not deleted.
+
+### The enquiry screen writes nothing
+`ask.html` answers "20th ko 4 speaker mil jayenge?" by reading `fn_availability`, and creates no
+order until one tap hands the dates and the basket to `orders.html`.
+**Why:** the only way to answer that call used to be to build a whole order and see whether it was
+refused, so every enquiry that came to nothing left a half-made order behind and every enquiry that
+took two minutes was answered from memory instead.
+**Cost:** two screens can now start a booking-shaped thing. Kept honest by `ask.html` never writing:
+`orders.html` is still the only place an order is created, and it regenerates every rate from the
+current rate card rather than accepting one across the URL (rule 5).

@@ -25,9 +25,10 @@ system exports.
 **Transactions** — `rental_order`, `order_line`, `order_charge`, `movement`, `repair_job`,
 `ledger_entry`, `product_image`
 
-**Derived views (9)** — `v_unit_location`, `v_unit_status`, `v_order_outstanding`,
-`v_order_fulfilment`, `v_pool_stock`, `v_product_stock`, `v_customer_balance`, `v_unit_utilisation`,
-`v_product_roi`, and the function `fn_availability(product, from, to)`
+**Derived views (11)** — `v_movement_effective`, `v_unit_location`, `v_unit_status`,
+`v_unit_history`, `v_order_outstanding`, `v_order_fulfilment`, `v_pool_stock`, `v_product_stock`,
+`v_customer_balance`, `v_unit_utilisation`, `v_product_roi`, and the function
+`fn_availability(product, from, to)`
 
 `v_pool_stock` is the one place that knows what pooled stock is; `v_product_stock` and
 `fn_availability` read it rather than re-deriving quantities. `v_order_outstanding` replaced
@@ -78,7 +79,19 @@ Build order is dependency order. Built so far, as static pages under `web/`:
 | 11 · Payments and ledger | `ledger.html` | built |
 | 12 · Customer portal | `portal.html` | built |
 
-Plus `index.html` (today), `analysis.html` (the reports below) and `customers.html` for form 5.
+Plus three screens that are not forms:
+
+- `index.html` — **Today**. The app is organised by entity; his day is organised by date. Three
+  sections lead — going out today, coming back today, late — and the counts follow them. The counts
+  were never wrong; they answer a question nobody asks at 7am.
+- `ask.html` — **Can I say yes**. The phone-call screen. "20th ko 4 speaker mil jayenge?" needs an
+  answer in ten seconds while the customer is on the line, and the only way to get one used to be to
+  build a whole order and see whether it was refused. It **writes nothing**: it reads
+  `fn_availability`, and a shortfall names the jobs holding the stock, by date, person and venue,
+  because an unexplained no is a no he overrides. One tap hands the dates and the basket to
+  `orders.html`, which regenerates every rate from today's rate card (rule 5) rather than carrying
+  a number across.
+- `analysis.html` — the reports below.
 
 **All of these have now been operated by a signed-in operator** — a complete job was walked end to
 end in a browser on 2026-09-07, and the offline dispatch path was exercised with the network down.
@@ -118,6 +131,18 @@ Aadhaar or PAN digits are stored anywhere.
 phone, out date, expected return date, days, deposit, lines, charges. Venue contact is separate from
 the customer because the man who booked the job is rarely the man at the hall at six in the morning.
 
+*The order number exists to be quoted.* The source briefing is explicit: **"Each order needs an ID
+that goes into every WhatsApp message about it. WhatsApp is the actual communication channel with
+customers and staff."** That requirement was dropped when this spec was written and is restored
+here, because losing it made the app worse in a way nobody could see: nothing generates those
+messages, so the operator writes them by hand, and the order number he has to look up is work the
+app ADDED rather than saved. Message generation is not built yet.
+
+It follows that the number is never the HEADLINE either. A job is held in mind as a DATE, a PERSON
+and a VENUE — "the Patel job at the stadium on the 28th" — so every screen leads with those three
+and demotes the number to the reference line beside them. `jobLine()` in `web/app.js` is the one
+place that decides how a job is named; nothing should format one by hand.
+
 **7 · Dispatch.** The phone-at-the-van screen; everything about it is subordinate to being fast.
 Opens from the order, never the catalogue, so chachu taps six piece numbers from a filtered list of
 eight rather than searching three hundred. Dispatch method chosen each time — porter,
@@ -128,6 +153,23 @@ dispatch is normal. Offline entry queues locally and syncs.
 check. An unticked unit is still out. Returns are plural, and the return location may differ from
 where the gear left. Damage proposes a deduction from the deposit; a lost unit proposes its own
 purchase cost.
+
+**Corrections (`0019`).** A movement recorded in error is never deleted — `DELETE` on `movement` is
+blocked and `UPDATE` is refused by the append-only guard. A `correction` row names the movement it
+undoes through `corrects_movement_id`, and **`v_movement_effective` is the one place that knows what
+still counts**: it drops corrections and anything they name, and every derived view and
+`fn_availability` read it rather than `movement`. Same shape as `0018`'s ledger reversal, one table
+over.
+
+A correction may only ever name the **current tip** — the most recent effective movement for that
+piece, or for that product on that job for counted stock. You may peel the tip; you may never reach
+into the middle while something newer still stands, because a span with a hole in it is ambiguous
+everywhere it is read. Corrections are never location-bearing and never silent: `v_unit_history`
+shows the corrected movement flagged, with the reason, alongside the annotation that undid it.
+
+This is what makes the return screen's **"All 6 back"** safe to have. The count is on the button,
+never the bare word — tapping something that says 6 while holding 5 is a different mistake from
+tapping a word — and the ticks are still separate from the commit.
 
 **9 · Internal transfer.** From, to, date, units, moved by, notes. That is the whole form.
 

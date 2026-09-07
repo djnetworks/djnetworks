@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Can I say yes — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
+<meta name="theme-color" content="#2B7379">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
+<link rel="stylesheet" href="style.css?v=2026-09-08-1">
+<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
+<script src="boot.js?v=2026-09-08-1" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+
+<script type="module">
+import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
+         errorBlock, toast, initOffline, revealActiveTab, trackBadge, publicUrl }
+  from './app.js?v=2026-09-08-1';
+
+$('#chrome').innerHTML = chrome('ask.html');
+revealActiveTab();
+initOffline();
+
+// ---------------------------------------------------------------------------
+// "CAN I SAY YES."
+//
+// The most common interaction in this business is not a form, it is a phone call: "20th ko 4
+// speaker mil jayenge?" — and the answer is needed in ten seconds, while the customer is on the
+// line. Until now the only way to get one was to build an entire order and see whether the
+// availability check refused it, which means every enquiry that came to nothing left a half-made
+// order behind, and every enquiry that took two minutes was answered from memory instead.
+//
+// So this screen writes NOTHING. It picks dates, picks products, and reads fn_availability —
+// which is exactly the question that function was written to answer, and has been answering
+// since 0007. One tap turns the answer into an order, because the next thing he says is
+// "haan, book kar lo".
+//
+// A "no" must say WHY. An unexplained refusal is a refusal he overrides, and an override that is
+// made a habit is the whole availability engine switched off. So every shortfall names the jobs
+// holding the stock, with their dates and their customers.
+// ---------------------------------------------------------------------------
+
+let PRODUCTS = [], PICKED = new Map();     // product_id -> qty wanted
+let ANSWERS = new Map();                   // product_id -> { on_hand, committed, available }
+let HOLDERS = new Map();                   // product_id -> [{ order_no, customer, out_date, ... }]
+let SEQ = 0;                               // so a slow answer cannot overwrite a newer one
+
+requireSession(async () => { await boot(); });
+
+async function boot() {
+  const d = todayLocal();
+  $('#app').innerHTML = `
+    <h1>Can I say yes</h1>
+    <p class="sub">Dates and gear. No order is created until you say so.</p>
+
+    <div class="card">
+      <div class="grid2">
+        <label class="field"><span class="field__label">Out on *</span>
+          <input class="field__input" id="f-from" type="date" value="${esc(d)}"></label>
+        <label class="field"><span class="field__label">Back by *</span>
+          <input class="field__input" id="f-to" type="date" value="${esc(d)}"></label>
+      </div>
+      <span class="field__hint" id="days-hint"></span>
+    </div>
+
+    <div class="card">
+      <label class="field" style="margin-bottom:8px">
+        <span class="field__label">What are they asking for?</span>
+        <input class="field__input" id="q" type="search" placeholder="Search code, brand or model…"
+               autocapitalize="none" spellcheck="false" enterkeyhint="search">
+      </label>
+      <div id="catalogue"></div>
+    </div>
+
+    <div id="answer"></div>
+    <div class="dispatch-bar" id="bar" hidden>
+      <div id="bar-note" class="field__hint"></div>
+      <button class="btn btn--primary btn--block" id="book" type="button">Book it — make this an order</button>
+    </div>`;
+
+  $('#f-from').addEventListener('change', datesChanged);
+  $('#f-to').addEventListener('change', datesChanged);
+  $('#q').addEventListener('input', renderCatalogue);
+  $('#book').addEventListener('click', book);
+  datesChanged();
+  await loadProducts();
+}
+
+// Out on the 2nd, back on the 4th is three days — both ends count (docs/decisions.md). The hint
+// says the number out loud because it is the number he quotes down the phone.
+function days() {
+  const a = $('#f-from').value, b = $('#f-to').value;
+  if (!a || !b) return 0;
+  const ms = new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00');
+  return ms < 0 ? -1 : Math.round(ms / 86400000) + 1;
+}
+
+function datesChanged() {
+  const n = days();
+  const hint = $('#days-hint');
+  if (n === -1) {
+    hint.textContent = 'Back by is before Out on. Nothing can be answered until that is the right way round.';
+    hint.className = 'field__hint dispatch-bar__warn';
+  } else {
+    hint.className = 'field__hint';
+    hint.textContent = n ? `${n} day${n === 1 ? '' : 's'}, both ends counted.` : '';
+  }
+  refresh();
+}
+
+async function loadProducts() {
+  const host = $('#catalogue');
+  host.innerHTML = '<div class="skeleton"><div class="skeleton__row"></div></div>';
+  try {
+    const { data, error } = await sb.from('product')
+      .select('id,short_code,brand,model_name,tracking_mode,base_rate_per_day,image_url,rentable')
+      .eq('active', true).order('short_code');
+    if (error) throw error;
+    PRODUCTS = (data ?? []).filter(p => p.rentable !== false);
+    renderCatalogue();
+  } catch (err) {
+    host.innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', loadProducts);
+  }
+}
+
+function renderCatalogue() {
+  const q = ($('#q').value || '').trim().toLowerCase();
+  const rows = PRODUCTS.filter(p => !q ||
+    [p.short_code, p.brand, p.model_name].some(v => (v || '').toLowerCase().includes(q)));
+  const host = $('#catalogue');
+  if (!rows.length) {
+    host.innerHTML = `<p class="field__hint">Nothing matches “${esc($('#q').value)}”.
+      ${PRODUCTS.length ? 'Try the short code, or clear the search.' : 'The catalogue is empty — add a product first.'}</p>`;
+    return;
+  }
+  host.innerHTML = `<div class="list">${rows.map(p => {
+    const n = PICKED.get(p.id) ?? 0;
+    return `<div class="item" style="cursor:default">
+      <span class="pick-thumb" style="width:44px;height:44px">
+        ${p.image_url ? `<img src="${esc(publicUrl(p.image_url))}" alt="" loading="lazy">` : ''}
+        <span class="pick-thumb__code">${esc(p.short_code)}</span>
+      </span>
+      <span class="item__main">
+        <span class="item__title">${esc(p.model_name)}</span>
+        <span class="item__meta">${esc(p.brand ? p.brand + ' · ' : '')}${esc(p.short_code)}
+          <span class="badge badge--${esc(p.tracking_mode)}">${esc(trackBadge(p.tracking_mode))}</span>
+          ${esc(money(p.base_rate_per_day))}/day</span>
+      </span>
+      <span class="row" style="flex:none;gap:6px;flex-wrap:nowrap">
+        <button class="btn btn--sm q-less" data-p="${esc(p.id)}" type="button"
+                aria-label="One fewer ${esc(p.short_code)}" ${n ? '' : 'disabled'}>−</button>
+        <span class="num" style="min-width:2ch;text-align:center;font-weight:700">${esc(n)}</span>
+        <button class="btn btn--sm q-more" data-p="${esc(p.id)}" type="button"
+                aria-label="One more ${esc(p.short_code)}">+</button>
+      </span>
+    </div>`;
+  }).join('')}</div>`;
+  $$('.q-more').forEach(b => b.addEventListener('click', () => bump(b.dataset.p, +1)));
+  $$('.q-less').forEach(b => b.addEventListener('click', () => bump(b.dataset.p, -1)));
+}
+
+function bump(id, by) {
+  const n = Math.max(0, (PICKED.get(id) ?? 0) + by);
+  if (n === 0) PICKED.delete(id); else PICKED.set(id, n);
+  renderCatalogue();
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
+// The answer.
+//
+// One fn_availability call per product, and NOTHING is computed here — the client never decides
+// whether a unit is available (djn-architecture, "Where logic goes"). It asks, three times if he
+// asked for three things, and renders what comes back.
+//
+// SEQ guards the order of the answers: he is on the phone and will tap + three times in a second,
+// and an earlier, slower reply landing last would paint a stale yes.
+// ---------------------------------------------------------------------------
+async function refresh() {
+  const seq = ++SEQ;
+  const from = $('#f-from').value, to = $('#f-to').value;
+  const host = $('#answer'), bar = $('#bar');
+
+  if (!PICKED.size || !from || !to || days() <= 0) {
+    host.innerHTML = PICKED.size && days() <= 0
+      ? '<div class="note note--warn">Fix the dates and the answer appears here.</div>' : '';
+    bar.hidden = true;
+    return;
+  }
+
+  host.innerHTML = '<div class="card"><div class="skeleton"><div class="skeleton__row" style="height:44px"></div></div></div>';
+  try {
+    const ids = [...PICKED.keys()];
+    const results = await Promise.all(ids.map(id =>
+      sb.rpc('fn_availability', { p_product_id: id, p_from: from, p_to: to })));
+    if (seq !== SEQ) return;                         // a newer question is already in flight
+    ANSWERS = new Map();
+    results.forEach((r, i) => {
+      if (r.error) throw r.error;
+      const row = Array.isArray(r.data) ? r.data[0] : r.data;
+      ANSWERS.set(ids[i], row);
+    });
+    // Only fetch the "why" for the products that actually fall short — on a yes it is noise, and
+    // on a phone call it is a request nobody is waiting for.
+    const short = ids.filter(id => (ANSWERS.get(id)?.available ?? 0) < PICKED.get(id));
+    HOLDERS = new Map();
+    if (short.length) await loadHolders(short, from, to);
+    if (seq !== SEQ) return;
+    renderAnswer();
+  } catch (err) {
+    if (seq !== SEQ) return;
+    host.innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', refresh);
+    bar.hidden = true;
+  }
+}
+
+// WHO IS HOLDING IT. Live orders overlapping the window that carry the product — the jobs whose
+// commitment is the reason the answer is no. Read from order_line joined to the order, which is
+// the same set fn_availability's `remainder` CTE counts, so the explanation cannot disagree with
+// the arithmetic it is explaining.
+async function loadHolders(ids, from, to) {
+  const [lines, sent] = await Promise.all([
+    sb.from('order_line')
+      .select('order_id,product_id,qty,is_subhired,order:order_id(order_no,out_date,expected_return_date,status,customer:customer_id(name,business_name),venue_name)')
+      .in('product_id', ids),
+    // What has already left against each job, so the row can show what is STILL held rather than
+    // what was ordered. v_movement_effective, not movement: a dispatch that was corrected away
+    // never happened and its quantity is still owed (0019).
+    sb.from('v_movement_effective').select('order_id,product_id,unit_id,qty')
+      .in('product_id', ids).eq('movement_type', 'dispatch'),
+  ]);
+  if (lines.error) return;                            // the numbers still stand without the names
+
+  const gone = new Map();                             // "order|product" -> already dispatched
+  for (const m of (sent.error ? [] : sent.data ?? [])) {
+    const k = `${m.order_id}|${m.product_id}`;
+    // Rule 13: a numbered piece is one row worth one; counted stock carries a qty.
+    gone.set(k, (gone.get(k) ?? 0) + (m.unit_id ? 1 : Number(m.qty ?? 0)));
+  }
+
+  for (const l of lines.data ?? []) {
+    const o = l.order;
+    if (!o || l.is_subhired) continue;                // sub-hire is somebody else's gear (0011)
+    if (['cancelled', 'closed'].includes(o.status)) continue;
+    if (!(o.out_date <= to && o.expected_return_date >= from)) continue;
+    // THE UNDISPATCHED REMAINDER, which is what fn_availability actually counts as committed.
+    // Showing the ordered quantity instead read "4 held" underneath "2 already committed" —
+    // two numbers about the same job that disagree, on the screen whose whole job is to be
+    // believed in ten seconds. Two of those four had already gone out and are missing from the
+    // shelf count, not committed on top of it.
+    const held = Math.max(Number(l.qty) - (gone.get(`${l.order_id}|${l.product_id}`) ?? 0), 0);
+    if (held <= 0) continue;                          // fulfilled: this job holds nothing more
+    const list = HOLDERS.get(l.product_id) ?? [];
+    list.push({ ...o, qty: held });
+    HOLDERS.set(l.product_id, list);
+  }
+}
+
+function renderAnswer() {
+  const wanted = [...PICKED.entries()];
+  const short = wanted.filter(([id, n]) => (ANSWERS.get(id)?.available ?? 0) < n);
+  const yes = short.length === 0;
+  const n = days();
+
+  $('#answer').innerHTML = `
+    <div class="card" style="border-color:var(--${yes ? 'ok' : 'bad'});border-width:2px">
+      <div class="stat__n" style="color:var(--${yes ? 'ok' : 'bad'})">${yes ? 'Yes' : 'Not all of it'}</div>
+      <p class="field__hint" style="margin-top:2px">
+        ${esc(fmtDate($('#f-from').value))} → ${esc(fmtDate($('#f-to').value))} · ${esc(n)} day${n === 1 ? '' : 's'}
+      </p>
+      <table class="data" style="margin-top:10px">
+        <thead><tr><th>Product</th><th style="text-align:right">Asked</th>
+          <th style="text-align:right">Owned</th><th style="text-align:right">Booked</th>
+          <th style="text-align:right">Free</th></tr></thead>
+        <tbody>${wanted.map(([id, want]) => {
+          const a = ANSWERS.get(id) ?? {};
+          const p = PRODUCTS.find(x => x.id === id);
+          const free = Number(a.available ?? 0);
+          const ok = free >= want;
+          return `<tr>
+            <td data-label="Product">${esc(p?.short_code ?? '?')} — ${esc(p?.model_name ?? '')}</td>
+            <td data-label="Asked" style="text-align:right">${esc(want)}</td>
+            <td data-label="Owned" style="text-align:right">${esc(a.units_on_hand ?? 0)}</td>
+            <td data-label="Booked" style="text-align:right">${esc(a.committed ?? 0)}</td>
+            <td data-label="Free" style="text-align:right">
+              <strong style="color:var(--${ok ? 'ok' : 'bad'})">${esc(free)}</strong></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+      <p class="field__hint">Owned counts what is on the shelf right now — a piece with no return
+        recorded is out whatever the date says. Booked is what other live jobs have already
+        committed across these dates.</p>
+    </div>
+
+    ${short.length ? `<div class="card">
+      <h2 style="font-size:16px;margin:0 0 4px">Why not</h2>
+      ${short.map(([id, want]) => {
+        const a = ANSWERS.get(id) ?? {};
+        const p = PRODUCTS.find(x => x.id === id);
+        const holders = HOLDERS.get(id) ?? [];
+        return `<div style="margin-top:10px">
+          <strong>${esc(p?.short_code ?? '?')}: ${esc(want)} asked, ${esc(a.available ?? 0)} free.</strong>
+          <div class="field__hint">${esc(a.units_on_hand ?? 0)} owned and on the shelf,
+            ${esc(a.committed ?? 0)} already committed.</div>
+          ${holders.length ? `<div class="list" style="margin-top:6px">${holders.map(h => `
+            <div class="item" style="cursor:default">
+              <span class="item__main">
+                <span class="item__title">${esc(fmtDate(h.out_date))} · ${esc(h.customer?.business_name || h.customer?.name || 'a customer')}${h.venue_name ? ' · ' + esc(h.venue_name) : ''}</span>
+                <span class="item__meta">${esc(h.qty)} held to ${esc(fmtDate(h.expected_return_date))} · ${esc(h.order_no)}</span>
+              </span>
+            </div>`).join('')}</div>`
+          : '<div class="field__hint">No live job holds it across these dates — the shortfall is what he owns, not what is booked.</div>'}
+        </div>`;
+      }).join('')}
+      <p class="field__hint" style="margin-top:12px">You can still book it. The order screen will
+        warn and make you say why — sub-hiring one in is a normal answer.</p>
+    </div>` : ''}`;
+
+  const bar = $('#bar');
+  bar.hidden = false;
+  $('#bar-note').textContent = yes
+    ? `${wanted.reduce((t, [, q]) => t + q, 0)} item(s) free across those dates.`
+    : 'Short on at least one line. Booking is still allowed — the order screen will ask why.';
+  $('#bar-note').className = yes ? 'field__hint' : 'field__hint dispatch-bar__warn';
+}
+
+// One tap to the order screen, carrying the dates and the basket. Nothing is written here: the
+// order screen is where a customer is chosen and where the availability override is recorded, and
+// duplicating either would give this business two places that create orders.
+function book() {
+  const u = new URL('orders.html', location.href);
+  u.searchParams.set('new', '1');
+  u.searchParams.set('from', $('#f-from').value);
+  u.searchParams.set('to', $('#f-to').value);
+  u.searchParams.set('want', [...PICKED.entries()].map(([id, n]) => `${id}:${n}`).join(','));
+  location.href = u.toString();
+}
+</script>
+</body>
+</html>

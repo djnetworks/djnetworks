@@ -398,3 +398,18 @@ is the same refactor the CSP entry above wants.
 `openSheet` captures `document.body` as the opener. Products, customers and orders all return focus
 correctly.
 
+**Writing a correction is not gated on a permission, because there is no permission table.** `0019`
+lets any operator write a `correction`, which undoes a movement everywhere it is counted. `0017`
+gives one undifferentiated operator role, so there is nothing finer to test — and a policy that
+grants everybody the right while pretending to check one is worse than none. When a permission pass
+lands, `movement.correct` is the gate, and `fn_correction_matches_target` is where it goes.
+
+**Nothing generates the WhatsApp messages the order number exists for.** The source briefing
+requires an ID in every message about a job; `docs/structure.md` now records that requirement again
+after it was lost in the spec. Until the messages are generated, the operator types them by hand and
+looks the number up himself — work this app added rather than saved. Booking confirmed, on its way
+with the driver's number, came back short, payment pending, and a one-tap overdue reminder are all
+predictable from data already on screen. Two guards when it is built, both from rule 6: never offer
+a payment chaser when `receivable <= 0` (a credit balance is reachable since `0018`), and never
+blend deposit held into what is owed.
+

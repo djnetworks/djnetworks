@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DJ Network's — Rental System</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-07-9" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-07-9" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-07-9">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-07-9">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-07-9">
-<link rel="stylesheet" href="style.css?v=2026-09-07-9">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
+<link rel="stylesheet" href="style.css?v=2026-09-08-1">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-07-9" defer></script>
-<script src="boot.js?v=2026-09-07-9" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
+<script src="boot.js?v=2026-09-08-1" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -32,84 +32,149 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, $, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, initOffline,
-         revealActiveTab }
-  from './app.js?v=2026-09-07-9';
+import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, todayLocal,
+         initOffline, revealActiveTab, jobLine }
+  from './app.js?v=2026-09-08-1';
 
 $('#chrome').innerHTML = chrome('index.html');
 revealActiveTab();
-
 initOffline();
+
+// ---------------------------------------------------------------------------
+// TODAY.
+//
+// The app is organised by entity — products, pieces, orders, customers — because that is how the
+// data is shaped. His day is organised by DATE. He does not wake up wondering how many speakers he
+// owns; he wakes up needing to know what goes out this morning, what comes back tonight, and what
+// should already be back and is not.
+//
+// So the three date sections lead and the counts follow. The counts were never wrong, they were
+// just answering a question nobody asks at 7am.
+//
+// Every job is named the way he names one: DATE · PERSON · VENUE, with the order number demoted to
+// the reference line — see jobLine() in app.js.
+// ---------------------------------------------------------------------------
 
 requireSession(async () => {
   const app = $('#app');
   app.innerHTML = `<h1>Today</h1>
-    <p class="sub">What is out, what is late, and what is on the shelf.</p>
-    <!-- Four skeleton tiles in the same grid the real tiles use, so nothing jumps when the
-         numbers arrive. A one-row skeleton followed by four stacked cards moved the buttons
-         below it 300px down the page. -->
-    <div id="summary" class="stats stats--count">
-      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
-      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
-      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
-      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
+    <p class="sub" id="sub">${esc(fmtDate(todayLocal()))}</p>
+    <div id="day">
+      <div class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>
     </div>
+    <div id="summary" class="stats stats--count" hidden></div>
     <div id="extra"></div>
     <div class="row" style="margin-top:18px">
-      <a class="btn btn--primary" href="products.html">Products</a>
+      <a class="btn btn--primary" href="ask.html">Can I say yes</a>
+      <a class="btn" href="products.html">Products</a>
       <a class="btn" href="units.html">Pieces</a>
     </div>`;
 
   try {
-    // Everything derived is read from a view. Nothing here counts anything itself (rule 10);
-    // the reduces below only add up rows the database already decided.
-    const [{ data: fulfil, error: e1 }, { data: outstanding, error: e2 }, { data: stock, error: e3 }] =
+    const today = todayLocal();
+    const [{ data: fulfil, error: e1 }, { data: outstanding, error: e2 },
+           { data: stock, error: e3 }, { data: orders, error: e4 }] =
       await Promise.all([
-        sb.from('v_order_fulfilment').select('order_id,order_no,fulfilment_state'),
+        sb.from('v_order_fulfilment')
+          .select('order_id,order_no,fulfilment_state,qty_undispatched,qty_outstanding,order_status'),
         sb.from('v_order_outstanding')
           .select('order_id,order_no,short_code,piece_no,qty_outstanding,days_overdue,expected_return_date'),
-        // tracking_mode is not decoration here — see the split below. Without it these columns
-        // cannot be read at all.
         sb.from('v_product_stock')
           .select('product_id,tracking_mode,units_active,units_on_hand,units_out,units_at_repair'),
+        sb.from('rental_order')
+          .select('id,order_no,out_date,expected_return_date,days,venue_name,status,customer:customer_id(name,business_name,whatsapp)')
+          .neq('status', 'cancelled'),
       ]);
-    if (e1 || e2 || e3) throw (e1 || e2 || e3);
+    if (e1 || e2 || e3 || e4) throw (e1 || e2 || e3 || e4);
 
+    const ORD = new Map((orders ?? []).map(o => [o.id, o]));
+    const F = new Map((fulfil ?? []).map(f => [f.order_id, f]));
+    const live = (orders ?? []).filter(o => o.status === 'confirmed');
+
+    // ---- the three questions of a day -------------------------------------
+    // Each is a DATE test against a QUANTITY from the view. Never a status label: an order is not
+    // "coming back today" because somebody typed that, it is coming back today because something
+    // of it is still at a customer and the date it was promised for is today (rule 2).
+    const going = live
+      .filter(o => o.out_date <= today && (F.get(o.id)?.qty_undispatched ?? 0) > 0)
+      .sort((a, b) => a.out_date.localeCompare(b.out_date));
+    const backToday = live
+      .filter(o => o.expected_return_date === today && (F.get(o.id)?.qty_outstanding ?? 0) > 0);
+    const lateOrders = live
+      .filter(o => o.expected_return_date < today && (F.get(o.id)?.qty_outstanding ?? 0) > 0)
+      .sort((a, b) => a.expected_return_date.localeCompare(b.expected_return_date));
+
+    // What is late, per job, so a row can say WHAT is missing and not just that something is.
+    const missing = new Map();
+    for (const r of outstanding ?? []) {
+      const list = missing.get(r.order_id) ?? [];
+      list.push(r.piece_no ? `${r.short_code} piece ${r.piece_no}` : `${r.qty_outstanding} × ${r.short_code}`);
+      missing.set(r.order_id, list);
+    }
+
+    const section = (title, tone, rows, empty, render) => rows.length
+      ? `<div class="card"${tone ? ` style="border-left:4px solid var(--${tone})"` : ''}>
+           <h2 style="font-size:16px;margin:0 0 8px">${esc(title)} <span class="badge">${rows.length}</span></h2>
+           <div class="list">${rows.map(render).join('')}</div>
+         </div>`
+      : `<div class="card"><h2 style="font-size:16px;margin:0 0 4px">${esc(title)}</h2>
+           <p class="field__hint" style="margin:0">${esc(empty)}</p></div>`;
+
+    const row = (o, right, href) => {
+      const j = jobLine(o);
+      return `<a class="item" href="${href}">
+        <span class="item__main">
+          <span class="item__title">${j.title}</span>
+          <span class="item__meta">${j.meta}</span>
+        </span>
+        <span class="item__right">${right}</span></a>`;
+    };
+
+    $('#day').innerHTML =
+      section('Going out today', 'accent', going,
+        'Nothing is due to leave today.',
+        o => {
+          const f = F.get(o.id);
+          const overdueOut = o.out_date < today;
+          return row(o,
+            `<strong>${esc(f.qty_undispatched)} to load</strong>${
+              overdueOut ? `<span style="display:block;color:var(--bad)">was due ${esc(fmtDate(o.out_date))}</span>` : ''}`,
+            `dispatch.html?order=${esc(o.id)}`);
+        })
+      + section('Coming back today', 'accent', backToday,
+        'Nothing is due back today.',
+        o => row(o, `<strong>${esc(F.get(o.id).qty_outstanding)} out</strong>`,
+                 `return.html?order=${esc(o.id)}`))
+      + section('Late', 'bad', lateOrders,
+        'Nothing is late. Everything that went out is either back or due later.',
+        o => {
+          const days = Math.round((new Date(today + 'T00:00:00') - new Date(o.expected_return_date + 'T00:00:00')) / 86400000);
+          const what = (missing.get(o.id) ?? []).slice(0, 3).join(', ');
+          return `<a class="item" href="return.html?order=${esc(o.id)}">
+            <span class="item__main">
+              <span class="item__title">${jobLine(o).title}</span>
+              <span class="item__meta">${esc(what)}${(missing.get(o.id) ?? []).length > 3 ? ' …' : ''}</span>
+              <span class="item__meta">${esc(o.order_no)} · due ${esc(fmtDate(o.expected_return_date))}</span>
+            </span>
+            <span class="item__right"><span class="badge badge--out">${esc(days)} day${days === 1 ? '' : 's'} late</span></span>
+          </a>`;
+        });
+
+    // ---- the counts, now secondary ----------------------------------------
     const rows = stock ?? [];
-
-    // -----------------------------------------------------------------------
-    // THE SPLIT BY TRACKING MODE, AND WHY THERE HAS TO BE ONE.
-    //
-    // v_product_stock keeps one set of column names across all three modes, and 0008's own
-    // comment says so plainly: units_on_hand is a count of boxes for `unit`, a quantity of
-    // cables for `pool`, and litres of fog fluid for `consumable`. Adding them produced a single
-    // figure captioned "On the shelf" in which 200 XLR cables buried 40 speakers, and
-    // units_out for a consumable is a cumulative issued-and-gone total — fog fluid burned at a
-    // wedding in March was still being reported as out with a customer. Rule 13, arriving
-    // through the front end: a path that treats all three modes as one number reports a
-    // confident wrong figure, which is the worst kind.
-    // -----------------------------------------------------------------------
+    // Rule 13, arriving through the front end. v_product_stock keeps one set of column names
+    // across all three modes: units_on_hand is boxes for `unit`, cables for `pool` and litres for
+    // `consumable`. Adding them buried 40 speakers under 200 XLR cables, and a consumable's
+    // units_out is cumulative — fog fluid burned in March still reported as out with a customer.
     const sum = (list, col) => list.reduce((n, r) => n + (r[col] ?? 0), 0);
     const unitRows = rows.filter(r => r.tracking_mode === 'unit');
     const poolRows = rows.filter(r => r.tracking_mode === 'pool');
     const consRows = rows.filter(r => r.tracking_mode === 'consumable');
-
-    const onHand = sum(unitRows, 'units_on_hand');
-    const out    = sum(unitRows, 'units_out');
-    const repair = sum(unitRows, 'units_at_repair');
     const pieces = sum(unitRows, 'units_active');
 
-    const late = (outstanding ?? []).filter(r => (r.days_overdue ?? 0) > 0);
-    // Overdue is a chasing job and the thing chased is an ORDER — one telephone call clears a
-    // whole order. Counting rows would have said "1" for fifteen cables on one job, and "6" for
-    // six boxes on one job. Neither is the number of calls to make.
-    const lateOrders = new Set(late.map(r => r.order_id));
-
     if (!fulfil?.length && !rows.length) {
-      $('#summary').className = '';
-      $('#summary').innerHTML = stateBlock({
-        icon: '📦',
-        title: 'Nothing in the system yet',
+      $('#day').innerHTML = stateBlock({
+        icon: '📦', title: 'Nothing in the system yet',
         body: 'No products, no pieces, no orders. Start with the product master — everything else hangs off it.',
         actionLabel: 'Add the first product', actionId: 'go-products',
       });
@@ -117,37 +182,31 @@ requireSession(async () => {
       return;
     }
 
-    $('#summary').className = 'stats stats--count';
-    $('#summary').innerHTML = [
-      ['On the shelf', onHand, ''],
-      ['Out with customers', out, ''],
-      ['At a repair shop', repair, ''],
-      ['Orders overdue', lateOrders.size, lateOrders.size ? 'bad' : ''],
+    const s = $('#summary');
+    s.hidden = false;
+    s.innerHTML = [
+      ['On the shelf', sum(unitRows, 'units_on_hand'), ''],
+      ['Out with customers', sum(unitRows, 'units_out'), ''],
+      ['At a repair shop', sum(unitRows, 'units_at_repair'), ''],
+      ['Late jobs', lateOrders.length, lateOrders.length ? 'bad' : ''],
     ].map(([label, n, tone]) => `
       <div class="card">
         <div class="item__meta">${esc(label)}</div>
         <div class="stat__n${tone === 'bad' ? ' stat__n--bad' : ''}">${n}</div>
       </div>`).join('');
 
-    const extra = $('#extra');
-    let html = '';
-
-    // Numbered pieces only, said out loud, so nobody reads the tiles as the whole fleet.
-    html += `<p class="field__hint" style="margin:-6px 0 14px">Numbered pieces only.`;
+    let html = `<p class="field__hint" style="margin:-6px 0 14px">Numbered pieces only.`;
     if (poolRows.length || consRows.length) {
       const poolOn = sum(poolRows, 'units_on_hand');
       const poolOut = sum(poolRows, 'units_at_repair') + sum(poolRows, 'units_out');
       const consOn = sum(consRows, 'units_on_hand');
       html += ` Counted stock is separate: ${poolOn} on the shelf`
         + (poolOut ? `, ${poolOut} away` : '')
-        // "consumable" is the schema word. Everywhere else this pass renamed it to what the
-        // stock actually does, and Home was the one screen still saying it.
         + (consRows.length ? ` · ${consOn} used-up items in stock` : '') + '.';
     }
     html += `</p>`;
 
-    // The day-two state: products entered on the laptop, no boxes numbered yet. Four zeros with
-    // no next action is a dead end, and this is the walk round the godown that has to happen.
+    // The day-two state: products entered on the laptop, no boxes numbered yet.
     if (unitRows.length && pieces === 0) {
       html += `<div class="card">
         <h2 style="font-size:16px;margin:0 0 6px">No pieces yet</h2>
@@ -156,40 +215,10 @@ requireSession(async () => {
         <a class="btn btn--primary" href="units.html">Add pieces</a>
       </div>`;
     }
-
-    if (late.length) {
-      // Overdue and out are different problems: out is normal, overdue is a call to make. This
-      // block is the call list, so it carries the order number and the customer's due date —
-      // a product code and a piece number alone cannot be acted on.
-      const SHOWN = 5;
-      // The order number is a LINK. This is the only list on the home screen that names something
-      // to act on, and it was plain text: the one thing chachu does after reading it is open that
-      // job, and he had to go to Orders and search for a number he had just been shown. Two taps
-      // from home to the thing that is late, and the return screen is one tap from there.
-      const lines = late.slice(0, SHOWN).map(r => `<li style="margin-bottom:10px">
-        <a href="orders.html?order=${esc(r.order_id)}"><strong>${esc(r.order_no ?? '—')}</strong></a>
-        · ${esc(r.short_code)}${
-          r.piece_no ? ' piece ' + esc(r.piece_no) : ' ×' + esc(r.qty_outstanding)}
-        — <span class="num">${esc(r.days_overdue)}</span> day${r.days_overdue === 1 ? '' : 's'} late,
-        due ${esc(fmtDate(r.expected_return_date))}
-        <span style="display:block"><a href="return.html?order=${esc(r.order_id)}">Record the return</a></span>
-        </li>`).join('');
-      html += `<div class="card">
-        <h2 style="font-size:16px;margin:0 0 8px">Overdue</h2>
-        <ul style="margin:0;padding-left:20px">${lines}</ul>
-        ${late.length > SHOWN
-          // Silently cutting the list at five hides the rest of the problem.
-          ? `<p class="field__hint">Showing ${SHOWN} of ${late.length} overdue items,
-             across ${lateOrders.size} order${lateOrders.size === 1 ? '' : 's'}.</p>`
-          : ''}
-        <p class="field__hint">An item is late because no return has been recorded — never because a date passed.</p>
-      </div>`;
-    }
-
-    extra.innerHTML = html;
+    $('#extra').innerHTML = html;
+    $('#sub').textContent = `${fmtDate(today)} · ${going.length} to load, ${backToday.length} due back, ${lateOrders.length} late`;
   } catch (err) {
-    $('#summary').className = '';
-    $('#summary').innerHTML = errorBlock(err, 'retry-home');
+    $('#day').innerHTML = errorBlock(err, 'retry-home');
     $('#retry-home')?.addEventListener('click', () => location.reload());
   }
 });

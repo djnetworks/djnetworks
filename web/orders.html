@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orders — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-07-9" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-07-9" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-07-9">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-1" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-1" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-1">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-07-9">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-1">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-07-9">
-<link rel="stylesheet" href="style.css?v=2026-09-07-9">
-<script src="vendor/supabase.js?v=2026-09-07-9" defer></script>
-<script src="boot.js?v=2026-09-07-9" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-1">
+<link rel="stylesheet" href="style.css?v=2026-09-08-1">
+<script src="vendor/supabase.js?v=2026-09-08-1" defer></script>
+<script src="boot.js?v=2026-09-08-1" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -30,7 +30,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, initOffline, revealActiveTab, fulfilLabel }
-  from './app.js?v=2026-09-07-9';
+  from './app.js?v=2026-09-08-1';
 
 $('#chrome').innerHTML = chrome('orders.html');
 revealActiveTab();
@@ -66,9 +66,27 @@ async function boot() {
     </div>
     <div id="list" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
   $('#new-order').addEventListener('click', () => openOrder(null));
+
   $('#q').addEventListener('input', renderList);
   $('#f-state').addEventListener('change', renderList);
   await load();
+
+  // Handed over from ask.html: dates and a basket, never a customer and never a saved row. The
+  // enquiry screen deliberately writes nothing, so everything it learned arrives in the URL and
+  // this is still the only place an order is created.
+  //
+  // AFTER load(), not before: the prefilled lines regenerate their rate from PRODUCTS, and PRODUCTS
+  // is what load() fetches. Seeded before it, every line would have arrived priced at zero.
+  const q = new URLSearchParams(location.search);
+  if (q.get('new') === '1') {
+    const want = (q.get('want') || '').split(',').filter(Boolean)
+      .map(pair => { const [id, n] = pair.split(':'); return { id, n: Math.max(1, Number(n) || 1) }; })
+      .filter(w => PRODUCTS.some(p => p.id === w.id));
+    // Strip the parameters before opening, so a refresh or the back button cannot re-seed a second
+    // order from the same basket.
+    history.replaceState(null, '', location.pathname);
+    await openOrder(null, { from: q.get('from'), to: q.get('to'), want });
+  }
 }
 
 async function load() {
@@ -236,7 +254,7 @@ let LINES = [], CHARGES = [], CURRENT = null;
 // product_id -> how much of it has ALREADY left the shelf on this order. Empty for a new order.
 let SENT = new Map();
 
-async function openOrder(o) {
+async function openOrder(o, prefill = null) {
   const isNew = !o;
   CURRENT = o;
   LINES = []; CHARGES = []; SENT = new Map();
@@ -276,12 +294,32 @@ async function openOrder(o) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const pFrom = prefill?.from || today;
+  const pTo = prefill?.to || pFrom;
   o = o ?? {
     order_no: '', customer_id: '', status: 'confirmed', event_type: '', venue_name: '',
     venue_address: '', venue_contact_name: '', venue_contact_phone: '',
-    out_date: today, expected_return_date: today, days: dayCount(today, today) ?? 1,
+    out_date: pFrom, expected_return_date: pTo, days: dayCount(pFrom, pTo) ?? 1,
     deposit_amount: '', availability_override: false, availability_override_reason: '', notes: '',
   };
+  if (prefill?.want?.length) {
+    // Quantities and products only. Every rate is REGENERATED from the product's current default,
+    // exactly as if the product had just been chosen in the dropdown — CLAUDE.md rule 5:
+    // order_line.agreed_rate is what was agreed on THIS order, and a number arriving from another
+    // screen must never be able to become it without passing through today's rate card.
+    const n = dayCount(pFrom, pTo) ?? 1;
+    LINES = prefill.want.map(w => {
+      const p = PRODUCTS.find(x => x.id === w.id);
+      const line = {
+        product_id: w.id, qty: w.n, days: n,
+        base_rate: Number(p?.base_rate_per_day ?? 0),
+        discount_pct: suggestDiscount(n),
+        agreed_rate: 0, line_total: 0, is_subhired: false,
+      };
+      recalcSuggestion(line);
+      return line;
+    });
+  }
 
   const panel = `
     <div class="sheet__head">
