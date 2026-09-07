@@ -3,17 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Dispatch — DJ Network's</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-8">
-<script src="vendor/supabase.js?v=2026-09-07-8" defer></script>
-<script src="boot.js?v=2026-09-07-8" defer></script>
+<title>Send out — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-07-9" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-07-9" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-07-9">
+<meta name="theme-color" content="#2B7379">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-07-9">
+<!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
+     not an @import, because an @import inside style.css would serialise the two fetches. -->
+<link rel="stylesheet" href="tokens.css?v=2026-09-07-9">
+<link rel="stylesheet" href="style.css?v=2026-09-07-9">
+<script src="vendor/supabase.js?v=2026-09-07-9" defer></script>
+<script src="boot.js?v=2026-09-07-9" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
 <main id="gate">
   <div class="signin" data-djn-boot>
-    <h1 class="signin__title">DJ Network's</h1>
+    <h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
     <p class="signin__sub">Starting up…</p>
   </div>
 </main>
@@ -21,8 +28,9 @@
 
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
-         errorBlock, toast, initOffline, registerQueueHandlers, syncNow, revealActiveTab }
-  from './app.js?v=2026-09-07-8';
+         errorBlock, toast, initOffline, registerQueueHandlers, syncNow, revealActiveTab,
+         trackBadge, publicUrl }
+  from './app.js?v=2026-09-07-9';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
@@ -50,6 +58,8 @@ initOffline();
 let ORDER = null, CUSTOMER = null, LINES = [], PRODUCTS = new Map(), LOCS = [], AVAIL = new Map();
 let PINNED = new Map(), DISPATCHED = new Map(), PICK = new Map(), POOLPICK = new Map();
 let FROM_CACHE = false, CACHED_AT = null;
+// product_id -> object URL for rendering, and product_id -> Blob for the offline record.
+let PHOTOS = new Map(), PHOTO_BLOBS = new Map();
 
 requireSession(async () => { await boot(); });
 
@@ -67,11 +77,21 @@ async function boot() {
 // ---------------------------------------------------------------------------
 async function renderChooser() {
   const app = $('#app');
-  app.innerHTML = `<h1>Dispatch</h1><p class="sub">Loading jobs…</p><div id="jobs"></div>`;
+  app.innerHTML = `<h1>Send out</h1><p class="sub">Loading jobs…</p><div id="jobs"></div>`;
   const cached = await store.cacheKeys('order:');
-  const { data, error } = await sb.from('v_order_fulfilment')
-    .select('order_id,order_no,fulfilment_state,qty_ordered,qty_dispatched,qty_undispatched,order_status')
-    .catch(() => ({ data: null, error: { message: 'offline' } }));
+  // try/catch, NOT .catch() on the builder. PostgREST's filter builder is a thenable, not a
+  // Promise: it has .then but no .catch, so `.catch(...)` threw "is not a function" the moment
+  // this line ran, every time, online or off — and the whole screen rendered "Could not load".
+  // Found by opening the Send out tab with no ?order= during the design-pass smoke test; the
+  // earlier walk had always arrived here from an order, which takes the other branch. A dead
+  // entry point, and the one an operator taps from the nav.
+  let data = null, error = null;
+  try {
+    ({ data, error } = await sb.from('v_order_fulfilment')
+      .select('order_id,order_no,fulfilment_state,qty_ordered,qty_dispatched,qty_undispatched,order_status'));
+  } catch (err) {
+    error = err;                       // a thrown fetch failure — no signal
+  }
 
   if (error || !data) {
     app.querySelector('.sub').textContent = 'No connection.';
@@ -87,7 +107,7 @@ async function renderChooser() {
   }
 
   const live = data.filter(f => !['closed', 'cancelled'].includes(f.order_status) && f.qty_undispatched > 0);
-  app.querySelector('.sub').textContent = 'Open the job you are loading. Dispatch always starts from the order.';
+  app.querySelector('.sub').textContent = 'Open the job you are loading. Sending out always starts from the order.';
   $('#jobs').innerHTML = live.length
     ? `<div class="list">${live.map(f => `<a class="item" href="dispatch.html?order=${esc(f.order_id)}">
         <span class="item__main"><span class="item__title">${esc(f.order_no)}</span>
@@ -95,7 +115,7 @@ async function renderChooser() {
           ${esc(f.qty_undispatched)} still to go</span></span>
         <span class="item__right">›</span></a>`).join('')}</div>`
     : stateBlock({ icon: '✅', title: 'Nothing waiting to go out',
-        body: 'Every live order has been fully dispatched. New jobs appear here as soon as they are agreed.' });
+        body: 'Every live order has been fully sent out. New jobs appear here as soon as they are agreed.' });
 }
 
 async function load() {
@@ -114,7 +134,7 @@ async function load() {
     ORDER = o.data; CUSTOMER = o.data.customer; LINES = l.data ?? []; LOCS = locs.data ?? [];
 
     const ids = [...new Set(LINES.map(x => x.product_id))];
-    const p = await sb.from('product').select('id,short_code,brand,model_name,tracking_mode,inclusions').in('id', ids);
+    const p = await sb.from('product').select('id,short_code,brand,model_name,tracking_mode,inclusions,image_url').in('id', ids);
     if (p.error) throw p.error;
     PRODUCTS = new Map((p.data ?? []).map(x => [x.id, x]));
 
@@ -122,7 +142,24 @@ async function load() {
     await recordDispatched();
     FROM_CACHE = false;
     render();
-    await cacheForOffline(true);       // opening the job while in signal is what loads it
+    // Photographs are fetched AFTER the list is on screen and painted into the tiles that are
+    // already there. "Speed is a trust signal" — on 3G a slow screen looks broken, and a picture
+    // is never worth delaying the numbers for. Painted in place rather than by re-rendering the
+    // lines, so a quantity already typed into a counted-stock box cannot be reset underneath a
+    // thumb by an image arriving.
+    await loadPhotos();
+    paintPhotos();
+    // Its OWN try. This line is inside the block whose catch falls back to the cached copy, and
+    // the fallback then repaints the screen as "working offline · numbers are as they were then".
+    // So a full quota, a private window or any IndexedDB refusal — while the phone is online and
+    // the data on screen is fresh — used to relabel a live screen as stale, and with no prior
+    // cache row it threw instead. Failing to SAVE for later must never change what is shown NOW.
+    try {
+      await cacheForOffline(true);     // opening the job while in signal is what loads it
+    } catch (err) {
+      toast('This job is loaded on screen but could not be saved to this phone for offline use.',
+            'error');
+    }
   } catch (err) {
     // No signal, or the job could not be read. Fall back to whatever was deliberately loaded.
     const c = await store.cacheGet('order:' + orderId);
@@ -132,6 +169,11 @@ async function load() {
       AVAIL = new Map(Object.entries(c.data.avail));
       PINNED = new Map(Object.entries(c.data.pinned ?? {}));
       DISPATCHED = new Map(Object.entries(c.data.dispatched ?? {}));
+      // The photographs travel as Blobs, so the pick list looks the same in a godown with no
+      // signal as it does in the shop. Object URLs are minted per page load and die with it.
+      for (const [pid, blob] of Object.entries(c.data.photos ?? {})) {
+        try { PHOTOS.set(pid, URL.createObjectURL(blob)); } catch { /* not a Blob: ignore */ }
+      }
       FROM_CACHE = true; CACHED_AT = c.cached_at;
       render();
       return;
@@ -139,7 +181,7 @@ async function load() {
     $('#body').className = '';
     $('#body').innerHTML = stateBlock({
       icon: '📡', title: 'This job is not on this phone',
-      body: 'There is no connection and this order was never loaded for offline use. Dispatch needs '
+      body: 'There is no connection and this order was never loaded for offline use. Sending out needs '
           + 'to know which pieces are on the shelf, and that is a read — there is nothing to pick from. '
           + 'Open it once while you have signal and it will be here.',
     });
@@ -181,10 +223,87 @@ async function recordDispatched() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// PRODUCT PHOTOS ON THE PICK LIST.
+//
+// The design bible: "Traders recognise cloth by image before label. Photography leads; text
+// captions it." The same is true of a shelf of black boxes in a godown at 7am. DJN-SPK-15 and
+// DJN-SPK-12 are two strings that differ by one character; the two photographs do not.
+//
+// The photographs are fetched as Blobs and stored in the SAME offline record as the rest of the
+// job, because a picture that is blank exactly when there is no signal is decoration, and this
+// screen is the one that runs in a place with no signal. Service worker caching would not do it:
+// sw.js deliberately only holds the app shell and storage is a different origin.
+//
+// Failures are silent by design. A missing photograph is not an error the operator can act on,
+// and the short code underneath is still the identifier — the picture is the faster read, never
+// the only one.
+// ---------------------------------------------------------------------------
+const PHOTO_MAX_BYTES = 1_500_000;
+
+async function loadPhotos() {
+  const prev = await store.cacheGet('order:' + orderId);
+  const cached = prev?.data?.photos ?? {};
+  const paths = prev?.data?.photo_paths ?? {};
+
+  for (const p of PRODUCTS.values()) {
+    if (!p.image_url) continue;
+    // Re-use what is already on the phone unless the product's primary photo has changed.
+    const keep = cached[p.id] && paths[p.id] === p.image_url;
+    if (keep) { PHOTO_BLOBS.set(p.id, cached[p.id]); }
+    else {
+      try {
+        const r = await fetch(publicUrl(p.image_url), { cache: 'force-cache' });
+        if (!r.ok) continue;
+        const blob = await r.blob();
+        if (blob.size > PHOTO_MAX_BYTES) continue;
+        PHOTO_BLOBS.set(p.id, blob);
+      } catch { continue; }
+    }
+    try { PHOTOS.set(p.id, URL.createObjectURL(PHOTO_BLOBS.get(p.id))); } catch { /* ignore */ }
+  }
+}
+
+// The picture, the code and whatever belongs on the right of the row, as one header. Both line
+// shapes — numbered pieces and counted stock — use it, so they cannot drift apart.
+function pickHead(p, right) {
+  const src = PHOTOS.get(p.id);
+  return `<div class="pick-head">
+    <span class="pick-thumb" data-product="${esc(p.id)}">
+      ${src ? `<img src="${esc(src)}" alt="" loading="lazy">` : ''}
+      <span class="pick-thumb__code">${esc(p.short_code || '?')}</span>
+    </span>
+    <span class="pick-head__main">
+      <span class="pick-head__title">${esc(p.model_name)}</span>
+      <span class="item__meta">${esc(p.brand ? p.brand + ' · ' : '')}${esc(p.short_code)}</span>
+    </span>
+    <span class="pick-head__right">${right}</span>
+  </div>`;
+}
+
+// Drops each photograph into the tile that is already on screen. Idempotent: a tile that already
+// has one is left alone, so this is safe to call after any render.
+function paintPhotos() {
+  for (const [pid, src] of PHOTOS) {
+    for (const el of $$(`.pick-thumb[data-product="${CSS.escape(pid)}"]`)) {
+      if (el.querySelector('img')) continue;
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = '';
+      el.prepend(img);
+    }
+  }
+}
+
 async function cacheForOffline(quiet) {
   await store.cachePut('order:' + orderId, {
     order: ORDER, customer: CUSTOMER, lines: LINES, locations: LOCS,
     products: [...PRODUCTS.values()],
+    photos: Object.fromEntries(PHOTO_BLOBS),
+    // What each stored photograph was OF, so a changed primary image is re-fetched next time
+    // rather than serving last month's picture for ever.
+    photo_paths: Object.fromEntries([...PRODUCTS.values()]
+      .filter(p => PHOTO_BLOBS.has(p.id)).map(p => [p.id, p.image_url])),
     avail: Object.fromEntries(AVAIL),
     pinned: Object.fromEntries(PINNED),
     dispatched: Object.fromEntries(DISPATCHED),
@@ -246,9 +365,9 @@ function render() {
     </div>
     <div id="lines"></div>
     <div class="card">
-      <strong>How is it going?</strong>
+      <strong>Who is taking it</strong>
       <div class="grid2" style="margin-top:10px">
-        <label class="field"><span class="field__label">Dispatch method *</span>
+        <label class="field"><span class="field__label">How is it going out? *</span>
           <select class="field__select" id="f-method">
             <option value="delivered_by_chachu">Delivered by chachu</option>
             <option value="porter">Porter</option>
@@ -276,7 +395,7 @@ function render() {
     </div>
     <div class="dispatch-bar">
       <div id="pick-summary" class="field__hint"></div>
-      <button class="btn btn--primary btn--block" id="go">Dispatch</button>
+      <button class="btn btn--primary btn--block" id="go">Send these out</button>
     </div>`;
 
   $('#f-loc').addEventListener('change', renderLines);
@@ -296,16 +415,26 @@ function renderLines() {
     if (p.tracking_mode !== 'unit') {
       const onHand = AVAIL.get(line.product_id) ?? 0;
       return `<div class="card" data-line="${i}">
-        <div class="row row--between">
-          <strong>${esc(p.short_code)} — ${esc(p.model_name)}</strong>
-          <span class="badge badge--${esc(p.tracking_mode)}">${esc(p.tracking_mode)}</span>
-        </div>
+        ${pickHead(p, `<span class="badge badge--${esc(p.tracking_mode)}">${esc(trackBadge(p.tracking_mode))}</span>`)}
         <p class="field__hint">Counted stock, no piece numbers. ${esc(alreadyN)} of ${esc(line.qty)} already sent
           · ${esc(onHand)} on the shelf.</p>
         ${remaining === 0 ? '<p class="field__hint" style="color:var(--ok)">This line is complete.</p>'
         : `<label class="field"><span class="field__label">How many are you sending now?</span>
-             <input class="field__input pool-qty" data-product="${esc(line.product_id)}" type="number"
-                    min="0" max="${esc(Math.min(remaining, onHand))}" step="1" inputmode="numeric" value="0">
+             <div class="row" style="gap:8px;flex-wrap:nowrap">
+               <!-- The value comes back from POOLPICK, NOT from a hardcoded 0. renderLines() now
+                    re-runs whenever "Pick N" or "Clear" is tapped on any OTHER line, and a literal
+                    value="0" here redrew this box as empty while POOLPICK still held the number
+                    that doDispatch() would send. Measured: type 7 cables, tap "Pick 2" on the
+                    speakers, the box reads 0 and the movement POSTed is qty 7. The box has to say
+                    what will leave the godown. First render is still 0 because POOLPICK is empty
+                    — a quantity that arrives without anybody choosing it is one nobody checked. -->
+               <input class="field__input pool-qty" data-product="${esc(line.product_id)}" type="number"
+                      min="0" max="${esc(Math.min(remaining, onHand))}" step="1" inputmode="numeric"
+                      value="${esc(POOLPICK.get(line.product_id) ?? 0)}">
+               ${Math.min(remaining, onHand) > 0 ? `<button class="btn btn--sm pool-all" type="button"
+                  data-product="${esc(line.product_id)}"
+                  data-n="${esc(Math.min(remaining, onHand))}">All ${esc(Math.min(remaining, onHand))}</button>` : ''}
+             </div>
              <span class="field__hint">${esc(remaining)} still owed on this line.
                ${onHand < remaining ? `Only ${esc(onHand)} on the shelf.` : ''}</span></label>`}
       </div>`;
@@ -319,10 +448,7 @@ function renderLines() {
     const sorted = pinnedHere ? [pinnedHere, ...here.filter(u => u.unit_id !== pinnedId)] : here;
 
     return `<div class="card" data-line="${i}">
-      <div class="row row--between">
-        <strong>${esc(p.short_code)} — ${esc(p.model_name)}</strong>
-        <span class="item__meta">${esc(alreadyN)} of ${esc(line.qty)} loaded</span>
-      </div>
+      ${pickHead(p, `${esc(alreadyN)} of ${esc(line.qty)} loaded`)}
       ${pinnedId ? (pinnedHere
         ? `<p class="field__hint">Piece ${esc(pinnedHere.piece_no)} is pinned to this line and is offered first.</p>`
         : `<div class="note note--warn">The piece pinned to this line is <strong>not on the shelf here</strong>.
@@ -332,9 +458,22 @@ function renderLines() {
         : !sorted.length
           ? `<div class="note note--warn">Nothing of this product is on the shelf at this location.
                ${esc(remaining)} still owed. Try another location, or send what you have and finish later —
-               partial dispatch is normal.</div>`
-          : `<p class="field__hint">Tap the pieces going out. ${esc(remaining)} still owed,
-               ${esc(sorted.length)} here.</p>
+               sending part of a job is normal.</div>`
+          : `<div class="row" style="gap:8px;margin-bottom:6px">
+               <span class="field__hint" style="margin:0">Tap the pieces going out. ${esc(remaining)} still owed,
+                 ${esc(sorted.length)} here.</span>
+               <!-- The whole job in one tap when the shelf agrees with the order, which is the
+                    ordinary case. Six taps become one; the pieces still light up individually so
+                    what is about to go out is visible before the sticky button is pressed, and any
+                    one of them can still be tapped off. -->
+               <span style="margin-left:auto;display:flex;gap:8px">
+                 ${pickedOn(line.product_id, sorted) < Math.min(remaining, sorted.length)
+                   ? `<button class="btn btn--sm pick-all" type="button" data-line="${i}">Pick
+                        ${esc(Math.min(remaining, sorted.length))}</button>` : ''}
+                 ${pickedOn(line.product_id, sorted) > 0
+                   ? `<button class="btn btn--sm pick-none" type="button" data-line="${i}">Clear</button>` : ''}
+               </span>
+             </div>
              <div class="pieces">${sorted.map(u => `
                <button class="piece ${PICK.has(u.unit_id) ? 'is-on' : ''}" data-unit="${esc(u.unit_id)}"
                        data-product="${esc(line.product_id)}" type="button"
@@ -355,12 +494,67 @@ function renderLines() {
     b.setAttribute('aria-pressed', PICK.has(id) ? 'true' : 'false');
     renderInclusions(); paintSummary();
   }));
+  // renderLines() destroys the button that was just pressed, so focus fell to <body> and the
+  // next Tab restarted at the top bar. Put it back on the same line's control.
+  const keepFocus = (lineIdx, cls) => {
+    const el = $(`.${cls}[data-line="${lineIdx}"]`) ?? $(`.piece[data-product]`);
+    el?.focus?.();
+  };
+  $$('.pick-all').forEach(b => b.addEventListener('click', () => {
+    const { sorted, remaining, productId } = lineContext(Number(b.dataset.line));
+    // Cap on BOTH what the order still owes and what is on this shelf, and take them in the order
+    // the tiles are shown — the pinned piece first — so what is selected is what is read.
+    const want = Math.min(remaining, sorted.length);
+    for (const u of sorted) {
+      if (pickedOn(productId, sorted) >= want) break;
+      if (!PICK.has(u.unit_id)) PICK.set(u.unit_id, { product_id: productId, inclusions: null });
+    }
+    renderLines();
+    keepFocus(Number(b.dataset.line), 'pick-none');
+  }));
+  $$('.pick-none').forEach(b => b.addEventListener('click', () => {
+    const { sorted } = lineContext(Number(b.dataset.line));
+    for (const u of sorted) PICK.delete(u.unit_id);
+    renderLines();
+    keepFocus(Number(b.dataset.line), 'pick-all');
+  }));
+  $$('.pool-all').forEach(b => b.addEventListener('click', () => {
+    const n = Number(b.dataset.n) || 0;
+    POOLPICK.set(b.dataset.product, n);
+    const inp = $(`.pool-qty[data-product="${CSS.escape(b.dataset.product)}"]`);
+    if (inp) inp.value = String(n);
+    paintSummary();
+  }));
   $$('.pool-qty').forEach(inp => inp.addEventListener('input', () => {
     const n = Math.max(0, Number(inp.value) || 0);
     POOLPICK.set(inp.dataset.product, n);
     paintSummary();
   }));
-  renderInclusions(); paintSummary();
+  renderInclusions(); paintSummary(); paintPhotos();
+}
+
+// How many of THIS line's offered pieces are currently picked. Counted against the tiles on
+// screen rather than against PICK as a whole, so a product carried on two lines cannot report the
+// other line's picks as its own.
+function pickedOn(productId, offered) {
+  return offered.filter(u => PICK.has(u.unit_id)).length;
+}
+
+// The same three values renderLines() computed for a line, recomputed for its buttons. Derived
+// again rather than captured in the handler, because the shelf is re-read on every location
+// change and a captured list goes stale the moment "Loading from" is touched.
+function lineContext(i) {
+  const line = LINES[i];
+  const p = PRODUCTS.get(line.product_id);
+  const locId = $('#f-loc')?.value;
+  const done = DISPATCHED.get(line.product_id) ?? { pieces: [], qty: 0 };
+  const remaining = Math.max(line.qty - done.pieces.length, 0);
+  const all = AVAIL.get(line.product_id) ?? [];
+  const here = all.filter(u => u.at_kind === 'location' && (!locId || u.at_id === locId));
+  const pinnedId = PINNED.get(line.product_id);
+  const pinnedHere = pinnedId ? here.find(u => u.unit_id === pinnedId) : null;
+  const sorted = pinnedHere ? [pinnedHere, ...here.filter(u => u.unit_id !== pinnedId)] : here;
+  return { line, p, remaining, sorted, productId: line.product_id };
 }
 
 function renderInclusions() {
@@ -461,7 +655,7 @@ function paintSummary() {
   el.className = 'field__hint';
   el.textContent = (pieces || pooled)
     ? `${pieces ? pieces + ' piece(s)' : ''}${pieces && pooled ? ' and ' : ''}${pooled ? pooled + ' counted item(s)' : ''} selected.`
-    : 'Nothing selected yet. Partial dispatch is normal — send what is ready.';
+    : 'Nothing selected yet. Sending part of a job is normal — send what is ready.';
   $('#go').disabled = !(pieces || pooled);
 }
 
@@ -507,13 +701,13 @@ async function doDispatch() {
   if (!movements.length) { toast('Nothing selected.', 'error'); return; }
 
   btn.disabled = true; btn.textContent = 'Sending…';
-  const label = `Dispatch ${movements.length} item(s) on ${ORDER.order_no}`;
+  const label = `Send out ${movements.length} item(s) on ${ORDER.order_no}`;
 
   if (!navigator.onLine) {
     await store.enqueue('dispatch', { movements, order_id: orderId }, label);
     toast(`No signal — ${movements.length} item(s) held on this phone and sent when the signal returns.`);
     PICK.clear(); POOLPICK.clear();
-    btn.disabled = false; btn.textContent = 'Dispatch';
+    btn.disabled = false; btn.textContent = 'Send these out';
     await load();
     return;
   }
@@ -524,7 +718,7 @@ async function doDispatch() {
     const { error: e2 } = await sb.from('ledger_entry')
       .update({ state: 'due' }).eq('order_id', orderId).eq('state', 'upcoming');
     if (e2) throw e2;
-    toast(`${movements.length} item(s) dispatched.`);
+    toast(`${movements.length} item(s) sent out.`);
     PICK.clear(); POOLPICK.clear();
     await load();
   } catch (err) {
@@ -539,7 +733,7 @@ async function doDispatch() {
       toast(msg, 'error');
     }
   } finally {
-    btn.disabled = false; btn.textContent = 'Dispatch';
+    btn.disabled = false; btn.textContent = 'Send these out';
   }
 }
 

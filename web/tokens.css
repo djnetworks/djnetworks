@@ -1,0 +1,158 @@
+/* ===========================================================================
+   tokens.css — every colour, radius, shadow and type stack in one file.
+
+   PROVENANCE, and why this file says "provisional" in three places.
+
+   reference/design/Ekum_Design_Bible_Interactive_Phase_1.html is a BEHAVIOURAL
+   reference. It says so itself, twice: "Interaction architecture · not visual
+   styling", and "The Brand Kit owns visual specifications and components; this
+   file cross-references both instead of rewriting them."
+
+   THE BRAND KIT DOES NOT EXIST IN THIS REPO. So there is no visual source of
+   truth to implement, and inventing one silently would be worse than having
+   none — the next person would find a palette with no author and treat it as
+   settled. Every value below is therefore DERIVED, from exactly two things:
+
+     1. the bible's own :root block  (its document CSS, not its guidance)
+     2. reference/design/ekum-icon-1024.png, sampled by pixel:
+          ground  #138F93 → #0E969E   (a brighter teal than the bible's)
+          disc    #F8A12C             (the bible's --orange #FF9700, warmer)
+          letters #FFFFFF
+
+   The icon confirms the bible's teal-plus-orange-on-white grammar, which is
+   why that grammar is used here. The icon's own teal is NOT used: at #0E969E
+   white text measures 3.0:1, and this app is read in a godown.
+
+   PROVISIONAL. When a real Brand Kit arrives, it replaces this file and only
+   this file. Nothing else in web/ names a colour. If you find a hex anywhere
+   outside tokens.css, that is a bug, not a special case.
+
+   ---------------------------------------------------------------------------
+   WHERE THIS FILE DEPARTS FROM THE BIBLE, AND WHY.
+
+   Three of the bible's values cannot be used as text on this app's grounds.
+   They are kept below under their own names, because they are correct for the
+   thing the bible uses them for — a chip fill, a dot, a border — and a derived
+   text-safe partner sits beside each one. Contrast measured against #F7F3EA
+   (the page) and #FFFFFF (every card), WCAG AA 4.5:1 for body text:
+
+     --grey #828282       3.47:1 on warm   →  --ink-faint #6B665F  5.14:1
+     --success #22C55E    2.28:1 on white  →  --ok        #146C38  6.50:1
+     --error #E5484D      3.91:1 on white  →  --bad       #B42F33  6.19:1
+
+   The first of those is not a theoretical worry. style.css already carries the
+   note: --ink-faint was #8b939d, measured at 3.1:1, and every .field__hint on
+   every screen uses it at 12px — the hints are where the explanations live, and
+   they were being read in poor light. Taking the bible's grey verbatim would
+   have quietly undone a fix that had already been paid for once.
+
+   The bible had already solved this for itself and the answer is borrowed
+   rather than invented: its .chip rules pair each semantic fill with a darker
+   ink (.chip.error{color:#B42F33}, .chip.warning{color:#765300},
+   .chip.orange{color:#A65B00}, .chip.info{color:#1559BB}). Those inks are used
+   verbatim below. Only --ok had no partner in the bible, so #146C38 is the one
+   value on this page with no source but arithmetic.
+
+   ---------------------------------------------------------------------------
+   TYPE. The bible declares Inter with a system fallback and never ships a font
+   file. That declaration is copied exactly and NO webfont is loaded. A font
+   fetched from a third-party host would be the only remaining public-internet
+   dependency in this app (vendor/supabase.js exists precisely because the CDN
+   import was removed), it would not be in the service worker's shell, and on a
+   dead 3G link at a venue it buys a repaint or invisible text in exchange for
+   nothing the operator can see. Inter renders where it is installed.
+   =========================================================================== */
+
+:root {
+  /* -------------------------------------------------------------------------
+     1 · THE BIBLE'S PALETTE, VERBATIM.
+     Copied from its :root block. Do not edit these to fix a screen — edit the
+     semantic name in section 3 that points at them.
+     ------------------------------------------------------------------------- */
+  --teal:         #2B7379;
+  --teal-deep:    #1E595E;
+  --foam:         #E8F2F1;
+  --lemon:        #DEDE6E;
+  --linen:        #E8E7D5;
+  --warm:         #F7F3EA;
+  --white:        #FFFFFF;
+  --border:       #E7E8E6;
+  --grey:         #828282;   /* fills, rules and icon strokes only — see above */
+  --slate:        #3D3A37;
+  --charcoal:     #33271B;
+  --orange:       #FF9700;   /* the single highlight. See "one highlight" below */
+  --success:      #22C55E;   /* a dot or a fill, never text */
+  --info:         #3B82F6;   /* a dot or a fill, never text */
+  --warning:      #F7C54F;   /* a dot or a fill, never text */
+  --error:        #E5484D;   /* a fill or a border, never text */
+  --shadow:       0 12px 30px rgba(51, 39, 27, .08);
+  --shadow-card:  0 5px 18px rgba(51, 39, 27, .03);
+  --radius-lg:    18px;
+  --radius-sm:    12px;
+
+  /* -------------------------------------------------------------------------
+     2 · DERIVED, because the value above fails as text on this app's grounds.
+     Each carries its measured ratio. Change one and re-run the checker in
+     docs/design.md before committing.
+     ------------------------------------------------------------------------- */
+  --ink-faint:    #6B665F;   /* --grey darkened toward --charcoal · 5.14 warm · 5.69 white */
+  --ok:           #146C38;   /* --success darkened               · 5.87 warm · 6.50 white */
+  --bad:          #B42F33;   /* the bible's own .chip.error ink   · 5.59 warm · 6.19 white */
+  --warn:         #765300;   /* the bible's own .chip.warning ink · 6.98 white */
+  --info-ink:     #1559BB;   /* the bible's own .chip.info ink    · 6.61 white */
+  --orange-ink:   #A65B00;   /* the bible's own .chip.orange ink  · 5.10 white */
+
+  /* Tints. Each is a semantic fill with an ink that clears 4.5:1 ON THAT FILL,
+     not merely on white — a badge is a colour on a colour and the pair has to
+     be measured together. */
+  --tint-teal:    #E8F2F1;   /* = --foam         · --teal-deep on it: 6.96 */
+  --tint-green:   #E6F4EC;   /* · --ok on it:      5.73 */
+  --tint-amber:   #FDF0E3;   /* · --warn on it:    6.23 */
+  --tint-red:     #FDECEA;   /* · --bad on it:     5.41 */
+  --sunk:         #FCFAF5;   /* a card inside a card · --ink-faint on it: 5.45 */
+  --shimmer:      #D8D5C6;   /* the moving stop on a skeleton row · 1.22 against --tint-neutral */
+  --tint-neutral: #ECEAE1;   /* a linen tint     · --slate on it:  9.37 */
+
+  /* -------------------------------------------------------------------------
+     3 · THE SEMANTIC NAMES THE APP ALREADY USES.
+     These names are unchanged from the pre-design-pass style.css on purpose:
+     nothing in any screen had to be renamed for this pass, so nothing in any
+     screen could break for it. Every one of them now points at section 1 or 2.
+     ------------------------------------------------------------------------- */
+  --bg:           var(--warm);
+  --surface:      var(--white);
+  --line:         var(--border);
+  --ink:          var(--charcoal);
+  --ink-soft:     var(--slate);
+  /* --ink-faint is defined in section 2, where its measurement lives. */
+  --accent:       var(--teal);
+  --accent-ink:   var(--white);
+  --accent-soft:  var(--tint-teal);      /* active tab, selected piece */
+  --bad-bg:       var(--tint-red);
+
+  /* Radii. The bible runs 18/12; this app ran 10 everywhere. Cards and rows
+     take the large one, controls the small one, so a button inside a card is
+     visibly a smaller shape than the card and the nesting reads. */
+  --radius:       var(--radius-sm);
+  --radius-card:  var(--radius-lg);
+
+  /* Not from the bible, and not negotiable by it: 44px is the minimum tap
+     target on a screen used one-handed beside a van. The bible's own hard
+     floor — "thumb in motion, targets must be confidently tappable" — is the
+     same rule stated without a number. */
+  --tap: 44px;
+
+  --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------------------------------------------------------------------------
+   ONE HIGHLIGHT PER SCREEN.
+
+   The bible's anti-pattern list has "more than one highlight": multiple
+   colours, banners and badges competing on a three-second screen. --orange is
+   this system's single highlight and it is spent on the wordmark's dot and the
+   app icon — nowhere else. Late, overdue and refused stay red, because they are
+   not highlights, they are failures, and a business where the accent colour and
+   the alarm colour are the same colour has no alarm.
+   --------------------------------------------------------------------------- */

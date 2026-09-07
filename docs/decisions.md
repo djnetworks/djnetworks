@@ -107,3 +107,28 @@ database produces a schema that no longer matches its own migration history.
 ### Product images are stored, never linked
 Three entry routes — phone camera, Excel import, direct upload — all landing in the same bucket.
 An external WhatsApp or Drive URL would rot and break the customer portal.
+
+### The palette is derived, and labelled provisional
+The Ekum design bible owns behaviour and says twice that it does not own visual styling — the Brand
+Kit does, and the Brand Kit is not in this repo. Rather than wait or invent silently, every token in
+`web/tokens.css` is derived from the bible's own document CSS plus the icon, and the file says
+`PROVISIONAL` in three places.
+**Cost:** three of the bible's semantic colours are fills, not inks, and fail as text on these
+grounds — `#828282` at 3.47:1 is the one that mattered, because it is every `.field__hint`. Each
+keeps its name for fills and gains a measured text-safe partner. Those three values are the only
+thing a real Brand Kit has to overrule. See `docs/design.md`.
+
+### DJ Network's is the brand; EKUM appears once
+"Built by EKUM" sits under the operator sign-in button and nowhere else — never on `portal.html`.
+**Why:** the portal is opened by a wedding family on a WhatsApp link. A second brand on that page is
+a question they have to answer, with nobody there to answer it.
+The DJ Network's mark is typographic. The flyer logo is not used: it carries a visible AI watermark
+and its shield is misspelt "EVENTS & RENTAL EQUIPE".
+
+### Four of the bible's rules were imported, and only four
+Icons need labels; software words are replaced with trade words; the dispatch pick list leads with
+the photograph; intake and dispatch are counted in taps. The bible's roles, collections and
+navigation model belong to a textile trading app with suppliers and buyers, and were left there.
+**Cost:** the wording table in `docs/design.md` has to be kept in step with the schema. `unit`,
+`pool` and `consumable` are still the column values; only their labels changed, through
+`trackLabel` / `trackBadge` / `fulfilLabel` in `app.js` so no screen can invent its own vocabulary.

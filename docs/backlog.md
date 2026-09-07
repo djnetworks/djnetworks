@@ -38,7 +38,15 @@ This does not undo that — it keeps the forward book and stops paying for it in
 
 ---
 
-## BLOCKING — do not deploy until this is done
+## CLOSED by `0017` — kept as the record of what it was
+
+This was the BLOCKING entry. `0017_operator_allowlist.sql` closed it by a different route than the
+one proposed below: instead of relying on the signup toggle, every policy on all 16 tables now tests
+membership of the `operator` table, so a stranger who self-registers is `authenticated` and still
+reads zero rows. Turning signups off is still worth doing — it is one less door — but it is no
+longer the thing standing between the key and the data. The README's Status section says the same.
+
+The original text, unedited:
 
 **Self-registration is open, and the publishable key is about to become public.** Measured
 2026-09-07 against `hjidocpqcrfbjucvqggu`:
@@ -324,3 +332,69 @@ has `0008`, which is what a "reset and replay" would do.
 **The 187-subcategory taxonomy has never been walked by the owner.** `open-questions.md` item 6.
 The product master currently offers 187 choices for a fleet that probably spans 40, and every one of
 them is a chance to file a speaker under the wrong heading.
+
+**The seed fixture creates no product photographs, so the pick list's photo path is only ever
+exercised by hand.** `dispatch.html` leads each line with the product photo and carries the image
+into the offline record as a Blob — verified on 2026-09-07 by uploading one JPEG through
+`products.html` and reading a 9,361-byte Blob back out of IndexedDB under the job's own cache key.
+But `dev_seed.sql` writes no `product_image` rows, so after every reset the pick list shows the
+short-code fallback tile for every product and nobody looking at the fixture would know the feature
+exists. Seeding an image means either committing a binary to the repo or generating one at seed
+time in SQL, and neither is obviously right.
+
+**`web/tokens.css` is provisional and nothing enforces that.** The palette is derived from a
+behavioural document that explicitly does not own visual styling, because the Brand Kit it defers to
+is not in this repo. Three of its semantic colours are fills that fail as text and carry derived
+partners here. There is a contrast checker in `docs/design.md` but nothing runs it — a future edit
+that puts `--grey` back on a hint would be caught by a person or not at all.
+
+---
+
+## From the design pass (2026-09-07), raised and not fixed
+
+**Borders are too faint to aim at, and this pass made them ~8% fainter.** `--line` `#E7E8E6` on the
+page ground measures **1.11:1** (was 1.20 with the old `#dfe3e8` on `#f6f7f9`); an input border on
+white is **1.23:1** (was 1.29). WCAG 1.4.11 asks for **3.0:1** on the boundary of a control you have
+to hit. Both the old and the new palette fail it — the change is a small regression on an existing
+failure, not a new one — but the fields and the `.piece` tiles are exactly what gets aimed at
+one-handed in sunlight. Fixing it means overruling the bible's own `--border`, which is a token
+decision, so it is recorded rather than taken: `web/tokens.css`.
+
+**No seeded order has a numbered line and a counted line both still to go out, so the Send-out
+screen's most dangerous path is not covered by the fixture.** That gap hid a real bug: "Pick N"
+re-rendered the counted-stock box to `0` while `POOLPICK` still held the typed number, and the
+POST carried the number the box no longer showed — seven cables leaving the godown under a box
+reading zero. Found by `ui-reviewer` injecting a pooled line on the wire, not by the walk, because
+the walk cannot reach it. Fixed in `dispatch.html`, but the fixture still cannot catch a
+regression. `dev_seed.sql` needs an order with both.
+
+**`errorBlock` shows the operator the raw Postgres message.** With a 500 injected, all nine screens
+rendered *"Could not load — relation "v_thing" does not exist"* verbatim. Defensible while the
+operator is also the developer, and it is the opposite of every other rule in `docs/design.md`.
+Pre-existing; `web/app.js`.
+
+**`dispatch.html` says "No connection." for any failure**, a 500 on a good link included. Measured.
+
+**Two empty states are wrong on day one.** Send out says *"Every live order has been fully sent
+out"* and Return says *"Everything that went out has come back"* when in fact nothing has ever gone
+out. On an empty catalogue both read as a completed day's work.
+
+**`orders.html` "no customers yet" is the one empty state with no button.** Every other one offers
+the fix; this one says *"Add a customer first"* and leaves the operator to find the tab.
+
+**The tab strip hides five tabs behind a scroll with no affordance.** At 375px the nav measures
+`scrollWidth 752` inside `clientWidth 252`: Ledger and Numbers, among others, are off-screen with
+nothing on screen saying so. The bar is correctly one row and 59px; the scroll is the deliberate
+trade from an earlier pass, but it needs an edge fade or a chevron.
+
+**`portal.html` builds a second GoTrue client.** It creates its own (session-free) client and also
+imports `app.js`, which creates one at module load under the same storage key — hence *"Multiple
+GoTrueClient instances detected"* in the console. Harmless today. The fix is splitting the helpers
+out of `app.js` so a page can import `esc`/`money`/`fmtDate` without instantiating a client, which
+is the same refactor the CSP entry above wants.
+
+**`units.html` does not return focus after the bulk sheet closes.** `openBulk` sets
+`trigger.disabled = true` while it fetches the next piece number, which blurs the button, so
+`openSheet` captures `document.body` as the opener. Products, customers and orders all return focus
+correctly.
+

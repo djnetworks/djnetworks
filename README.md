@@ -7,14 +7,14 @@ Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 - **What was decided and what it cost:** `docs/decisions.md`
 - **What is still unanswered:** `docs/open-questions.md`
 - **Found and not fixed:** `docs/backlog.md`
+- **Where the look comes from:** `docs/design.md` — provisional tokens, and what is still missing.
 
 ## Status
 
-**Not deployed, and deliberately so.** See the BLOCKING entry at the top of `docs/backlog.md`:
-self-registration is open on the Supabase project and `authenticated` has full access to all 16
-tables, so publishing the page — which necessarily publishes the publishable key — would hand the
-database to anyone who reads the source. Turn signups off first, then create the one operator
-account.
+**Access control is an allowlist, not a signup toggle.** `0017` made membership of the `operator`
+table the thing every policy tests, so a stranger who self-registers reads zero rows from all 16
+tables. That is what makes the publishable key safe to ship in the page source, which it must be.
+It is not a reason to publish the repo — see Hosting below.
 
 **Driven end to end by a signed-in operator on 2026-09-07.** A complete job was walked through the
 browser — product, six pieces, customer with a portal code, an order for four, a dispatch of two,
@@ -36,7 +36,7 @@ What exists:
 
 | | |
 |---|---|
-| Database | 16 tables, 9 views, 21 functions. Migrations `0001`–`0016`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
+| Database | 16 tables, 9 views, 21 functions. Migrations `0001`–`0018`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
 | Screens | 10 static pages under `web/`, no build step. Nine behind an operator sign-in, plus the customer portal. |
 | Offline | Vendored Supabase client, service worker for the app shell, IndexedDB for queued writes, explicit per-job prefetch. |
 | Sheet | Read-only mirror OUT, deployed as the `sheet-mirror` Edge Function with `sheet/DataSync.gs`. The bulk import lane is NOT built. |

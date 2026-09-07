@@ -4,20 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Your bookings — DJ Network's</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-8">
-<script src="vendor/supabase.js?v=2026-09-07-8" defer></script>
-<script src="boot.js?v=2026-09-07-8" defer></script>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-07-9" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-07-9" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-07-9">
+<meta name="theme-color" content="#2B7379">
+<!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
+     not an @import, because an @import inside style.css would serialise the two fetches. -->
+<link rel="stylesheet" href="tokens.css?v=2026-09-07-9">
+<link rel="stylesheet" href="style.css?v=2026-09-07-9">
+<script src="vendor/supabase.js?v=2026-09-07-9" defer></script>
+<script src="boot.js?v=2026-09-07-9" defer></script>
 </head>
 <body>
-<header class="topbar">
-  <span class="topbar__brand">DJ Network's</span>
+<header class="topbar topbar--portal">
+  <span class="topbar__brand"><span class="wordmark"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></span>
   <span class="topbar__who" id="who"></span>
   <button class="btn btn--ghost" id="leave" hidden>Sign out</button>
 </header>
 <main id="gate">
   <div class="signin" data-djn-boot>
-    <h1 class="signin__title">DJ Network's</h1>
+    <h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
     <p class="signin__sub">Starting up…</p>
   </div>
 </main>
@@ -25,8 +31,8 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-07-8';
-import { $, esc, money, fmtDate, toast } from './app.js?v=2026-09-07-8';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-07-9';
+import { $, esc, money, fmtDate, toast } from './app.js?v=2026-09-07-9';
 
 // ---------------------------------------------------------------------------
 // The customer portal. This page is opened by people who are not staff, on a link sent over

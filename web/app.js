@@ -42,6 +42,84 @@ export function money(v) {
   return '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/**
+ * A product photo's public URL.
+ *
+ * `product.image_url` holds a storage PATH, not a link — 0006 keeps it pointed at the primary
+ * row in `product_image`. An import can also put a full URL there, so both shapes are accepted.
+ * Shared rather than copied because two screens now show the same photograph and a bucket rename
+ * must not have to be found in two files.
+ */
+export const publicUrl = path => !path ? null
+  : path.startsWith('http') ? path
+  : sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
+
+/**
+ * How a product is tracked, in words the operator uses.
+ *
+ * `unit`, `pool` and `consumable` are schema words — they are correct in the database and they
+ * mean nothing on a screen. The design bible's language rule is the reason this exists: "numbers
+ * are familiar; software words are not". A cable is counted stock; a roll of gaffer tape is used
+ * up and never comes back; a speaker is a numbered piece.
+ *
+ * One function, used by every screen that shows the badge, so the three screens cannot drift into
+ * three vocabularies for the same three values.
+ */
+export const trackLabel = m => ({
+  unit: 'Numbered pieces',
+  pool: 'Counted stock',
+  consumable: 'Used up, never comes back',
+}[m] ?? m);
+
+/**
+ * What a ledger entry IS, in the operator's words.
+ *
+ * The ledger list rendered `e.type.replace(/_/g, ' ')`, so chachu read `rental` and `deposit in`
+ * in the list while the form directly above it offered "Payment received" and "Deposit taken" and
+ * the customer, on the same entry, read "Equipment hire". Three vocabularies for one row, on the
+ * screen that is about money — the same drift fulfilLabel exists to kill.
+ *
+ * portal.html keeps its OWN map on purpose and must not be pointed at this one. It is not a
+ * translation of this, it is a different reading of the same fact: `deposit_in` is "Deposit taken"
+ * to the person taking it and "Deposit received" to the person handing it over, and `write_off`
+ * must never reach a customer as "Written off".
+ */
+export const entryLabel = t => ({
+  rental:          'Equipment hire',
+  transport:       'Transport',
+  labour:          'Labour',
+  misc:            'Other charge',
+  damage:          'Damage charge',
+  payment:         'Payment received',
+  deposit_in:      'Deposit taken',
+  deposit_out:     'Deposit returned',
+  deposit_forfeit: 'Deposit kept against damage',
+  discount:        'Discount given',
+  write_off:       'Written off',
+  reversal:        'Charge cancelled',
+}[t] ?? String(t ?? '').replace(/_/g, ' '));
+
+/**
+ * v_order_fulfilment.fulfilment_state, in words rather than in schema.
+ *
+ * `part_dispatched` is a column value; "part sent" is what somebody says. Shared so the filter
+ * dropdown and the badge on the row it filters cannot say two different things about the same
+ * order — which they did until this existed: the dropdown offered "Part sent" and the row it
+ * returned was labelled "part dispatched".
+ */
+export const fulfilLabel = s => ({
+  nothing_dispatched: 'nothing sent yet',
+  part_dispatched:    'part sent',
+  fully_out:          'all sent, none back',
+  part_returned:      'part back',
+  all_returned:       'all back',
+}[s] ?? String(s ?? '').replace(/_/g, ' '));
+
+/** The same three, short enough for a badge in a table cell. */
+export const trackBadge = m => ({
+  unit: 'numbered', pool: 'counted', consumable: 'used up',
+}[m] ?? m);
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
@@ -296,7 +374,7 @@ export async function requireSession(onReady) {
 function renderSignIn(gate) {
   gate.innerHTML = `
     <form class="signin" id="signin-form" autocomplete="on">
-      <h1 class="signin__title">DJ Network's</h1>
+      <h1 class="signin__title">${wordmark({ large: true })}</h1>
       <p class="signin__sub">Rental system. Sign in to continue.</p>
       <label class="field">
         <span class="field__label">Email</span>
@@ -310,6 +388,7 @@ function renderSignIn(gate) {
       </label>
       <button class="btn btn--primary btn--block" type="submit" id="signin-btn">Sign in</button>
       <p class="signin__err" id="signin-err" role="alert" hidden></p>
+      <p class="builtby">Built by <strong>EKUM</strong></p>
     </form>`;
 
   const form = $('#signin-form', gate);
@@ -346,6 +425,30 @@ function renderSignIn(gate) {
 }
 
 // ---------------------------------------------------------------------------
+// The wordmark.
+//
+// DJ Network's mark is TYPOGRAPHIC. There is no logo file in this app and there is not going to
+// be one until somebody draws a clean shield: the flyer artwork carries a visible AI watermark
+// and spells the trade "EVENTS & RENTAL EQUIPE". Shipping that on the sign-in screen would put a
+// misspelling in front of the only person who uses this system, every morning.
+//
+// The apostrophe is the typographic one (’). It appears in the mark only — page titles and
+// prose keep the plain quote, because those get searched, copied and pasted.
+// ---------------------------------------------------------------------------
+export function wordmark({ large = false, invert = false, href = null } = {}) {
+  const cls = `wordmark${large ? ' wordmark--lg' : ''}${invert ? ' wordmark--invert' : ''}`;
+  // The space between DJ and Network's is a REAL space, not the flex gap. With the gap doing the
+  // work the name read "DJNetwork's" to a screen reader and to anything that copied the text —
+  // the two words were separate text nodes with nothing between them.
+  const inner = '<span class="wordmark__dot" aria-hidden="true"></span>'
+    + '<span class="wordmark__name"><span class="wordmark__lead">DJ</span> '
+    + '<span class="wordmark__rest">Network\u2019s</span></span>';
+  return href
+    ? `<a class="${cls}" href="${href}">${inner}</a>`
+    : `<span class="${cls}">${inner}</span>`;
+}
+
+// ---------------------------------------------------------------------------
 // Page chrome shared by every screen.
 // ---------------------------------------------------------------------------
 
@@ -353,17 +456,17 @@ export function chrome(active) {
   const tabs = [
     ['index.html', 'Home'],
     ['orders.html', 'Orders'],
-    ['dispatch.html', 'Dispatch'],
+    ['dispatch.html', 'Send out'],
     ['return.html', 'Return'],
     ['products.html', 'Products'],
     ['units.html', 'Pieces'],
     ['customers.html', 'Customers'],
     ['ledger.html', 'Ledger'],
-    ['analysis.html', 'Analysis'],
+    ['analysis.html', 'Numbers'],
   ];
   return `
   <header class="topbar">
-    <a class="topbar__brand" href="index.html">DJ Network's</a>
+    <span class="topbar__brand">${wordmark({ href: 'index.html' })}</span>
     <nav class="topbar__nav" aria-label="Screens">
       ${tabs.map(([href, label]) =>
         // aria-current, not just a colour: the active tab has to say where he is to a screen

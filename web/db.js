@@ -40,7 +40,15 @@ function tx(store, mode, fn) {
     const s = t.objectStore(store);
     let out;
     try { out = fn(s); } catch (e) { reject(e); return; }
-    t.oncomplete = () => resolve(out && out.result !== undefined ? out.result : out);
+    // `out` is an IDBRequest, so ALWAYS unwrap it — never fall back to the request object.
+    // The old test was `out.result !== undefined ? out.result : out`, and a get() that finds
+    // nothing has result === undefined, so a cache MISS resolved to the IDBRequest itself. That
+    // object is truthy, so `if (c)` passed and `c.data` was undefined: opening a job on
+    // dispatch.html with no signal and no prefetch printed "Could not load — Cannot destructure
+    // property 'order' of 'c.data' as it is undefined" instead of the "This job is not on this
+    // phone" state block, which was unreachable. getAll() still resolves to its array, empty or
+    // not; add/put still resolve to the key; delete resolves to undefined and nothing reads it.
+    t.oncomplete = () => resolve(out instanceof IDBRequest ? out.result : out);
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error);
   }));

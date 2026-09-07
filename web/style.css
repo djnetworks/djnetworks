@@ -2,35 +2,28 @@
    Built for a phone held in one hand at a van as much as a laptop in the shop:
    big tap targets, no hover-only affordances, readable in daylight. */
 
-:root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --line: #dfe3e8;
-  --ink: #16191d;
-  --ink-soft: #5b636d;
-  /* Was #8b939d, which is 3.1:1 on white — below the 4.5:1 needed for normal text, and this is
-     the colour every .field__hint uses at 12px. The hints are where the explanations live, and
-     they were being read in a godown in poor light. #6f7781 measures 4.5:1. */
-  --ink-faint: #6f7781;
-  --accent: #1f5fd0;
-  --accent-ink: #ffffff;
-  --ok: #0f7b45;
-  --warn: #9a6700;
-  --bad: #b3261e;
-  --bad-bg: #fdecea;
-  --radius: 10px;
-  --tap: 44px;              /* minimum tap target */
-}
+/* Every colour, radius and type stack now lives in tokens.css, which is loaded BEFORE this
+   file on every page. Nothing below names a hex. That is the whole point of the split: when a
+   real Brand Kit arrives it replaces one file, and this one — which is where the layout
+   decisions and the reasons for them live — does not move.
+
+   The semantic names are unchanged from before the design pass (--bg, --ink, --accent, --ok,
+   --bad, --tap …), so no screen had to be renamed and no screen could break for it. */
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg);
   color: var(--ink);
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.5 var(--font);
   -webkit-text-size-adjust: 100%;
 }
 [hidden] { display: none !important; }
+/* Bare links in prose — the overdue list on Home, the hints — had no colour of their own and
+   rendered in the browser default blue. That was merely inconsistent while the accent was also
+   blue; against the teal it reads as a link from a different website. .btn and .item set their
+   own colour at higher specificity, so this reaches only the links that had none. */
+a { color: var(--accent); }
 
 /* ---------- top bar ---------- */
 .topbar {
@@ -53,8 +46,16 @@ body {
   color: var(--ink-soft); font-weight: 600; min-height: var(--tap);
   display: inline-flex; align-items: center;
 }
-.topbar__tab.is-active { background: #eaf0fb; color: var(--accent); }
+.topbar__tab.is-active { background: var(--accent-soft); color: var(--accent); }
 .topbar__who { margin-left: auto; color: var(--ink-faint); font-size: 13px; }
+/* Scoped to the bar, not applied to every button: a two-word label wrapping inside Sign out
+   made the sticky header 24px taller on every screen, and the bar is the one element that is
+   on screen all the time. A long label elsewhere is still allowed to wrap rather than push the
+   page sideways. */
+.topbar .btn { white-space: nowrap; }
+/* The portal bar has no tab strip to fill the middle, so without this the wordmark and the
+   Sign out button sat shoulder to shoulder in the top-left corner. */
+.topbar--portal .topbar__brand { margin-right: auto; }
 
 /* On a phone the bar wrapped to THREE rows once signed in — measured at 159px on a 375x812
    screen, a fifth of the display, sticky, on every screen. The brand is a link to Home and the
@@ -62,8 +63,18 @@ body {
    himself. Both are decoration on a phone, and the tabs are the function. Dropping them puts the
    whole bar back on one row. */
 @media (max-width: 620px) {
-  .topbar { padding: 6px 10px; gap: 6px; }
-  .topbar__brand, .topbar__who { display: none; }
+  /* nowrap, and this is the whole reason the bar is one row at 375px. A wrapping flex line
+     BREAKS before it SHRINKS, so the tab strip — whose flex-basis is its full content width —
+     pushed Sign out onto a second row even though the strip is scrollable and min-width:0.
+     Measured on a 375x812 screen: two rows before, one after. */
+  .topbar { padding: 6px 10px; gap: 6px; flex-wrap: nowrap; }
+  /* The wordmark is hidden only where the tabs need the room. The customer portal's bar carries
+     no tabs at all, so hiding it there bought no space and left a customer looking at an empty
+     white strip above their own ledger — the one page where the name of the business is the whole
+     point. Who-you-are stays hidden on both: it is the operator's own email on one, and on the
+     other the customer's name is repeated one line below in the page itself. */
+  .topbar:not(.topbar--portal) .topbar__brand { display: none; }
+  .topbar__who { display: none; }
   .topbar__nav { flex: 1 1 auto; }
   .topbar__tab { padding: 8px 10px; }
 }
@@ -92,7 +103,7 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 a.btn, a.item { text-decoration: none; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.btn--danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn--danger { background: var(--bad); border-color: var(--bad); color: var(--white); }
 .btn--ghost { background: transparent; }
 .btn--block { width: 100%; }
 /* Smaller type, NOT a smaller target. min-height was 36px and the spec-row ✕ was 37px wide;
@@ -137,19 +148,27 @@ a.btn, a.item { text-decoration: none; }
 /* ---------- cards / list ---------- */
 .card {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+  border-radius: var(--radius-card); padding: 16px; margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
 }
+/* A card nested inside a sheet — the ID-document block, the portal-code block, an order line.
+   It was six copies of style="background:#fbfcfd", a cool grey that read as a smudge once the
+   ground turned warm. One class, one token. */
+.card--sunk { background: var(--sunk); box-shadow: none; }
 .list { display: grid; gap: 10px; }
 .item {
   display: flex; gap: 12px; align-items: center; text-align: left; width: 100%;
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card);
   padding: 12px; cursor: pointer; font: inherit; color: inherit; min-height: var(--tap);
 }
 .item:hover { border-color: var(--accent); }
 .item__thumb {
-  width: 52px; height: 52px; border-radius: 8px; object-fit: cover;
-  background: #eef1f5; flex: none; display: grid; place-items: center;
+  width: 52px; height: 52px; border-radius: var(--radius); object-fit: cover;
+  background: var(--tint-neutral); flex: none; display: grid; place-items: center;
   color: var(--ink-faint); font-size: 11px; font-weight: 700;
+  /* When there is no photo the tile falls back to the short code, and it used to be cut to four
+     characters — "AMP-" and "SPK-" for two different products. The code wraps instead. */
+  text-align: center; line-height: 1.1; padding: 0 3px; overflow-wrap: anywhere;
 }
 .item__main { flex: 1 1 auto; min-width: 0; }
 .item__title { font-weight: 600; }
@@ -191,22 +210,27 @@ a.btn, a.item { text-decoration: none; }
 /* ---------- badges ---------- */
 .badge {
   display: inline-block; padding: 2px 8px; border-radius: 999px;
-  font-size: 12px; font-weight: 700; background: #eef1f5; color: var(--ink-soft);
+  font-size: 12px; font-weight: 700; background: var(--tint-neutral); color: var(--ink-soft);
+  /* A badge is a label, not a paragraph. As a flex item beside a long product name it was being
+     squeezed until "3 day(s) over" wrapped onto three lines inside a 999px radius and rendered as
+     a pink circle — on the customer portal at 375px, next to the one number a late customer is
+     looking for. It keeps its width; the text beside it has min-width:0 and shrinks instead. */
+  white-space: nowrap; flex: none;
 }
-.badge--unit { background: #e8f0fe; color: #1a4fa0; }
-.badge--pool { background: #e6f4ec; color: var(--ok); }
-.badge--consumable { background: #fdf0e3; color: var(--warn); }
-.badge--available { background: #e6f4ec; color: var(--ok); }
-.badge--out { background: #fdecea; color: var(--bad); }
-.badge--at_repair { background: #fdf0e3; color: var(--warn); }
-.badge--retired, .badge--lost { background: #eceef1; color: var(--ink-soft); }
-.badge--muted { background: #eceef1; color: var(--ink-soft); }
+.badge--unit { background: var(--tint-teal); color: var(--teal-deep); }
+.badge--pool { background: var(--tint-green); color: var(--ok); }
+.badge--consumable { background: var(--tint-amber); color: var(--warn); }
+.badge--available { background: var(--tint-green); color: var(--ok); }
+.badge--out { background: var(--tint-red); color: var(--bad); }
+.badge--at_repair { background: var(--tint-amber); color: var(--warn); }
+.badge--retired, .badge--lost { background: var(--tint-neutral); color: var(--ink-soft); }
+.badge--muted { background: var(--tint-neutral); color: var(--ink-soft); }
 /* Order status had no variants at all, so `confirmed`, `closed` and `cancelled` were the same
    grey pill: a job that is NOT happening looked exactly like a job that is, in the list where
    telling them apart is the whole point. Cancelled is the one that must never be acted on, so it
    is the one that carries the warning colour. */
-.badge--confirmed { background: #e8f0fe; color: #1a4fa0; }
-.badge--closed    { background: #eceef1; color: var(--ink-soft); }
+.badge--confirmed { background: var(--tint-teal); color: var(--teal-deep); }
+.badge--closed    { background: var(--tint-neutral); color: var(--ink-soft); }
 .badge--cancelled { background: var(--bad-bg); color: var(--bad); }
 /* v_unit_status returns `not_recorded` for a piece with no movement — the exact state a bulk
    create leaves behind when the units insert succeeds and the opening-movement insert fails
@@ -216,7 +240,7 @@ a.btn, a.item { text-decoration: none; }
 
 /* ---------- state blocks (loading / empty / error) ---------- */
 .state {
-  background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
+  background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius-card);
   padding: 40px 24px; text-align: center;
 }
 .state--error { border-color: var(--bad); background: var(--bad-bg); }
@@ -227,7 +251,9 @@ a.btn, a.item { text-decoration: none; }
 .skeleton { display: grid; gap: 10px; }
 .skeleton__row {
   height: 76px; border-radius: var(--radius);
-  background: linear-gradient(90deg, #eef1f5 25%, #e4e8ee 37%, #eef1f5 63%);
+  /* --linen is only 1.036:1 away from --tint-neutral, so the sweep was invisible and a loading
+     row read as a dead grey block — the opposite of what a skeleton is for. 1.22:1 now. */
+  background: linear-gradient(90deg, var(--tint-neutral) 25%, var(--shimmer) 37%, var(--tint-neutral) 63%);
   background-size: 400% 100%; animation: shimmer 1.2s ease-in-out infinite;
 }
 @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
@@ -236,7 +262,8 @@ a.btn, a.item { text-decoration: none; }
 /* ---------- sign in ---------- */
 .signin {
   max-width: 380px; margin: 12vh auto; background: var(--surface);
-  border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
+  border: 1px solid var(--line); border-radius: var(--radius-card); padding: 24px;
+  box-shadow: var(--shadow-card);
 }
 .signin__title { margin: 0 0 4px; font-size: 22px; }
 .signin__sub { margin: 0 0 20px; color: var(--ink-soft); }
@@ -248,7 +275,7 @@ a.btn, a.item { text-decoration: none; }
 /* ---------- toast ---------- */
 .toast {
   position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(120%);
-  background: var(--ink); color: #fff; padding: 12px 18px; border-radius: var(--radius);
+  background: var(--ink); color: var(--white); padding: 12px 18px; border-radius: var(--radius);
   box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 60; max-width: 90vw;
   transition: transform .18s ease, opacity .18s ease, visibility .18s; font-weight: 600;
   /* An empty toast has no height, so translateY(120%) moves it almost nowhere and it shows as a
@@ -267,16 +294,17 @@ a.btn, a.item { text-decoration: none; }
 
 /* ---------- modal / drawer ---------- */
 .sheet {
-  position: fixed; inset: 0; background: rgba(16,19,23,.45);
+  position: fixed; inset: 0; background: rgba(51, 39, 27, .45);
   display: grid; place-items: end center; z-index: 50;
 }
 .sheet__panel {
   background: var(--surface); width: min(760px, 100%); max-height: 92vh; overflow: auto;
-  border-radius: 14px 14px 0 0; padding: 20px;
+  border-radius: var(--radius-card) var(--radius-card) 0 0; padding: 20px;
+  box-shadow: var(--shadow);
 }
 @media (min-width: 700px) {
   .sheet { place-items: center; }
-  .sheet__panel { border-radius: 14px; }
+  .sheet__panel { border-radius: var(--radius-card); }
 }
 .sheet__head {
   display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
@@ -302,16 +330,31 @@ a.btn, a.item { text-decoration: none; }
 .kv dt { color: var(--ink-soft); }
 .kv dd { margin: 0; }
 .spec-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; }
+/* The charge row has FOUR children, not three — type, description, amount, remove — so in the
+   three-column grid above the button wrapped onto a second row under the type select and read
+   as belonging to it. Four columns on a laptop; stacked below 620px, where four controls on one
+   line would each be about 70px wide. */
+.spec-row--charge { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 116px auto; }
+@media (max-width: 620px) {
+  /* Only the FOUR-control charge row stacks. Stacking the plain name/value spec row as well
+     tripled its height and took the product sheet to 2834px at 375px — three controls on three
+     lines where two short fields and a button fit on one. */
+  .spec-row--charge { grid-template-columns: 1fr; }
+  .spec-row--charge .c-amt { max-width: none !important; }
+  /* Destructive, no undo, and stacking made it the widest and lowest — that is, the most
+     thumb-reachable — control in the row. It goes back to its own size. */
+  .spec-row--charge .c-del { justify-self: start; }
+}
 .thumbs { display: flex; gap: 10px; flex-wrap: wrap; }
 /* The "Make primary" button used to be overlaid on the image at 84x26 — a quarter of the height
    a thumb needs. Stacked below the photo instead, at full target height. */
 .thumb { display: grid; gap: 4px; width: 96px; }
-.thumb img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #eef1f5; }
+.thumb img { width: 96px; height: 96px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--line); background: var(--tint-neutral); }
 .thumb.is-primary img { border: 2px solid var(--accent); }
 .thumb__btn { width: 100%; font-size: 12px; padding: 4px 6px; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.note { font-size: 13px; color: var(--ink-soft); background: #f0f3f7; padding: 10px 12px; border-radius: var(--radius); }
-.note--warn { background: #fdf0e3; color: #7a5200; }
+.note { font-size: 13px; color: var(--teal-deep); background: var(--foam); padding: 10px 12px; border-radius: var(--radius); }
+.note--warn { background: var(--tint-amber); color: var(--warn); }
 .note--bad { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
 
 /* Money and counts are read down a column and compared. The system font's proportional digits
@@ -357,8 +400,8 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
   margin-left: auto;
 }
-.conn--off  { background: #fdecea; color: var(--bad); }
-.conn--sync { background: #fdf0e3; color: var(--warn); }
+.conn--off  { background: var(--tint-red); color: var(--bad); }
+.conn--sync { background: var(--tint-amber); color: var(--warn); }
 .conn + .topbar__who { margin-left: 8px; }
 
 /* ---------- order lines ---------- */
@@ -370,12 +413,12 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 .pieces { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
 .piece {
   min-width: 72px; min-height: 72px; padding: 8px;
-  border: 2px solid var(--line); border-radius: 12px; background: var(--surface);
+  border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface);
   font: inherit; cursor: pointer; display: grid; place-items: center; gap: 2px;
 }
 .piece__no { font-size: 26px; font-weight: 700; line-height: 1; }
 .piece__tag { font-size: 10px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; }
-.piece.is-on { border-color: var(--accent); background: #eaf0fb; }
+.piece.is-on { border-color: var(--accent); background: var(--accent-soft); }
 .piece.is-on .piece__no { color: var(--accent); }
 .piece:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
@@ -407,3 +450,67 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 .ret-row__main { flex: 1 1 auto; min-width: 0; }
 .ret-row__no { font-size: 20px; font-weight: 700; }
 .ret-detail { margin-top: 10px; padding-left: 4px; border-left: 2px solid var(--line); padding-left: 12px; }
+
+/* ---------- the DJ Network's wordmark ----------
+   TYPOGRAPHIC, not a logo file. The flyer logo is not used anywhere in this app: it carries a
+   visible AI watermark, and its shield reads "EVENTS & RENTAL EQUIPE". A misspelt shield on the
+   sign-in screen of the system that runs the business is worse than no mark at all.
+
+   The lockup — an orange dot, then the name — is the design bible's own .brand grammar
+   (.brand-dot: a 13px orange circle with a soft ring; .brand-name: 700 weight, -.03em tracking).
+   Borrowing the construction is the point of having a reference; the letters are DJ Network's.
+
+   One size control, --wm: the topbar sets it small, the sign-in screen sets it large, and the
+   dot, the tracking and the gap all scale off it so the lockup never has to be re-proportioned. */
+.wordmark {
+  --wm: 20px;
+  display: inline-flex; align-items: center; gap: calc(var(--wm) * .42);
+  font-size: var(--wm); line-height: 1; white-space: nowrap; text-decoration: none;
+}
+.wordmark__dot {
+  flex: none; width: calc(var(--wm) * .34); height: calc(var(--wm) * .34);
+  border-radius: 999px; background: var(--orange);
+  box-shadow: 0 0 0 calc(var(--wm) * .18) rgba(255, 151, 0, .14);
+}
+/* Two weights in one lockup: the name that gets said out loud is heavier than the part that is
+   grammar. "DJ" is what people call the business; "Network's" is the rest of its name. */
+.wordmark__name { white-space: nowrap; }
+.wordmark__lead { font-weight: 800; letter-spacing: -.03em; color: var(--teal); }
+.wordmark__rest { font-weight: 600; letter-spacing: -.02em; color: var(--ink); }
+.wordmark--invert .wordmark__lead,
+.wordmark--invert .wordmark__rest { color: var(--white); }
+.wordmark--lg { --wm: 30px; }
+
+/* Built by EKUM. SIGN-IN ONLY, and never on portal.html.
+   The customer portal is opened by a wedding family on a WhatsApp link. A second brand on that
+   page is a question they have to answer — "who is EKUM, and why do they have my ledger?" — and
+   there is nobody to answer it. Here it is one line under the sign-in button, seen by one person
+   who already knows. */
+.builtby {
+  margin: 22px 0 0; text-align: center;
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+}
+.builtby strong { font-weight: 700; letter-spacing: .12em; color: var(--teal); }
+
+/* ---------- the dispatch pick-list header ----------
+   Image first, text second. The design bible's density rule: "In catalogue contexts, photography
+   carries recognition. Metadata stays brief and subordinate."
+
+   The photograph is laid OVER the short code rather than replacing it, so a product with no
+   photo, a photo that has not downloaded, or a photo that fails offline all degrade to the same
+   readable tile instead of a broken-image glyph. The code is never lost — it is what is printed
+   on chachu's stickers, and the picture is the faster read, not the only one. */
+.pick-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.pick-thumb {
+  position: relative; flex: none; width: 64px; height: 64px;
+  border-radius: var(--radius); overflow: hidden; background: var(--tint-neutral);
+  display: grid; place-items: center;
+}
+.pick-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pick-thumb__code {
+  font-size: 11px; font-weight: 700; color: var(--ink-faint); text-align: center;
+  padding: 0 4px; overflow-wrap: anywhere; line-height: 1.15;
+}
+.pick-head__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.pick-head__title { font-weight: 700; font-size: 17px; line-height: 1.25; }
+.pick-head__right { flex: none; text-align: right; color: var(--ink-soft); font-size: 13px; }

@@ -4,12 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Products — DJ Network's</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-8">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-07-9" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-07-9" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-07-9">
+<meta name="theme-color" content="#2B7379">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-07-9">
+<!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
+     not an @import, because an @import inside style.css would serialise the two fetches. -->
+<link rel="stylesheet" href="tokens.css?v=2026-09-07-9">
+<link rel="stylesheet" href="style.css?v=2026-09-07-9">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-07-8" defer></script>
-<script src="boot.js?v=2026-09-07-8" defer></script>
+<script src="vendor/supabase.js?v=2026-09-07-9" defer></script>
+<script src="boot.js?v=2026-09-07-9" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -17,7 +24,7 @@
      over the network; see boot.js. -->
 <main id="gate">
   <div class="signin" data-djn-boot>
-    <h1 class="signin__title">DJ Network's</h1>
+    <h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
     <p class="signin__sub">Starting up…</p>
   </div>
 </main>
@@ -26,8 +33,9 @@
 
 <script type="module">
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
-         openSheet, focusField, networkMessage, initOffline, revealActiveTab }
-  from './app.js?v=2026-09-07-8';
+         openSheet, focusField, networkMessage, initOffline, revealActiveTab,
+         trackLabel, trackBadge, publicUrl }
+  from './app.js?v=2026-09-07-9';
 
 $('#chrome').innerHTML = chrome('products.html');
 revealActiveTab();
@@ -100,8 +108,8 @@ async function boot() {
       <select class="field__select" id="f-mode" style="max-width:200px">
         <option value="">All tracking modes</option>
         <option value="unit">Numbered pieces</option>
-        <option value="pool">Counted (pool)</option>
-        <option value="consumable">Consumable</option>
+        <option value="pool">Counted stock</option>
+        <option value="consumable">Used up, never comes back</option>
       </select>
     </div>
     <div id="list" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
@@ -193,11 +201,11 @@ function renderList() {
     return `<button class="item" data-id="${esc(p.id)}">
       ${p.image_url
         ? `<img class="item__thumb" src="${esc(publicUrl(p.image_url))}" alt="" loading="lazy">`
-        : `<span class="item__thumb">${esc((p.short_code || '?').slice(0, 4))}</span>`}
+        : `<span class="item__thumb">${esc(p.short_code || '?')}</span>`}
       <span class="item__main">
         <span class="item__title">${esc(p.short_code)} — ${esc(p.brand ? p.brand + ' ' : '')}${esc(p.model_name)}</span>
         <span class="item__meta">
-          <span class="badge badge--${esc(p.tracking_mode)}">${esc(labelMode(p.tracking_mode))}</span>
+          <span class="badge badge--${esc(p.tracking_mode)}">${esc(trackBadge(p.tracking_mode))}</span>
           ${p.rentable ? '' : '<span class="badge badge--muted">not rentable</span>'}
           ${p.active ? '' : '<span class="badge badge--muted">inactive</span>'}
           &nbsp;${esc(money(p.base_rate_per_day))}/day
@@ -211,9 +219,8 @@ function renderList() {
     b.addEventListener('click', () => openEditor(PRODUCTS.find(p => p.id === b.dataset.id))));
 }
 
-const labelMode = m => ({ unit: 'Numbered pieces', pool: 'Counted', consumable: 'Consumable' }[m] ?? m);
-const publicUrl = path => path?.startsWith('http') ? path
-  : `${sb.storage.from('product-images').getPublicUrl(path).data.publicUrl}`;
+// Kept as a re-export of the shared label so this file has one name for the idea, not two.
+const labelMode = trackLabel;
 
 // ---------------------------------------------------------------------------
 // Detail / edit
@@ -236,7 +243,10 @@ function openEditor(p) {
     <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
       <div class="sheet__head">
         <h2 class="sheet__title" id="sheet-title">${isNew ? 'Add product' : esc(p.short_code)}</h2>
-        <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
+        <!-- A visible word, not a glyph. The design bible's language rule: "an unlabelled icon
+             asks the user to guess", and for this audience an icon-only control creates a guess
+             rather than a confident tap. It no longer needs an aria-label — the text IS the name. -->
+        <button class="btn btn--ghost btn--sm" data-sheet-close type="button">Close</button>
       </div>
 
       <div class="grid2">
@@ -299,7 +309,7 @@ function openEditor(p) {
           <span>Active in the catalogue</span></label>
       </div>
 
-      <div class="card" style="background:#fbfcfd">
+      <div class="card card--sunk">
         <div class="row row--between" style="margin-bottom:8px">
           <strong>Specifications</strong>
           <button class="btn btn--sm" id="add-spec" type="button">Add a field</button>
@@ -312,13 +322,13 @@ function openEditor(p) {
       <div class="grid2">
         <label class="field"><span class="field__label">Inclusions (one per line)</span>
           <textarea class="field__area" id="f-incl">${esc((p.inclusions ?? []).join('\n'))}</textarea>
-          <span class="field__hint">Travels with the piece and is checked at dispatch and return — the power cable, the mic.</span></label>
+          <span class="field__hint">Travels with the piece and is checked on the way out and on the way back — the power cable, the mic.</span></label>
         <label class="field"><span class="field__label">Kit contents (one per line)</span>
           <textarea class="field__area" id="f-kit">${esc((p.kit_contents ?? []).join('\n'))}</textarea>
           <span class="field__hint">What the customer is told a kit is made of.</span></label>
       </div>
 
-      <div class="card" style="background:#fbfcfd">
+      <div class="card card--sunk">
         <div class="row row--between" style="margin-bottom:8px"><strong>Photos</strong></div>
         <div id="images">${isNew ? '<p class="field__hint">Save the product first, then add photos.</p>' : '<p class="field__hint">Loading…</p>'}</div>
         ${isNew ? '' : `
@@ -379,7 +389,7 @@ function openEditor(p) {
       : `<label class="field"><span class="field__label">Quantity owned *</span>
            <input class="field__input" id="f-poolqty" type="number" min="0" step="1" inputmode="numeric"
                   value="${esc(p.pool_qty ?? '')}">
-           <span class="field__hint">The opening count. Dispatches, returns and write-offs are netted on top of it,
+           <span class="field__hint">The opening count. What goes out, what comes back and what is written off are netted on top of it,
              so this is a starting balance rather than a running total.</span></label>`;
   };
   $('#f-mode-edit').addEventListener('change', syncMode);
@@ -410,7 +420,7 @@ function openEditor(p) {
     <div class="spec-row">
       <input class="field__input spec-k" value="${esc(k)}" placeholder="name" spellcheck="false">
       <input class="field__input spec-v" value="${esc(v ?? '')}" placeholder="value">
-      <button class="btn btn--sm spec-x" type="button" aria-label="Remove">✕</button>
+      <button class="btn btn--sm spec-x" type="button">Remove</button>
     </div>`;
   function wireSpecRows() {
     $$('.spec-x').forEach(b => b.onclick = () => b.closest('.spec-row').remove());

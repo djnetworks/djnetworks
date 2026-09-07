@@ -1,0 +1,16 @@
+{
+  "name": "DJ Network's — Rental System",
+  "short_name": "DJ Network's",
+  "description": "Equipment rental for DJs and events, Ahmedabad. Orders, dispatch, returns and the ledger.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F3EA",
+  "theme_color": "#2B7379",
+  "icons": [
+    { "src": "assets/djn-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/djn-icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/djn-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

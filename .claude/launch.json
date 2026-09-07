@@ -4,7 +4,7 @@
     {
       "name": "web",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["-e", "const h=require('http'),f=require('fs'),p=require('path');const T={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.ico':'image/x-icon'};h.createServer((q,s)=>{let u=decodeURIComponent(q.url.split('?')[0]);if(u==='/')u='/index.html';const fp=p.join(process.cwd(),'web',u);f.readFile(fp,(e,d)=>{if(e){s.writeHead(404,{'content-type':'text/plain'});return s.end('404 '+u)}s.writeHead(200,{'content-type':T[p.extname(fp)]||'application/octet-stream','cache-control':'no-store'});s.end(d)})}).listen(8765,'127.0.0.1',()=>console.log('serving web/ on http://127.0.0.1:8765'))"],
+      "runtimeArgs": ["-e", "const h=require('http'),f=require('fs'),p=require('path');const T={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.ico':'image/x-icon','.webmanifest':'application/manifest+json','.json':'application/json'};h.createServer((q,s)=>{let u=decodeURIComponent(q.url.split('?')[0]);if(u==='/')u='/index.html';const fp=p.join(process.cwd(),'web',u);f.readFile(fp,(e,d)=>{if(e){s.writeHead(404,{'content-type':'text/plain'});return s.end('404 '+u)}s.writeHead(200,{'content-type':T[p.extname(fp)]||'application/octet-stream','cache-control':'no-store'});s.end(d)})}).listen(8765,'127.0.0.1',()=>console.log('serving web/ on http://127.0.0.1:8765'))"],
       "port": 8765
     }
   ]

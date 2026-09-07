@@ -10,7 +10,7 @@
 // Bump CACHE when any shell file changes. The old cache is deleted on activate, so a stale shell
 // cannot outlive a deploy: "the fix isn't showing up" is this, nine times in ten.
 
-const CACHE = 'djn-shell-2026-09-07-8';
+const CACHE = 'djn-shell-2026-09-07-9';
 
 const SHELL = [
   './',
@@ -25,11 +25,20 @@ const SHELL = [
   'analysis.html',
   'portal.html',
   'style.css',
+  'tokens.css',
   'app.js',
   'boot.js',
   'config.js',
   'db.js',
   'vendor/supabase.js',
+  // Named individually rather than by a wildcard: a service worker cache has no globs, and
+  // a missing icon on the home screen is a silent failure nobody reports.
+  'manifest.webmanifest',
+  'assets/djn-icon-32.png',
+  'assets/djn-icon-64.png',
+  'assets/djn-icon-192.png',
+  'assets/djn-icon-512.png',
+  'assets/djn-apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {

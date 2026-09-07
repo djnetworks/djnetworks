@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2B7379">
+<title>Ekum Design Bible — Phase 1</title>
+<style>
+  :root{
+    --teal:#2B7379;
+    --teal-deep:#1E595E;
+    --foam:#E8F2F1;
+    --lemon:#DEDE6E;
+    --linen:#E8E7D5;
+    --warm:#F7F3EA;
+    --white:#FFFFFF;
+    --border:#E7E8E6;
+    --grey:#828282;
+    --slate:#3D3A37;
+    --charcoal:#33271B;
+    --orange:#FF9700;
+    --success:#22C55E;
+    --info:#3B82F6;
+    --warning:#F7C54F;
+    --error:#E5484D;
+    --shadow:0 12px 30px rgba(51,39,27,.08);
+    --radius:18px;
+    --radius-sm:12px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--warm);color:var(--charcoal);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}
+  button,input,select{font:inherit}
+  button{cursor:pointer}
+  .shell{min-height:100vh;display:grid;grid-template-columns:280px minmax(0,1fr)}
+  .sidebar{position:sticky;top:0;height:100vh;padding:22px 16px;border-right:1px solid var(--border);background:rgba(255,255,255,.92);backdrop-filter:blur(16px);overflow:auto;z-index:20}
+  .brand{display:flex;align-items:center;gap:9px;padding:6px 8px 18px}
+  .brand-dot{width:13px;height:13px;border-radius:999px;background:var(--orange);box-shadow:0 0 0 5px rgba(255,151,0,.12)}
+  .brand-name{font-size:20px;font-weight:700;letter-spacing:-.03em;color:var(--teal)}
+  .brand-meta{font-size:11px;color:var(--grey);margin-top:2px}
+  .side-rule{height:1px;background:var(--border);margin:0 8px 14px}
+  .nav-label{padding:0 10px;margin:12px 0 6px;font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--grey)}
+  .side-nav{display:grid;gap:2px}
+  .nav-link{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;border-radius:11px;background:transparent;color:var(--slate);text-align:left;font-size:13px;font-weight:500;transition:.18s}
+  .nav-link:hover,.nav-link.active{background:var(--foam);color:var(--teal)}
+  .nav-index{width:20px;font-size:10px;color:var(--grey);font-variant-numeric:tabular-nums}
+  .nav-link.active .nav-index{color:var(--teal)}
+  .side-foot{margin:18px 8px 0;padding:14px;border-radius:14px;background:var(--foam)}
+  .side-foot p{margin:0;font-size:12px;color:var(--teal-deep);line-height:1.5}
+  .side-foot strong{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+  .main{min-width:0}
+  .appbar{position:sticky;top:0;display:flex;align-items:center;gap:14px;height:72px;padding:12px 34px;border-bottom:1px solid var(--border);background:rgba(247,243,234,.88);backdrop-filter:blur(16px);z-index:15}
+  .menu-btn{display:none;width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--white);color:var(--teal);align-items:center;justify-content:center}
+  .page-crumb{min-width:170px}
+  .page-crumb strong{display:block;font-size:13px;color:var(--charcoal)}
+  .page-crumb span{font-size:11px;color:var(--grey)}
+  .search-wrap{position:relative;display:flex;align-items:center;flex:1;max-width:510px}
+  .search-wrap svg{position:absolute;left:13px;width:18px;height:18px;color:var(--grey)}
+  .search-wrap input{width:100%;height:42px;padding:0 13px 0 40px;border:1px solid var(--border);border-radius:13px;background:rgba(255,255,255,.88);outline:none;color:var(--charcoal)}
+  .search-wrap input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(43,115,121,.12)}
+  .app-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;border-radius:12px;padding:0 13px;border:1px solid transparent;font-size:12px;font-weight:650;transition:.18s}
+  .btn.secondary{background:var(--white);border-color:var(--border);color:var(--teal)}
+  .btn.primary{background:var(--teal);color:var(--white);box-shadow:0 5px 14px rgba(43,115,121,.18)}
+  .btn:hover{transform:translateY(-1px)}
+  .btn svg{width:16px;height:16px}
+  .content{max-width:1370px;margin:0 auto;padding:34px}
+  .hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(270px,.8fr);gap:26px;padding:34px;border-radius:24px;background:var(--teal);color:var(--white);box-shadow:var(--shadow)}
+  .hero:before,.hero:after{content:"";position:absolute;border-radius:50%;pointer-events:none}
+  .hero:before{width:440px;height:440px;right:-180px;top:-260px;background:rgba(232,242,241,.13)}
+  .hero:after{width:240px;height:240px;right:80px;bottom:-180px;background:rgba(222,222,110,.16)}
+  .hero-copy,.hero-panel{position:relative;z-index:1}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--lemon)}
+  .eyebrow:before{content:"";width:6px;height:6px;border-radius:999px;background:var(--orange)}
+  h1{margin:0;max-width:760px;font-size:clamp(29px,4vw,48px);line-height:1.05;letter-spacing:-.048em;font-weight:650}
+  .hero p{max-width:710px;margin:16px 0 0;font-size:15px;line-height:1.65;color:rgba(255,255,255,.84)}
+  .hero-points{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .hero-point{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.9)}
+  .hero-panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:center}
+  .metric{min-height:104px;padding:17px;border:1px solid rgba(255,255,255,.17);border-radius:16px;background:rgba(255,255,255,.09)}
+  .metric strong{display:block;font-size:30px;line-height:1;color:var(--lemon);letter-spacing:-.04em}
+  .metric span{display:block;margin-top:7px;font-size:11px;color:rgba(255,255,255,.84)}
+  .metric.wide{grid-column:1/-1;min-height:auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .metric.wide strong{font-size:15px;color:var(--white)}
+  .metric.wide span{margin:0;text-align:right;max-width:170px}
+  section{scroll-margin-top:96px;margin-top:52px}
+  .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:18px}
+  .section-title{margin:0;font-size:25px;line-height:1.15;letter-spacing:-.035em;color:var(--charcoal)}
+  .section-sub{margin:7px 0 0;max-width:810px;font-size:14px;line-height:1.65;color:var(--slate)}
+  .chip-row{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{display:inline-flex;align-items:center;gap:6px;min-height:29px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:var(--white);font-size:11px;font-weight:600;color:var(--slate)}
+  .chip.teal{background:var(--foam);border-color:rgba(43,115,121,.18);color:var(--teal)}
+  .chip.orange{background:rgba(255,151,0,.12);border-color:rgba(255,151,0,.2);color:#A65B00}
+  .chip.grey{background:var(--warm);color:var(--grey)}
+  .chip.warning{background:rgba(247,197,79,.20);border-color:rgba(247,197,79,.42);color:#765300}
+  .chip.info{background:rgba(59,130,246,.11);border-color:rgba(59,130,246,.25);color:#1559BB}
+  .chip.error{background:rgba(229,72,77,.1);border-color:rgba(229,72,77,.22);color:#B42F33}
+  .notice{display:grid;grid-template-columns:auto 1fr;gap:13px;align-items:flex-start;padding:16px 17px;border:1px solid rgba(43,115,121,.18);border-radius:15px;background:var(--foam);color:var(--teal-deep)}
+  .notice svg{width:18px;height:18px;margin-top:1px;color:var(--teal)}
+  .notice strong{display:block;margin-bottom:3px;font-size:12px}
+  .notice p{margin:0;font-size:13px;line-height:1.55}
+  .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 5px 18px rgba(51,39,27,.03)}
+  .concept-card{padding:19px}
+  .concept-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:13px;background:var(--foam);color:var(--teal)}
+  .concept-icon svg{width:20px;height:20px}
+  .concept-card h3{margin:14px 0 5px;font-size:15px;letter-spacing:-.02em}
+  .concept-card p{margin:0;font-size:13px;line-height:1.55;color:var(--slate)}
+  .personas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .persona{padding:18px;border-radius:var(--radius);background:var(--white);border:1px solid var(--border)}
+  .persona-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .persona-letter{display:grid;place-items:center;width:36px;height:36px;border-radius:999px;background:var(--foam);color:var(--teal);font-size:13px;font-weight:700}
+  .persona h3{margin:12px 0 4px;font-size:15px}
+  .persona .range{font-size:11px;color:var(--grey)}
+  .persona p{margin:12px 0 0;font-size:13px;line-height:1.6;color:var(--slate)}
+  .environment{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-top:14px}
+  .environment .card{padding:22px}
+  .environment h3{margin:0 0 8px;font-size:16px}
+  .environment p{margin:0;font-size:13px;line-height:1.62;color:var(--slate)}
+  .hard-floor{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .hard-floor div{padding:12px;border-radius:12px;background:var(--warm);font-size:12px;color:var(--slate)}
+  .hard-floor strong{display:block;margin-bottom:2px;font-size:11px;color:var(--charcoal)}
+  .instinct-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+  .instinct{padding:16px;background:var(--white);border:1px solid var(--border);border-radius:16px;min-height:190px}
+  .instinct .instinct-num{display:flex;align-items:center;justify-content:space-between;color:var(--teal);font-size:11px;font-weight:700}
+  .instinct .instinct-num span:last-child{color:var(--orange)}
+  .instinct h3{margin:12px 0 6px;font-size:14px;letter-spacing:-.02em}
+  .instinct p{margin:0;font-size:12px;line-height:1.55;color:var(--slate)}
+  .instinct .permission{margin-top:12px;padding-top:11px;border-top:1px solid var(--border);font-size:11px;line-height:1.45;color:var(--teal-deep)}
+  .law-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .law{padding:18px;background:var(--white);border:1px solid var(--border);border-radius:16px;transition:.18s}
+  .law:hover{border-color:rgba(43,115,121,.35);transform:translateY(-2px);box-shadow:0 12px 24px rgba(43,115,121,.07)}
+  .law-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .law-index{font-size:11px;font-weight:700;color:var(--orange)}
+  .law-borrow{font-size:10px;color:var(--grey)}
+  .law h3{margin:9px 0 5px;font-size:15px;letter-spacing:-.02em}
+  .law p{margin:0;font-size:12px;line-height:1.55;color:var(--slate)}
+  .toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:15px 0 14px;padding:11px 12px;border:1px solid var(--border);border-radius:14px;background:var(--white)}
+  .toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+  .toolbar-label{padding-right:3px;font-size:11px;color:var(--grey)}
+  .filter{min-height:30px;padding:0 9px;border:1px solid var(--border);border-radius:999px;background:var(--white);font-size:11px;font-weight:600;color:var(--slate)}
+  .filter.active{background:var(--teal);color:var(--white);border-color:var(--teal)}
+  .toolbar-count{font-size:11px;color:var(--grey);white-space:nowrap}
+  .pattern-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .pattern{display:flex;flex-direction:column;overflow:hidden;background:var(--white);border:1px solid var(--border);border-radius:18px;transition:.18s}
+  .pattern:hover{border-color:rgba(43,115,121,.34);box-shadow:0 12px 26px rgba(51,39,27,.06)}
+  .pattern.hidden{display:none}
+  .pattern-top{display:flex;gap:13px;padding:18px 18px 14px}
+  .pattern-index{display:flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:28px;border-radius:10px;background:var(--foam);color:var(--teal);font-size:11px;font-weight:700}
+  .pattern-top h3{margin:0;font-size:16px;line-height:1.25;letter-spacing:-.025em}
+  .pattern-summary{margin:6px 0 0;font-size:12.5px;line-height:1.55;color:var(--slate)}
+  .pattern-meta{display:flex;flex-wrap:wrap;gap:6px;padding:0 18px 14px}
+  .pattern details{margin-top:auto;border-top:1px solid var(--border)}
+  .pattern summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;color:var(--teal);font-size:12px;font-weight:650;list-style:none}
+  .pattern summary::-webkit-details-marker{display:none}
+  .pattern summary span{display:inline-flex;align-items:center;gap:7px}
+  .pattern summary svg{width:14px;height:14px;transition:transform .18s}
+  .pattern details[open] summary svg{transform:rotate(180deg)}
+  .pattern-rules{display:grid;gap:12px;padding:0 18px 18px}
+  .pattern-rules div{padding-left:11px;border-left:2px solid var(--foam)}
+  .pattern-rules strong{display:block;margin-bottom:3px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--grey)}
+  .pattern-rules p{margin:0;font-size:12px;line-height:1.55;color:var(--slate)}
+  .nav-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .nav-option{padding:20px;border:1px solid var(--border);border-radius:17px;background:var(--white)}
+  .nav-option h3{margin:0 0 7px;font-size:15px}
+  .nav-option p{margin:0;font-size:13px;line-height:1.6;color:var(--slate)}
+  .nav-model{display:flex;gap:8px;margin:14px 0;padding:11px;border-radius:13px;background:var(--warm)}
+  .nav-slot{flex:1;padding:8px 5px;border-radius:9px;text-align:center;font-size:10px;font-weight:650;color:var(--slate)}
+  .nav-slot.active{background:var(--teal);color:var(--white)}
+  .nav-slot.fab{background:var(--teal);color:var(--white)}
+  .recommendation{margin-top:14px;padding:19px;border:1px solid rgba(255,151,0,.3);border-radius:17px;background:rgba(255,151,0,.09)}
+  .recommendation .chip{background:rgba(255,255,255,.6)}
+  .recommendation h3{margin:11px 0 5px;font-size:15px}
+  .recommendation p{margin:0;font-size:13px;line-height:1.62;color:var(--slate)}
+  .decision-table{overflow:auto;border:1px solid var(--border);border-radius:17px;background:var(--white)}
+  table{border-collapse:collapse;width:100%;min-width:880px}
+  th{padding:11px 14px;background:var(--foam);border-bottom:1px solid var(--border);text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--teal)}
+  td{padding:14px;border-bottom:1px solid var(--border);vertical-align:top;font-size:12px;line-height:1.55;color:var(--slate)}
+  tr:last-child td{border-bottom:0}
+  td strong{display:block;color:var(--charcoal);font-size:12px}
+  .density-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+  .density-card{padding:21px}
+  .density-card h3{margin:0 0 8px;font-size:16px}
+  .density-card p{margin:0;font-size:13px;line-height:1.6;color:var(--slate)}
+  .glance-list{display:grid;gap:8px;margin-top:16px}
+  .glance-item{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--warm)}
+  .glance-num{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;background:var(--white);color:var(--teal);font-size:11px;font-weight:700}
+  .glance-item strong{display:block;font-size:12px;color:var(--charcoal)}
+  .glance-item span{display:block;margin-top:2px;font-size:11.5px;line-height:1.45;color:var(--slate)}
+  .trust-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .trust-card{padding:19px;background:var(--white);border:1px solid var(--border);border-radius:16px}
+  .trust-card h3{margin:0 0 6px;font-size:15px}
+  .trust-card p{margin:0;font-size:12.7px;line-height:1.58;color:var(--slate)}
+  .trust-card .line{height:1px;background:var(--border);margin:14px 0}
+  .rule{font-size:12px;color:var(--teal-deep)}
+  .language-box{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .language-card{padding:18px;border:1px solid var(--border);border-radius:16px;background:var(--white)}
+  .language-card h3{margin:0 0 8px;font-size:15px}
+  .language-card p{margin:0;font-size:13px;line-height:1.6;color:var(--slate)}
+  .anti-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .anti{position:relative;overflow:hidden;padding:17px;border:1px solid rgba(229,72,77,.23);border-radius:15px;background:#FFF8F8}
+  .anti:before{content:"";position:absolute;top:0;left:0;width:100%;height:3px;background:var(--error)}
+  .anti h3{margin:4px 0 5px;font-size:14px;letter-spacing:-.02em;color:#762529}
+  .anti p{margin:0;font-size:12px;line-height:1.55;color:var(--slate)}
+  .anti .violates{margin-top:10px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--error)}
+  .build-gate{display:grid;grid-template-columns:1fr .95fr;gap:14px;padding:22px;border:1px solid var(--border);border-radius:20px;background:var(--white)}
+  .build-gate h3{margin:0 0 6px;font-size:18px;letter-spacing:-.025em}
+  .build-gate p{margin:0;font-size:13px;line-height:1.6;color:var(--slate)}
+  .checklist{display:grid;gap:7px;margin-top:15px}
+  .check{display:flex;align-items:flex-start;gap:9px;padding:8px 0;font-size:12px;color:var(--slate)}
+  .check input{width:17px;height:17px;margin:0;accent-color:var(--teal);flex:0 0 auto}
+  .gate-panel{display:flex;flex-direction:column;justify-content:space-between;padding:18px;border-radius:16px;background:var(--foam)}
+  .gate-score{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+  .gate-score strong{display:block;font-size:44px;line-height:.9;letter-spacing:-.06em;color:var(--teal)}
+  .gate-score span{display:block;max-width:150px;font-size:12px;line-height:1.45;text-align:right;color:var(--teal-deep)}
+  .progress{height:8px;overflow:hidden;margin:17px 0 12px;border-radius:999px;background:rgba(43,115,121,.16)}
+  .progress span{display:block;width:0;height:100%;border-radius:999px;background:var(--teal);transition:width .2s}
+  .gate-panel .btn{width:100%;margin-top:6px}
+  .sources{display:grid;grid-template-columns:.8fr 1.2fr;gap:14px}
+  .source-list{display:grid;gap:9px}
+  .source{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:13px;background:var(--white)}
+  .source-code{display:inline-grid;place-items:center;min-width:33px;height:25px;border-radius:8px;background:var(--foam);color:var(--teal);font-size:10px;font-weight:700}
+  .source strong{display:block;font-size:12px;color:var(--charcoal)}
+  .source span{display:block;margin-top:2px;font-size:11px;line-height:1.4;color:var(--grey)}
+  .data-card{padding:18px;background:var(--charcoal);border-radius:17px;color:var(--white)}
+  .data-card h3{margin:0 0 6px;font-size:15px}
+  .data-card p{margin:0 0 14px;font-size:12px;line-height:1.55;color:rgba(255,255,255,.73)}
+  .data-card pre{max-height:245px;overflow:auto;margin:0;padding:12px;border-radius:12px;background:rgba(255,255,255,.08);font-size:10px;line-height:1.55;color:#DDF2F1;white-space:pre-wrap}
+  .empty-search{display:none;margin-top:12px;padding:16px;border:1px dashed var(--border);border-radius:14px;background:var(--white);font-size:13px;color:var(--grey)}
+  .mobile-overlay{display:none}
+  .toast{position:fixed;right:24px;bottom:24px;transform:translateY(18px);opacity:0;pointer-events:none;padding:11px 13px;border-radius:12px;background:var(--charcoal);color:var(--white);font-size:12px;box-shadow:var(--shadow);transition:.18s;z-index:100}
+  .toast.show{transform:none;opacity:1}
+  @media (max-width:1120px){
+    .instinct-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .hero{grid-template-columns:1fr}
+    .hero-panel{max-width:600px}
+    .anti-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (max-width:900px){
+    .shell{display:block}
+    .sidebar{position:fixed;inset:0 auto 0 0;width:285px;transform:translateX(-105%);transition:transform .22s;box-shadow:18px 0 44px rgba(51,39,27,.16)}
+    .sidebar.open{transform:none}
+    .mobile-overlay{position:fixed;inset:0;background:rgba(51,39,27,.35);z-index:19}
+    .mobile-overlay.show{display:block}
+    .menu-btn{display:inline-flex}
+    .appbar{padding:12px 18px}
+    .content{padding:24px 18px 42px}
+    .app-actions .btn.secondary{display:none}
+    .page-crumb{min-width:0}
+  }
+  @media (max-width:680px){
+    .appbar{gap:10px;height:66px}
+    .page-crumb span{display:none}
+    .search-wrap{display:none}
+    .content{padding:18px 13px 36px}
+    .hero{padding:24px 20px;border-radius:20px}
+    .hero h1{font-size:31px}
+    .hero p{font-size:13px}
+    .hero-panel{grid-template-columns:1fr 1fr}
+    .grid-3,.personas,.law-grid,.anti-grid,.instinct-grid{grid-template-columns:1fr}
+    .grid-2,.pattern-grid,.nav-cards,.density-grid,.trust-grid,.language-box,.sources,.build-gate,.environment{grid-template-columns:1fr}
+    .section-head{display:block}
+    .section-title{font-size:22px}
+    .toolbar{align-items:flex-start;flex-direction:column}
+    .toolbar-count{white-space:normal}
+    .hard-floor{grid-template-columns:1fr}
+  }
+  @media print{
+    body{background:#fff}.sidebar,.appbar,.mobile-overlay,.toast{display:none!important}.shell{display:block}.content{max-width:none;padding:0}.hero{border-radius:0;box-shadow:none}.card,.pattern,.law,.persona,.instinct{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></symbol>
+  <symbol id="i-export" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9 5-9-5 9-5 9 5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.1 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.1a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.9-1l-4.4 1.2 1.3-4.2A8.3 8.3 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8.6 8 9.9 4.5-1.3 8-4.9 8-9.9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h7m4 0h5M4 12h3m4 0h9M4 18h10m4 0h2"/><circle cx="13" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+</svg>
+<div class="mobile-overlay" id="mobileOverlay"></div>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="brand-dot"></span><div><div class="brand-name">Ekum</div><div class="brand-meta">Design Bible · Phase 1</div></div></div>
+    <div class="side-rule"></div>
+    <div class="nav-label">Reference</div>
+    <nav class="side-nav" id="sideNav">
+      <a class="nav-link active" href="#overview"><span class="nav-index">00</span>Overview</a>
+      <a class="nav-link" href="#user"><span class="nav-index">01</span>The User</a>
+      <a class="nav-link" href="#instincts"><span class="nav-index">02</span>Known App Instincts</a>
+      <a class="nav-link" href="#laws"><span class="nav-index">03</span>Laws of Low Resistance</a>
+      <a class="nav-link" href="#patterns"><span class="nav-index">04</span>Core Patterns</a>
+      <a class="nav-link" href="#navigation"><span class="nav-index">05</span>Navigation & Wayfinding</a>
+      <a class="nav-link" href="#hierarchy"><span class="nav-index">06</span>Hierarchy & Density</a>
+      <a class="nav-link" href="#trust"><span class="nav-index">07</span>Trust & Safety</a>
+      <a class="nav-link" href="#language"><span class="nav-index">08</span>Language Behaviour</a>
+      <a class="nav-link" href="#anti"><span class="nav-index">09</span>Anti-patterns</a>
+      <a class="nav-link" href="#review"><span class="nav-index">10</span>Screen Review Gate</a>
+      <a class="nav-link" href="#sources"><span class="nav-index">11</span>Source Map</a>
+    </nav>
+    <div class="side-foot"><strong>Use at review time</strong><p>Every new screen must map to a pattern, a user instinct and a Phase 1 scope decision before it moves forward.</p></div>
+  </aside>
+  <main class="main">
+    <header class="appbar">
+      <button class="menu-btn" id="menuBtn" aria-label="Open contents"><svg><use href="#i-menu"/></svg></button>
+      <div class="page-crumb"><strong>Behavioural Reference</strong><span>Interaction architecture · not visual styling</span></div>
+      <div class="search-wrap"><svg><use href="#i-search"/></svg><input id="globalSearch" type="search" placeholder="Search patterns, laws, open decisions…" aria-label="Search this reference"></div>
+      <div class="app-actions"><button class="btn secondary" id="copyChecklist"><svg><use href="#i-check"/></svg>Copy review gate</button><button class="btn primary" id="exportData"><svg><use href="#i-export"/></svg>Export data</button></div>
+    </header>
+    <div class="content">
+      <section class="hero" id="overview" data-search="overview ekum design bible reference phase 1 behaviour structural patterns">
+        <div class="hero-copy">
+          <div class="eyebrow">Ekum Design Bible</div>
+          <h1>Make the trade feel organised — without making the trader learn a new way to work.</h1>
+          <p>This is the behavioural and structural reference for Phase 1. It turns the product’s source material into reusable rules: how the user behaves, what their thumbs already know, which layout patterns earn trust, and where the current documents still disagree.</p>
+          <div class="hero-points"><span class="hero-point">Pattern-level, not screen-level</span><span class="hero-point">Phase 1 only</span><span class="hero-point">Source conflicts shown, not hidden</span></div>
+        </div>
+        <div class="hero-panel">
+          <div class="metric"><strong>9</strong><span>Laws that govern every interaction</span></div>
+          <div class="metric"><strong>9</strong><span>Reusable core patterns</span></div>
+          <div class="metric"><strong>3</strong><span>Roles fully covered in Phase 1</span></div>
+          <div class="metric"><strong>1</strong><span>Non-negotiable upload promise</span></div>
+          <div class="metric wide"><strong>Camera roll → published collection</strong><span>Under 2 minutes, or users return to WhatsApp.</span></div>
+        </div>
+      </section>
+
+      <section data-search="how to use source truth hierarchy copy visual">
+        <div class="notice"><svg><use href="#i-shield"/></svg><div><strong>What this file owns</strong><p>Behaviour, layout logic, information hierarchy and interaction patterns. The Brand Kit owns visual specifications and components; the Messaging Guide owns wording and the Ring Road test. This file cross-references both instead of rewriting them.</p></div></div>
+        <div class="grid-3" style="margin-top:14px">
+          <article class="card concept-card"><div class="concept-icon"><svg><use href="#i-box"/></svg></div><h3>The collection</h3><p>The packet of designs moving through the network. Every Phase 1 surface either shows a collection in a state or moves it forward.</p></article>
+          <article class="card concept-card"><div class="concept-icon"><svg><use href="#i-user"/></svg></div><h3>The relationship</h3><p>The trusted supplier, buyer, trader or agent context that turns catalogue browsing into trade rather than marketplace behaviour.</p></article>
+          <article class="card concept-card"><div class="concept-icon"><svg><use href="#i-check"/></svg></div><h3>The order</h3><p>The point where money and trust move. Commitment must feel as clear and final as a UPI confirmation.</p></article>
+        </div>
+      </section>
+
+      <section id="user" data-search="user supplier buyer trader agent market floor android 3g cautious whatsapp">
+        <div class="section-head"><div><h2 class="section-title">1. The User</h2><p class="section-sub">An established textile-trade owner or operator. Expert in the trade; cautious with software. The product does not need to make them technology-first — it must become trade-first.</p></div><div class="chip-row"><span class="chip teal">Observed audience</span><span class="chip grey">Phase 1 operating context</span></div></div>
+        <div class="personas" id="personaGrid"></div>
+        <div class="environment"><article class="card"><h3>The emotional contract</h3><p>Ekum is always one confusing moment away from losing the user to WhatsApp. Resistance is rarely “I do not understand textiles.” It is “I do not understand what this screen wants from me.” The interface must remove the second feeling without ever insulting the first.</p></article><article class="card"><h3>The hard floor</h3><p>Design for a person standing on a busy market floor, phone in one hand, someone talking in their ear, using an older Android over 3G. This is the primary device-and-context test, not an edge case.</p><div class="hard-floor"><div><strong>2–3 second glance</strong>Lead with the decision, image or name.</div><div><strong>Thumb in motion</strong>Targets must be confidently tappable.</div><div><strong>Glare + noise</strong>Primary content cannot depend on fine detail.</div><div><strong>Weak connection</strong>Immediate placeholders beat a blank wait.</div></div></article></div>
+      </section>
+
+      <section id="instincts" data-search="whatsapp gpay phonepe youtube instagram reels camera gallery trusted apps familiar">
+        <div class="section-head"><div><h2 class="section-title">2. The Apps They Already Know</h2><p class="section-sub">Ekum earns familiarity by borrowing patterns the user already performs without thinking. It borrows interaction grammar, never brand appearance or consumer-social mechanics.</p></div></div>
+        <div class="instinct-grid" id="instinctGrid"></div>
+      </section>
+
+      <section id="laws" data-search="laws low resistance lists photo one screen recency action verb reassure dead end speed controlled privacy">
+        <div class="section-head"><div><h2 class="section-title">3. The Laws of Low Resistance</h2><p class="section-sub">These laws are the design constitution. Every new surface should strengthen one or more of them; a pattern that breaks one requires an explicit trade reason.</p></div><div class="chip-row"><span class="chip teal">Settled design principles</span></div></div>
+        <div class="law-grid" id="lawGrid"></div>
+      </section>
+
+      <section id="patterns" data-search="core patterns activity list media feed grid selection guided upload confirmation action conversation thread request approve form empty loading error">
+        <div class="section-head"><div><h2 class="section-title">4. The Core Patterns</h2><p class="section-sub">Each pattern is a reusable construction rule, not a one-off screen. Open a pattern to see what it is, when to use it, the instinct it borrows, the layout rules, what breaks it and where it belongs.</p></div><div class="chip-row"><span class="chip teal">Reusable</span><span class="chip grey">Pattern-level</span></div></div>
+        <div class="toolbar"><div class="toolbar-left"><span class="toolbar-label">Show patterns for:</span><button class="filter active" data-role="all">All roles</button><button class="filter" data-role="supplier">Supplier</button><button class="filter" data-role="buyer">Buyer</button><button class="filter" data-role="trader">Trader</button><button class="filter" data-role="agent">Agent</button></div><span class="toolbar-count" id="patternCount">9 patterns visible</span></div>
+        <div class="pattern-grid" id="patternGrid"></div>
+        <div class="empty-search" id="patternEmpty">No pattern matches the current role or search. Try a broader term.</div>
+      </section>
+
+      <section id="navigation" data-search="navigation tabs home discover orders collections chats contextual roles conflict recommendation">
+        <div class="section-head"><div><h2 class="section-title">5. Navigation & Wayfinding</h2><p class="section-sub">A tab is a destination a user returns to daily. An action is a button. Anything used occasionally is one level down. The core job should never sit more than one level below a daily destination.</p></div><div class="chip-row"><span class="chip warning">Decision required</span></div></div>
+        <div class="nav-cards"><article class="nav-option"><span class="chip teal">Product brief / vision</span><h3>Option A — Three shared tabs</h3><p>Home, Discover and Orders remain constant for buyer, supplier and trader. Content adapts by role; chat opens inside a supplier relationship rather than taking a permanent tab.</p><div class="nav-model"><span class="nav-slot active">Home</span><span class="nav-slot">Discover</span><span class="nav-slot">Orders</span></div><p><strong>Benefit:</strong> the same account never has to relearn the footer. <strong>Risk:</strong> “Discover” needs a role-specific meaning for suppliers and may compete with their own collection work.</p></article><article class="nav-option"><span class="chip info">Brand Kit / contextual intent</span><h3>Option B — Role-appropriate destinations</h3><p>All roles keep the same interaction grammar, but destinations match the job: a supplier sees Home, Collections, Orders and Chats; a raised action starts upload; a buyer’s discovery remains distinct.</p><div class="nav-model"><span class="nav-slot active">Home</span><span class="nav-slot">Collections</span><span class="nav-slot fab">＋</span><span class="nav-slot">Chats</span><span class="nav-slot">More</span></div><p><strong>Benefit:</strong> each job is named honestly. <strong>Risk:</strong> role switching changes navigation and adds a learning burden unless the role context is very clear.</p></article></div>
+        <div class="recommendation"><span class="chip orange">Recommendation</span><h3>Hold the confirmed 3-tab information architecture for Phase 1, but make each destination role-adaptive — not merely relabelled.</h3><p>The Product Vision and Phase 1 Brief explicitly lock Home / Discover / Orders across roles, while the Brand Kit illustrates a five-item navigation component. Treat this as a source conflict, not a styling detail. For the first shipped build, preserve the locked 3-tab model to avoid re-opening a confirmed product decision; define each role’s “Discover” content as its collection world. Before visual implementation begins, product owners must formally reconcile this with the Brand Kit’s five-item example.</p></div>
+        <div class="decision-table" style="margin-top:14px"><table><thead><tr><th>Decision</th><th>What the sources say</th><th>Current status</th><th>Operational recommendation</th></tr></thead><tbody id="decisionBody"></tbody></table></div>
+      </section>
+
+      <section id="hierarchy" data-search="information hierarchy density glanceable image name action 3 seconds highlight">
+        <div class="section-head"><div><h2 class="section-title">6. Information Hierarchy & Density</h2><p class="section-sub">On a market floor, the user does not read a screen. They recognise it. A usable surface answers what this is, whether it needs attention and what to do next within a glance.</p></div></div>
+        <div class="density-grid"><article class="card density-card"><h3>The three-second content order</h3><p>Lead with the thing the user came for — almost always an image, name or action. Numbers serve as proof or context, not as the focal point. Keep secondary information one tap deeper.</p><div class="glance-list"><div class="glance-item"><span class="glance-num">1</span><div><strong>Identify the object or person</strong><span>Photo, business name, collection name, order identifier.</span></div></div><div class="glance-item"><span class="glance-num">2</span><div><strong>Show only one important change</strong><span>New photos, an order to confirm, a rate to decide, a request to approve.</span></div></div><div class="glance-item"><span class="glance-num">3</span><div><strong>Make one next action obvious</strong><span>Open, confirm, add photos, request access, publish.</span></div></div></div></article><article class="card density-card"><h3>Density limits</h3><p>Lists outperform KPI tiles for daily work because they explain both what changed and what to do. Use metrics only as secondary evidence once a task surface is already understood.</p><div class="glance-list"><div class="glance-item"><span class="glance-num">A</span><div><strong>One highlight per screen</strong><span>Follow the Brand Kit’s restrained Tangerine rule. A second “look here” signal weakens the first.</span></div></div><div class="glance-item"><span class="glance-num">B</span><div><strong>One status signal per row</strong><span>Do not stack badge, dot, warning text and a CTA onto the same list item.</span></div></div><div class="glance-item"><span class="glance-num">C</span><div><strong>Image first, text second</strong><span>In catalogue contexts, photography carries recognition. Metadata stays brief and subordinate.</span></div></div></div></article></div>
+      </section>
+
+      <section id="trust" data-search="trust safety privacy contact phone whatsapp verified reputation order channel permissions">
+        <div class="section-head"><div><h2 class="section-title">7. Trust & Safety Patterns</h2><p class="section-sub">In this market, trust is a product behaviour. Privacy, access and commitment clarity cannot be hidden behind settings because they are the reason a supplier leaves an unstructured WhatsApp flow.</p></div></div>
+        <div class="trust-grid" id="trustGrid"></div>
+      </section>
+
+      <section id="language" data-search="language localisation english hindi gujarati icon labels ring road numbers currency literacy">
+        <div class="section-head"><div><h2 class="section-title">8. Language & Localisation Behaviour</h2><p class="section-sub">This part explains how language affects layout and interaction. For exact wording, button labels and message tone, defer to the Messaging & Copywriting Guide.</p></div><div class="chip-row"><span class="chip teal">English only in Phase 1</span></div></div>
+        <div class="language-box"><article class="language-card"><h3>Icons need labels</h3><p>An unlabelled icon asks the user to guess. Pair navigation and action icons with plain words, particularly on mobile. The Brand Kit provides the icon system; this rule defines its behavioural use.</p></article><article class="language-card"><h3>Numbers are familiar; software words are not</h3><p>Prices, sets, pieces, rates and dispatch are native trade language. Lead with them where relevant. Avoid product vocabulary that requires interpretation; apply the Messaging Guide’s Ring Road test before ship.</p></article><article class="language-card"><h3>Reading comfort varies; image recognition does not</h3><p>Keep text short and support recognition through photos, names, numbers and repeated placement. The goal is not to reduce trade complexity; it is to reduce software decoding.</p></article><article class="language-card"><h3>Resolved Phase 1 constraint</h3><p>The current Product Vision locks Phase 1 to English, with Hindi and Gujarati planned for Phase 2. Design labels must still survive future expansion: avoid fixed-width text containers, preserve icon-plus-label patterns and do not use English text as decoration.</p></article></div>
+      </section>
+
+      <section id="anti" data-search="anti patterns dashboard mandatory form phase two fields dead end jargon icon multitab inbox emoji">
+        <div class="section-head"><div><h2 class="section-title">9. Anti-patterns</h2><p class="section-sub">These are not aesthetic dislikes. Each one breaks a learned habit or a low-resistance law and gives the user a reason to return to WhatsApp.</p></div><div class="chip-row"><span class="chip error">Stop list</span></div></div>
+        <div class="anti-grid" id="antiGrid"></div>
+      </section>
+
+      <section id="review" data-search="review gate checklist design review screen audit phase 1">
+        <div class="section-head"><div><h2 class="section-title">Screen Review Gate</h2><p class="section-sub">Run this before a new screen or significant redesign is approved. It turns the Bible into a practical review ritual rather than a document that only gets read once.</p></div></div>
+        <div class="build-gate"><div><h3>Does this screen earn its place?</h3><p>Tick only what is true of the actual proposed design. A strong screen does not need more functionality; it needs less resistance.</p><div class="checklist" id="checklist"></div></div><aside class="gate-panel"><div><div class="gate-score"><strong id="gateScore">0/10</strong><span id="gateNote">Start with the user’s existing habit.</span></div><div class="progress"><span id="gateProgress"></span></div></div><button class="btn primary" id="copyGateText"><svg><use href="#i-check"/></svg>Copy this screen review</button></aside></div>
+      </section>
+
+      <section id="sources" data-search="sources documents design bible product vision roadmap brand kit messaging phase 1 brief data export json">
+        <div class="section-head"><div><h2 class="section-title">Source Map & Structured Data</h2><p class="section-sub">This workspace is deliberately data-led. The visible reference is rendered from the content model at the end of the file so rules, patterns and decision status can be updated without rewriting the layout.</p></div></div>
+        <div class="sources"><div class="source-list" id="sourceList"></div><aside class="data-card"><h3>Content model</h3><p>Export a JSON copy from the header. The same structured arrays render the laws, patterns, decisions, trust rules and review gate in this file.</p><pre id="dataPreview"></pre></aside></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast">Copied.</div>
+<script>
+const bible = {
+  meta:{title:'Ekum Design Bible',phase:'Phase 1',version:'Interactive structured reference'},
+  personas:[
+    {initial:'S',role:'Supplier',range:'38–55 · Ahmedabad / Surat / Jaipur',pain:'Designs go to the wrong buyers, prices leak and sent history disappears into threads.',need:'Controlled reach — not more reach.'},
+    {initial:'B',role:'Buyer',range:'30–50 · sourcing across India',pain:'Relevant collections disappear in endless scrolls and orders have no structured record.',need:'Relevant discovery without overload.'},
+    {initial:'T',role:'Trader / Agent',range:'35–55 · connected across both sides',pain:'Most tools try to remove the middle layer instead of preserving the relationship value it provides.',need:'A role that is respected, not disintermediated.'}
+  ],
+  instincts:[
+    {name:'WhatsApp',instinct:'Recency-sorted threads, unread signals, photos, forwarding and voice notes are the operating model of trade.',permission:'Conversation stays inside the relationship and attaches to the collection or order.',warning:'Anything less familiar than WhatsApp must earn the unfamiliarity.'},
+    {name:'GPay / PhonePe',instinct:'One amount, one confirmation and an unmistakable done state make commitment on a phone feel safe.',permission:'Order, approval, rate and publish moments are single-decision flows with a clear result.',warning:'Never hide a commitment behind a multi-field form.'},
+    {name:'YouTube',instinct:'Thumbnail-first feeds, tap-to-open and progressive loading make visual browsing feel low effort.',permission:'Catalogue browsing can be photo-led, lightweight and progressive on weak networks.',warning:'Do not block browsing on full-resolution image loading.'},
+    {name:'Instagram / Reels',instinct:'Story-style freshness, image grids and swipe-through sets make visual discovery instantly legible.',permission:'Use newest-drop avatars, grids and carousels for catalogue discovery.',warning:'Borrow visual grammar, not likes, vanity metrics or consumer-social theatre.'},
+    {name:'Camera & Gallery',instinct:'Photographing stock is already a daily business action; multi-select is a trained phone behaviour.',permission:'Open upload camera-first and use gallery-style selection with a visible count.',warning:'Do not turn a photo action into a long form before the user can move ahead.'}
+  ],
+  laws:[
+    {title:'Lists over dashboards',borrow:'WhatsApp chat list',why:'A list shows what changed and what to do in one glance; KPI tiles force interpretation before action.'},
+    {title:'The photo is the interface',borrow:'YouTube / Instagram',why:'Traders recognise cloth by image before label. Photography leads; text captions it.'},
+    {title:'One screen, one job, one action',borrow:'Every trusted app',why:'The real cost is decisions per screen, not taps. A clear flow can have more steps and still feel lighter.'},
+    {title:'Recency is the sort order',borrow:'WhatsApp',why:'Newest first mirrors the market’s mental model for chats, orders, activity and fresh collections.'},
+    {title:'The action is a verb they use',borrow:'Natural trade talk',why:'A plain verb reduces decoding. The Messaging Guide owns exact words; this law governs what a label must feel like.'},
+    {title:'Reassure before, confirm after',borrow:'UPI confirmation',why:'Cautious users need to know what a commitment will do and whether it definitely happened.'},
+    {title:'Never a dead end',borrow:'Calm explained states',why:'A blank state or vague failure is the fastest route back to WhatsApp. Every state has one next action.'},
+    {title:'Speed is a trust signal',borrow:'Weak-network reality',why:'On 3G, a slow screen looks broken. Show content shells and thumbnails immediately, then deepen progressively.'},
+    {title:'Controlled, not open',borrow:'Supplier relationship logic',why:'The supplier’s value is controlled visibility. Privacy and access must be visible parts of the interface.'}
+  ],
+  patterns:[
+    {id:'01',title:'Activity List',roles:['supplier','buyer','trader','agent'],tags:['Home','Orders','Requests'],summary:'A recency-sorted list of people or trade objects that need attention.',what:'Each row combines avatar or thumbnail, name, a one-line change, timestamp and one action signal.',when:'Any “what needs me?” surface: Home, orders, chats, access requests and notifications.',borrow:'WhatsApp chat list.',rules:'Newest first. One strong status signal per row. Rows remain large enough for a distracted thumb. A list should explain both the change and the next tap.',breaks:'KPI grids as the main home surface; multiple competing badges; default sorting that hides new activity.',appears:'Buyer Home, Supplier Home, Trader Home, Orders, Access Requests.'},
+    {id:'02',title:'Media Feed / Grid',roles:['supplier','buyer','trader'],tags:['Browse','Collections','Discover'],summary:'An image-first scrolling surface for collections and designs.',what:'Large visual cards with only enough metadata to make the next tap confident.',when:'Supplier collections, buyer discovery, collection detail and curated trader sets.',borrow:'YouTube thumbnail feed, Instagram grid and story row.',rules:'Thumbnail first, full resolution on tap. Newest first. Load the first batch immediately and lazy-load beyond it. Image, name, rate range and freshness are the essential card facts.',breaks:'Text-heavy cards; full-resolution loading before browse; hiding photography behind metadata.',appears:'Buyer Discover, Supplier Collections, Trader Curated Collections, Collection Detail.'},
+    {id:'03',title:'Selection Pattern',roles:['supplier','buyer','trader'],tags:['Choose','Order','Upload'],summary:'Multi-select items from a grid or list before acting on them together.',what:'A phone-gallery-style selection mode with a clear selected state, visible count and a thumb-reachable forward action.',when:'Choosing designs for an order, photos for upload or buyers for broadcast.',borrow:'Phone gallery multi-select.',rules:'Tap toggles selection. Count stays visible at all times. The next action says what happens next. The action bar lives at the bottom.',breaks:'Hidden selection count; unclear selected state; a second interaction model competing with tap-to-select.',appears:'Collection selection, upload picker, broadcast targeting.'},
+    {id:'04',title:'Guided Upload',roles:['supplier'],tags:['Upload','Camera-first','Under 2 minutes'],summary:'The camera-first path from stock photos to a published collection.',what:'A staged but fast flow: camera or gallery selection, collection defaults, carousel-based product review, audience confirmation and publish.',when:'Whenever a supplier adds a collection or a single product.',borrow:'Camera, Gallery and Instagram’s media carousel.',rules:'Camera opens first; gallery is one toggle away. Bulk defaults cascade from collection to item. Product type, fabric, work and occasion use chips. Per-product detail remains collapsed until needed. Optional trade data never blocks Publish.',breaks:'Mandatory rate, SKU, barcode, inventory, GST, COD or variants; long repeated forms; asking the user to fill data before photo selection.',appears:'Supplier collection upload, single-product upload.'},
+    {id:'05',title:'Confirmation / Action',roles:['supplier','buyer','trader','agent'],tags:['Commit','Approve','Publish'],summary:'The decisive moment where a commitment, approval or order moves forward.',what:'A focused confirm-and-done moment with one amount, quantity or audience count, one primary action and an explicit result.',when:'Order placement, rate confirmation, buyer approval, publishing and sending a broadcast.',borrow:'GPay / PhonePe confirmation.',rules:'Show the key count or amount. State what happens before the action. Use one primary verb. Follow with an unmistakable done state and a single next step.',breaks:'Two primary buttons; a hidden total; multi-field data entry immediately before commitment; ambiguous success state.',appears:'Order builder, order actions, buyer approval, publish target, broadcast send.'},
+    {id:'06',title:'Conversation / Thread',roles:['supplier','buyer','trader','agent'],tags:['Chat','Relationship','Order'],summary:'Conversation that lives inside the relationship, with trade objects in the same scroll.',what:'Familiar message flow where collection cards, photos, order cards and status changes appear inline and remain actionable.',when:'Supplier–buyer communication, order discussion, clarification and follow-up.',borrow:'WhatsApp business thread.',rules:'Keep general chat, order chat and product context legible as one relationship timeline. Make shared objects actionable in place. Preserve expected attachment and voice affordances.',breaks:'A categorised inbox that forces the user to decide whether a message is chat, enquiry or negotiation; isolating orders from the conversation that created them.',appears:'Supplier thread, order thread, buyer–trader relationship thread.'},
+    {id:'07',title:'Request & Approve',roles:['supplier','buyer','agent'],tags:['Access','Trust','Permission'],summary:'The trust gate where access is requested and granted without exposing the supplier’s relationship data.',what:'Unapproved users see a blurred preview and one access action; approvers see the requester’s profile and one-tap approve or decline.',when:'Buyer-to-supplier access, agent referrals and supplier buyer management.',borrow:'Accept / decline connection request.',rules:'Request form stays short: business name, city, what they buy, approximate monthly volume. Referral context sits on the request. Approval instantly reveals what has been authorised — not everything by default.',breaks:'Multi-step approval; letting a pending buyer inspect full catalogue detail; exposing supplier phone or WhatsApp at any point.',appears:'Buyer access gate, supplier My Buyers, agent referral.'},
+    {id:'08',title:'Form Pattern',roles:['supplier','buyer','trader','agent'],tags:['Setup','Details','Progressive'],summary:'Structured input that keeps typing, required fields and cognitive load to a minimum.',what:'Quick-tap choices, clear required-versus-optional distinction and progressive disclosure for information that is not needed now.',when:'Business setup, collection detail, profile, broadcast and request forms.',borrow:'Tap-to-choose over type-to-fill.',rules:'Prefer chips and selects to typing. Show only the required minimum for the moment. Use collapsed groups rather than a tall unbroken form. Icons always have labels.',breaks:'Mandatory fields unrelated to the user’s immediate goal; long single-column forms; unlabelled icon actions.',appears:'Business setup, upload details, edit profile, broadcast composer.'},
+    {id:'09',title:'Empty, Loading & Error States',roles:['supplier','buyer','trader','agent'],tags:['System state','3G','Recovery'],summary:'The designed states where content is absent, delayed or unavailable.',what:'A reliable explanation plus one recoverable next step, designed as a first-class part of every pattern.',when:'Every list, media feed, form and connection-dependent action.',borrow:'Calm explained states in trusted apps.',rules:'Empty = headline, one line of context, one action. Loading = visible skeletons and thumbnails immediately. Error = plain cause plus recovery. Cache recent collections where possible and show freshness.',breaks:'Blank screen; spinner with no context; “Something went wrong”; an error with no recovery action.',appears:'Every list, feed and form.'}
+  ],
+  decisions:[
+    {title:'Bottom navigation model',source:'Product Vision + Phase 1 Brief lock three shared tabs: Home / Discover / Orders; the Brand Kit illustrates a five-item Home / Collections / Chats / More model with a raised action.',status:'Conflict — formal product decision needed',recommendation:'Ship Phase 1 against the confirmed 3-tab IA, but reconcile the Brand Kit example before UI implementation. Do not let a component sample silently override product architecture.'},
+    {title:'Buyer feed personalisation',source:'Feature Roadmap calls a visual Love / Skip preference quiz confirmed in Phase 1; the Phase 1 Brief marks E-20 preference ranking missing / not designed.',status:'Conflict — scope and delivery status differ',recommendation:'Keep the personalised-feed pattern in the Bible, but mark implementation as pending until product confirms whether the quiz is launch-critical or a follow-on.'},
+    {title:'Agent scope',source:'Roadmap includes agent vouching and a supplier-only reputation score; Phase 1 Brief describes Agent as partial rather than a fully covered role.',status:'Settled boundary',recommendation:'Treat agent vouching as a pattern inside access control, not as a full standalone Agent navigation system in Phase 1.'},
+    {title:'Order status vocabulary',source:'The Brand Kit shows Order Placed → Confirmed → In Progress → Shipped → Delivered; the Phase 1 Brief uses Sent / Confirming / Dispatched and supplier New / Confirmed / Dispatched views.',status:'Conflict — labels do not map cleanly',recommendation:'Adopt one canonical state model behind the product. Role-specific microcopy may vary, but a single order object must not show inconsistent status truth.'},
+    {title:'Language in Phase 1',source:'Product Vision locks Phase 1 to English only, with Hindi and Gujarati in Phase 2. The Design Bible draft marked multilingual UI as an open question.',status:'Resolved',recommendation:'Treat English-only as Phase 1 scope; keep layouts ready for future text expansion.'},
+    {title:'Operational / ERP data',source:'The roadmap places inventory, GST, payments, reporting and intelligence after the initial trust-and-discovery loop.',status:'Settled boundary',recommendation:'Keep SKU, barcode, inventory enforcement, GST, payment tracking and analytics out of core Phase 1 patterns unless later scope is explicitly revised.'}
+  ],
+  trust:[
+    {title:'Private by default, visibly',body:'Nothing a supplier owns becomes visible without their action. Collection privacy and target audience must be obvious in the publishing flow, not buried in account settings.',rule:'A pending buyer sees a blurred preview and an access path — never the full catalogue.'},
+    {title:'Contact protection is absolute',body:'Supplier phone number and WhatsApp details are never shown to buyers in profile, thread, order or share flow. First contact stays inside Ekum.',rule:'One leaked contact detail breaks the business model.'},
+    {title:'Trust signals must be earned',body:'Verified badges and agent reputation numbers require a defined basis. Agent reputation remains supplier-visible only; decorative ratings do not count as trust.',rule:'If the system cannot explain a badge, it must not show it.'},
+    {title:'Commitment feels final',body:'Orders, approvals, publish and channel selection use one number, one action, reassurance before and confirmation after.',rule:'The user should never ask “did it go through?”.'},
+    {title:'Channel transparency without commercial leakage',body:'When a buyer can reach the same supplier directly and through traders, let them choose the appropriate named path for their own order.',rule:'Show their connection routes, never another party’s margin or pricing.'},
+    {title:'Freshness and expiry must be graceful',body:'Photo expiry and collection freshness are meaningful trust signals. Buyers need a graceful degraded view; suppliers need a clear, recoverable expired-photo state.',rule:'Never make old content silently disappear with no explanation.'}
+  ],
+  anti:[
+    {title:'KPI dashboard as Home',body:'A grid of numbers where an activity list belongs. It violates the user’s WhatsApp-trained habit of opening a list of things that need them.',violates:'Law 1 — Lists over dashboards'},
+    {title:'Multi-field mandatory form',body:'A long required form before the user can move. Every unnecessary requirement is friction between photo, collection, order or approval and its outcome.',violates:'Laws 3 and 6 — Decisions and reassurance'},
+    {title:'Phase 2 / 3 data in the upload path',body:'SKU codes, barcodes, stock enforcement, GST, COD, variants or analytics fields as upload blockers. They break the two-minute promise.',violates:'Phase 1 scope boundary'},
+    {title:'Dead-end empty or error state',body:'Blank canvas, unexplained failure or a spinner with no recovery action. The user cannot tell whether the app is broken or what to do next.',violates:'Law 7 — Never a dead end'},
+    {title:'Jargon button',body:'Words such as Submit, Configure, Dashboard or Processing. The user needs an action they would say aloud, tested through the Messaging Guide.',violates:'Law 5 — Action is a verb'},
+    {title:'Unlabelled icon',body:'An outline icon standing in for a sentence. For this audience, icon-only control creates a guess rather than a confident tap.',violates:'Language behaviour rule'},
+    {title:'Categorised multi-tab inbox',body:'Chats / enquiries / negotiations / requests split the relationship into software categories the user does not naturally use.',violates:'Thread pattern'},
+    {title:'More than one highlight',body:'Multiple colours, banners, badges or urgent CTAs compete for attention and flatten the hierarchy on a three-second screen.',violates:'One highlight per screen'},
+    {title:'Emoji / off-system icons',body:'Emoji rendering changes across Android devices and makes a trade tool feel improvised. Use the system icon set with labels.',violates:'Brand Kit iconography rule'}
+  ],
+  checklist:[
+    'I can name the user’s immediate job in one short sentence.',
+    'This screen maps to one existing core pattern.',
+    'The primary interaction borrows a habit from an app this user already knows.',
+    'The first glance leads with image, name or action — not a KPI.',
+    'There is one obvious primary action and no competing primary CTA.',
+    'The action copy can pass the Messaging Guide’s Ring Road test.',
+    'A pending user cannot see access-controlled content or supplier contact details.',
+    'Empty, loading and error states have a clear recovery action.',
+    'No Phase 2 / 3 operational data blocks a Phase 1 task.',
+    'The screen remains usable on an older Android over a weak connection.'
+  ],
+  sources:[
+    {code:'D03',name:'Product Vision & Strategy',use:'Phase boundaries, 3-tab decision, language constraint, collection as organising unit.'},
+    {code:'D06',name:'Feature Roadmap',use:'Confirmed Phase 1 features, agent vouching, preference-quiz conflict and later-phase boundaries.'},
+    {code:'D10',name:'Brand Kit & Design System',use:'Visual source of truth, components, semantic states and navigation-component conflict.'},
+    {code:'D12',name:'Messaging & Copywriting Guide',use:'Ring Road test, voice, plain actions and empty-state copy rules.'},
+    {code:'B01',name:'Phase 1 Product Brief',use:'Screen intent, activity-list model, collection browsing, orders and known coverage gaps.'},
+    {code:'DB0',name:'Design Bible Draft',use:'Audience framing, laws, pattern definitions, anti-patterns and early navigation recommendation.'}
+  ]
+};
+
+const icon = id => `<svg aria-hidden="true"><use href="#${id}"/></svg>`;
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+
+function renderPersonas(){
+  document.getElementById('personaGrid').innerHTML = bible.personas.map(p=>`<article class="persona searchable" data-search="${esc(p.role+' '+p.range+' '+p.pain+' '+p.need)}"><div class="persona-top"><span class="persona-letter">${p.initial}</span><span class="chip grey">${p.range}</span></div><h3>${p.role}</h3><p><strong>Pain:</strong> ${p.pain}</p><p style="color:var(--teal-deep)"><strong>Needs:</strong> ${p.need}</p></article>`).join('');
+}
+function renderInstincts(){
+  document.getElementById('instinctGrid').innerHTML = bible.instincts.map((i,n)=>`<article class="instinct searchable" data-search="${esc(i.name+' '+i.instinct+' '+i.permission+' '+i.warning)}"><div class="instinct-num"><span>${String(n+1).padStart(2,'0')}</span><span>Known app</span></div><h3>${i.name}</h3><p>${i.instinct}</p><div class="permission"><strong>Ekum permission:</strong> ${i.permission}<br><br><strong>Watch:</strong> ${i.warning}</div></article>`).join('');
+}
+function renderLaws(){
+  document.getElementById('lawGrid').innerHTML = bible.laws.map((l,n)=>`<article class="law searchable" data-search="${esc(l.title+' '+l.borrow+' '+l.why)}"><div class="law-top"><span class="law-index">Law ${String(n+1).padStart(2,'0')}</span><span class="law-borrow">${l.borrow}</span></div><h3>${l.title}</h3><p>${l.why}</p></article>`).join('');
+}
+function renderPatterns(){
+  document.getElementById('patternGrid').innerHTML = bible.patterns.map(p=>`<article class="pattern searchable" data-roles="${p.roles.join(' ')}" data-search="${esc([p.title,p.summary,p.what,p.when,p.borrow,p.rules,p.breaks,p.appears,...p.tags].join(' '))}"><div class="pattern-top"><span class="pattern-index">${p.id}</span><div><h3>${p.title}</h3><p class="pattern-summary">${p.summary}</p></div></div><div class="pattern-meta">${p.tags.map(t=>`<span class="chip teal">${t}</span>`).join('')}${p.roles.map(r=>`<span class="chip grey">${r}</span>`).join('')}</div><details><summary><span>${icon('i-sliders')} Pattern rules</span>${icon('i-arrow')}</summary><div class="pattern-rules"><div><strong>What it is</strong><p>${p.what}</p></div><div><strong>When to use it</strong><p>${p.when}</p></div><div><strong>Borrowed instinct</strong><p>${p.borrow}</p></div><div><strong>Layout rules</strong><p>${p.rules}</p></div><div><strong>What breaks it</strong><p>${p.breaks}</p></div><div><strong>Where it appears</strong><p>${p.appears}</p></div></div></details></article>`).join('');
+}
+function renderDecisions(){
+  document.getElementById('decisionBody').innerHTML = bible.decisions.map(d=>`<tr class="searchable" data-search="${esc(d.title+' '+d.source+' '+d.status+' '+d.recommendation)}"><td><strong>${d.title}</strong></td><td>${d.source}</td><td><span class="chip ${d.status.startsWith('Conflict')?'warning':d.status==='Resolved'?'teal':'info'}">${d.status}</span></td><td>${d.recommendation}</td></tr>`).join('');
+}
+function renderTrust(){
+  document.getElementById('trustGrid').innerHTML = bible.trust.map(t=>`<article class="trust-card searchable" data-search="${esc(t.title+' '+t.body+' '+t.rule)}"><h3>${t.title}</h3><p>${t.body}</p><div class="line"></div><div class="rule"><strong>Rule:</strong> ${t.rule}</div></article>`).join('');
+}
+function renderAnti(){
+  document.getElementById('antiGrid').innerHTML = bible.anti.map(a=>`<article class="anti searchable" data-search="${esc(a.title+' '+a.body+' '+a.violates)}"><h3>${a.title}</h3><p>${a.body}</p><div class="violates">Violates · ${a.violates}</div></article>`).join('');
+}
+function renderChecklist(){
+  document.getElementById('checklist').innerHTML = bible.checklist.map((c,i)=>`<label class="check"><input type="checkbox" data-check="${i}"><span>${c}</span></label>`).join('');
+}
+function renderSources(){
+  document.getElementById('sourceList').innerHTML = bible.sources.map(s=>`<article class="source searchable" data-search="${esc(s.code+' '+s.name+' '+s.use)}"><span class="source-code">${s.code}</span><div><strong>${s.name}</strong><span>${s.use}</span></div></article>`).join('');
+  document.getElementById('dataPreview').textContent = JSON.stringify({meta:bible.meta,patterns:bible.patterns.map(p=>({id:p.id,title:p.title,roles:p.roles,tags:p.tags})),decisions:bible.decisions.map(d=>({title:d.title,status:d.status})),phaseScope:{included:['OTP login','Access requests','Collection upload','Structured orders','In-thread communication','Targeted broadcast','Trader curation'],excluded:['SKU / barcode','Inventory enforcement','GST / payments','Analytics','Desktop','Hindi / Gujarati UI']}},null,2);
+}
+function refreshPatterns(){
+  const selected=document.querySelector('.filter.active')?.dataset.role || 'all';
+  const q=(document.getElementById('globalSearch').value||'').trim().toLowerCase();
+  let count=0;
+  document.querySelectorAll('.pattern').forEach(card=>{
+    const roleOK=selected==='all'||card.dataset.roles.includes(selected);
+    const searchOK=!q||card.dataset.search.toLowerCase().includes(q);
+    const show=roleOK&&searchOK;
+    card.classList.toggle('hidden',!show);
+    if(show)count++;
+  });
+  document.getElementById('patternCount').textContent=`${count} pattern${count===1?'':'s'} visible`;
+  document.getElementById('patternEmpty').style.display=count?'none':'block';
+}
+function refreshSearch(){
+  const q=(document.getElementById('globalSearch').value||'').trim().toLowerCase();
+  document.querySelectorAll('.searchable').forEach(el=>{
+    if(el.classList.contains('pattern')) return;
+    const s=(el.dataset.search||el.textContent).toLowerCase();
+    el.style.display=(!q||s.includes(q))?'':'none';
+  });
+  refreshPatterns();
+}
+function updateGate(){
+  const checks=[...document.querySelectorAll('[data-check]')];
+  const done=checks.filter(x=>x.checked).length;
+  document.getElementById('gateScore').textContent=`${done}/10`;
+  document.getElementById('gateProgress').style.width=`${done*10}%`;
+  const note=done===0?'Start with the user’s existing habit.':done<5?'The screen needs less ambiguity before it can move.':done<9?'Close the remaining gaps before handoff.':'Strong candidate for a detailed design review.';
+  document.getElementById('gateNote').textContent=note;
+}
+function showToast(text){const toast=document.getElementById('toast');toast.textContent=text;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1700)}
+function copyText(text){navigator.clipboard?.writeText(text).then(()=>showToast('Copied to clipboard.')).catch(()=>showToast('Copy not available in this browser.'))}
+function reviewText(){return 'EKUM SCREEN REVIEW\n\n'+bible.checklist.map((c,i)=>`${i+1}. ${c}`).join('\n')}
+function exportData(){const blob=new Blob([JSON.stringify(bible,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Ekum_Design_Bible_Phase_1_Structured_Data.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),500);showToast('Structured JSON exported.')}
+function setActiveNav(){
+  const sections=[...document.querySelectorAll('section[id]')];
+  const y=window.scrollY+105;
+  let active=sections[0];sections.forEach(s=>{if(s.offsetTop<=y)active=s});
+  document.querySelectorAll('.nav-link').forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+active.id));
+}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('mobileOverlay').classList.remove('show')}
+
+renderPersonas();renderInstincts();renderLaws();renderPatterns();renderDecisions();renderTrust();renderAnti();renderChecklist();renderSources();
+document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');refreshPatterns()}));
+document.getElementById('globalSearch').addEventListener('input',refreshSearch);
+document.querySelectorAll('[data-check]').forEach(box=>box.addEventListener('change',updateGate));
+document.getElementById('copyChecklist').addEventListener('click',()=>copyText(reviewText()));
+document.getElementById('copyGateText').addEventListener('click',()=>copyText(reviewText()));
+document.getElementById('exportData').addEventListener('click',exportData);
+document.getElementById('menuBtn').addEventListener('click',()=>{document.getElementById('sidebar').classList.add('open');document.getElementById('mobileOverlay').classList.add('show')});
+document.getElementById('mobileOverlay').addEventListener('click',closeSidebar);
+document.querySelectorAll('.nav-link').forEach(a=>a.addEventListener('click',closeSidebar));
+window.addEventListener('scroll',setActiveNav,{passive:true});setActiveNav();updateGate();
+</script>
+</body>
+</html>

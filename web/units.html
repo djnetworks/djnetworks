@@ -4,12 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pieces — DJ Network's</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-8">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-07-9" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-07-9" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-07-9">
+<meta name="theme-color" content="#2B7379">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-07-9">
+<!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
+     not an @import, because an @import inside style.css would serialise the two fetches. -->
+<link rel="stylesheet" href="tokens.css?v=2026-09-07-9">
+<link rel="stylesheet" href="style.css?v=2026-09-07-9">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-07-8" defer></script>
-<script src="boot.js?v=2026-09-07-8" defer></script>
+<script src="vendor/supabase.js?v=2026-09-07-9" defer></script>
+<script src="boot.js?v=2026-09-07-9" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -17,7 +24,7 @@
      the network; see boot.js. -->
 <main id="gate">
   <div class="signin" data-djn-boot>
-    <h1 class="signin__title">DJ Network's</h1>
+    <h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
     <p class="signin__sub">Starting up…</p>
   </div>
 </main>
@@ -28,7 +35,7 @@
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, fmtDate, todayLocal, networkMessage, initOffline,
          revealActiveTab }
-  from './app.js?v=2026-09-07-8';
+  from './app.js?v=2026-09-07-9';
 
 $('#chrome').innerHTML = chrome('units.html');
 revealActiveTab();
@@ -52,7 +59,7 @@ requireSession(async () => { await boot(); });
 async function boot() {
   $('#app').innerHTML = `
     <div class="row row--between">
-      <div><h1>Pieces &amp; intake</h1>
+      <div><h1>Pieces</h1>
         <p class="sub">Numbered boxes, and the fastest way to create a lot of them at once.</p></div>
       <button class="btn btn--primary" id="bulk" hidden>Add pieces</button>
     </div>
@@ -308,15 +315,30 @@ async function openBulk(product) {
     <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="bulk-title" tabindex="-1">
       <div class="sheet__head">
         <h2 class="sheet__title" id="bulk-title">Add pieces — ${esc(product.short_code)}</h2>
-        <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
+        <!-- A visible word, not a glyph. The design bible's language rule: "an unlabelled icon
+             asks the user to guess", and for this audience an icon-only control creates a guess
+             rather than a confident tap. It no longer needs an aria-label — the text IS the name. -->
+        <button class="btn btn--ghost btn--sm" data-sheet-close type="button">Close</button>
       </div>
 
       <div class="grid2">
-        <label class="field"><span class="field__label">How many pieces? *</span>
+        <!-- A div, not a <label>, because it now contains buttons. A click inside a <label>
+             forwards to the labelled control, and on a phone that means the chip that exists to
+             AVOID the keyboard would have opened it. -->
+        <div class="field"><label class="field__label" for="f-count">How many pieces? *</label>
           <input class="field__input" id="f-count" type="number" min="1" max="200" step="1"
                  inputmode="numeric" enterkeyhint="done" value="1">
+          <!-- Tap-to-choose over type-to-fill (design bible, Form Pattern). The box starts at 1,
+               so every real intake used to mean tapping the field, clearing the 1 and typing —
+               with the on-screen keyboard covering the preview that says what is about to be
+               created. These are the counts a van actually arrives with; anything else is still
+               typed. -->
+          <div class="pill-row" style="margin:8px 0 0">
+            ${[2, 4, 6, 8, 10, 12].map(n =>
+              `<button class="btn btn--sm count-chip" type="button" data-n="${n}">${n}</button>`).join('')}
+          </div>
           <span class="field__hint">Up to 200 at a time.</span>
-        </label>
+        </div>
         <label class="field"><span class="field__label">Where do they live? *</span>
           ${locationField('f-loc')}
           <span class="field__hint">Each piece gets an opening movement here, so none exists without a location.</span>
@@ -384,6 +406,10 @@ async function openBulk(product) {
   $('#f-count').addEventListener('input', () =>
     drawPreview(Math.max(1, Math.min(200, Math.floor(Number($('#f-count').value) || 1)))));
   $('#f-count').addEventListener('change', () => drawPreview(clampCount()));
+  $$('.count-chip').forEach(b => b.addEventListener('click', () => {
+    $('#f-count').value = b.dataset.n;
+    drawPreview(clampCount());
+  }));
   drawPreview(clampCount());
 
   $('#create')?.addEventListener('click', async () => {
@@ -473,7 +499,10 @@ function openSetLocation(stranded) {
     <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="loc-title" tabindex="-1">
       <div class="sheet__head">
         <h2 class="sheet__title" id="loc-title">Set location — ${esc(SELECTED.short_code)}</h2>
-        <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
+        <!-- A visible word, not a glyph. The design bible's language rule: "an unlabelled icon
+             asks the user to guess", and for this audience an icon-only control creates a guess
+             rather than a confident tap. It no longer needs an aria-label — the text IS the name. -->
+        <button class="btn btn--ghost btn--sm" data-sheet-close type="button">Close</button>
       </div>
       <p>Records an opening movement for piece${stranded.length === 1 ? '' : 's'}
          <strong>${esc(nums)}</strong>. No new pieces are created and no number is used up.</p>

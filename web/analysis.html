@@ -3,22 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Analysis — DJ Network's</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-8">
-<script src="vendor/supabase.js?v=2026-09-07-8" defer></script>
-<script src="boot.js?v=2026-09-07-8" defer></script>
+<title>Numbers — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-07-9" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-07-9" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-07-9">
+<meta name="theme-color" content="#2B7379">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-07-9">
+<!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
+     not an @import, because an @import inside style.css would serialise the two fetches. -->
+<link rel="stylesheet" href="tokens.css?v=2026-09-07-9">
+<link rel="stylesheet" href="style.css?v=2026-09-07-9">
+<script src="vendor/supabase.js?v=2026-09-07-9" defer></script>
+<script src="boot.js?v=2026-09-07-9" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
-<main id="gate"><div class="signin" data-djn-boot><h1 class="signin__title">DJ Network's</h1>
+<main id="gate"><div class="signin" data-djn-boot><h1 class="signin__title"><span class="wordmark wordmark--lg"><span class="wordmark__dot" aria-hidden="true"></span><span class="wordmark__name"><span class="wordmark__lead">DJ</span> <span class="wordmark__rest">Network’s</span></span></span></h1>
   <p class="signin__sub">Starting up…</p></div></main>
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock,
-         initOffline, revealActiveTab }
-  from './app.js?v=2026-09-07-8';
+         initOffline, revealActiveTab, trackBadge }
+  from './app.js?v=2026-09-07-9';
 
 $('#chrome').innerHTML = chrome('analysis.html');
 revealActiveTab();
@@ -33,11 +40,11 @@ requireSession(async () => { await boot(); });
 
 async function boot() {
   $('#app').innerHTML = `
-    <h1>Analysis</h1>
+    <h1>Numbers</h1>
     <p class="sub">What earns, what sits, and what keeps breaking.</p>
     <div class="pill-row" id="tabs">
-      ${[['roi', 'Return'], ['util', 'Utilisation'], ['freq', 'Hire frequency'],
-         ['dead', 'Dead stock'], ['dmg', 'Damage rate']]
+      ${[['roi', 'What it earned'], ['util', 'How hard it works'], ['freq', 'How often it goes out'],
+         ['dead', 'Not moving'], ['dmg', 'Breakages']]
         .map(([k, l], i) => `<button class="btn btn--sm tab-btn${i === 0 ? ' btn--primary' : ''}"
           data-tab="${k}">${l}</button>`).join('')}
     </div>
@@ -175,7 +182,7 @@ function showUtil(panel) {
   // ---------------------------------------------------------------------------
   const suspect = rows.filter(r => r.noDate > 0);
   panel.innerHTML = `
-    <p class="field__hint">Days out over days owned, counted from actual dispatch and return
+    <p class="field__hint">Days out over days owned, counted from what actually went out and came back
       movements — never from the dates on an order. Needs no cost data, which is why it is the
       number that works first. Numbered pieces only — counted stock has no per-piece history.</p>
     ${suspect.length ? `<div class="note note--warn">
@@ -186,7 +193,7 @@ function showUtil(panel) {
     <div class="card scroll-x"><table class="data">
       <thead><tr><th>Product</th><th style="text-align:right">Pieces</th>
         <th style="text-align:right">Hires</th><th style="text-align:right">Days out</th>
-        <th style="text-align:right">Days owned</th><th style="text-align:right">Utilisation</th></tr></thead>
+        <th style="text-align:right">Days owned</th><th style="text-align:right">How hard it works</th></tr></thead>
       <tbody>${rows.length ? rows.map(r => `
         <tr>
           <td data-label="Product">${esc(pname(r.id))}</td>
@@ -195,7 +202,7 @@ function showUtil(panel) {
           <td data-label="Days out" style="text-align:right">${esc(r.days_out)}</td>
           <td data-label="Days owned" style="text-align:right">${esc(r.days_owned)}${
             r.noDate ? `<div class="item__meta">${esc(r.noDate)} with no purchase date</div>` : ''}</td>
-          <td data-label="Utilisation" style="text-align:right">${
+          <td data-label="How hard it works" style="text-align:right">${
             r.pct === null ? '<strong>—</strong>'
             : r.noDate
               // Not shown as a figure at all. A number printed in the same column as the real ones
@@ -224,19 +231,22 @@ function showFreq(panel) {
       for counted stock it counts quantity, because one job taking 40 cables is not the same event
       as one job taking one.</p>
     ${rows.length ? `<div class="card scroll-x"><table class="data">
-      <thead><tr><th>Product</th><th>Tracked as</th><th style="text-align:right">Dispatches</th>
+      <thead><tr><th>Product</th><th>Tracked as</th><th style="text-align:right">Times sent out</th>
         <th style="text-align:right">Total sent</th><th>Last out</th></tr></thead>
       <tbody>${rows.map(r => `
         <tr>
           <td data-label="Product">${esc(pname(r.p.id))}</td>
-          <td data-label="Tracked as"><span class="badge badge--${esc(r.p.tracking_mode)}">${esc(r.p.tracking_mode)}</span></td>
-          <td data-label="Dispatches" style="text-align:right">${esc(r.jobs)}</td>
+          <td data-label="Tracked as"><span class="badge badge--${esc(r.p.tracking_mode)}">${esc(trackBadge(r.p.tracking_mode))}</span></td>
+          <!-- data-label IS the row label below 620px, where the <thead> is hidden. It said
+               "Dispatches" while the column header two lines up said "Times sent out", so the
+               phone showed the schema word and the laptop showed the English one. -->
+          <td data-label="Times sent out" style="text-align:right">${esc(r.jobs)}</td>
           <td data-label="Total sent" style="text-align:right">${esc(r.qty)}${
             r.p.tracking_mode === 'unit' ? ' piece(s)' : ''}</td>
           <td data-label="Last out">${esc(fmtDate(r.last))}</td>
         </tr>`).join('')}</tbody></table></div>`
     : stateBlock({ icon: '📦', title: 'Nothing has gone out yet',
-        body: 'Hire frequency is counted from dispatch movements. It fills in as jobs happen.' })}`;
+        body: 'Counted from what has actually gone out. It fills in as jobs happen.' })}`;
 }
 
 function showDead(panel) {
@@ -251,13 +261,13 @@ function showDead(panel) {
 
   panel.innerHTML = `
     <p class="field__hint">Owned, and not hired out in ${DAYS} days. Counted from movements, so a
-      product with no dispatch ever is included — that is usually the more interesting case.</p>
+      product that has never gone out at all is included — that is usually the more interesting case.</p>
     ${rows.length ? `<div class="card scroll-x"><table class="data">
       <thead><tr><th>Product</th><th>Tracked as</th><th>Last hired</th></tr></thead>
       <tbody>${rows.map(r => `
         <tr>
           <td data-label="Product">${esc(pname(r.p.id))}${r.p.active ? '' : ' <span class="badge badge--muted">inactive</span>'}</td>
-          <td data-label="Tracked as"><span class="badge badge--${esc(r.p.tracking_mode)}">${esc(r.p.tracking_mode)}</span></td>
+          <td data-label="Tracked as"><span class="badge badge--${esc(r.p.tracking_mode)}">${esc(trackBadge(r.p.tracking_mode))}</span></td>
           <td data-label="Last hired">${r.never ? '<span class="badge badge--muted">never</span>' : esc(fmtDate(r.last))}</td>
         </tr>`).join('')}</tbody></table></div>`
     : stateBlock({ icon: '✅', title: `Everything has moved in the last ${DAYS} days`,
