@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pieces — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-2">
+<script src="boot.js?v=2026-09-07-2" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<!-- Real waiting state in the HTML. The module that paints everything else is itself loaded over
+     the network; see boot.js. -->
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title">DJ Network's</h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+<div id="sheet-host"></div>
+
+<script type="module">
+import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
+         openSheet, focusField, fmtDate, todayLocal, networkMessage }
+  from './app.js?v=2026-09-07-2';
+
+$('#chrome').innerHTML = chrome('units.html');
+
+// Every screen is product-first (rule 8). Chachu's stickers carry a bare piece number with no
+// product code, so a sticker alone identifies nothing — you pick the product, then the number.
+// There is deliberately no unit-ID entry point anywhere on this screen.
+
+let PRODUCTS = [], LOCS = [], STOCK = new Map(), SELECTED = null, UNITS = [];
+const COSTS = new Map();
+
+// Guards the one race that can lie about the shelf: pick product A, pick product B before A's
+// rows come back, and A's pieces render under B's heading. On a godown link that is not a
+// theoretical ordering problem, and the wrong answer is "these boxes are available".
+let bodyToken = 0;
+
+requireSession(async () => { await boot(); });
+
+async function boot() {
+  $('#app').innerHTML = `
+    <div class="row row--between">
+      <div><h1>Pieces &amp; intake</h1>
+        <p class="sub">Numbered boxes, and the fastest way to create a lot of them at once.</p></div>
+      <button class="btn btn--primary" id="bulk" hidden>Add pieces</button>
+    </div>
+    <div id="picker"></div>
+    <div id="body" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
+  $('#bulk').addEventListener('click', () => openBulk(SELECTED));
+  await load();
+}
+
+async function load() {
+  $('#body').className = 'skeleton';
+  $('#body').innerHTML = '<div class="skeleton__row"></div><div class="skeleton__row"></div>';
+  try {
+    const [prods, locs, stock] = await Promise.all([
+      sb.from('product').select('*').eq('active', true).order('short_code'),
+      // NOT filtered to active here. A piece standing at a location that was later deactivated
+      // still has to say where it is; filtering the lookup list made 'Where' read '—', which is
+      // the same thing the screen shows for a piece with no movement at all. Only the intake
+      // PICKER is restricted to active locations, further down.
+      sb.from('location').select('id,name,type,active').order('name'),
+      sb.from('v_product_stock').select('*'),
+    ]);
+    for (const r of [prods, locs, stock]) if (r.error) throw r.error;
+    // Only numbered-piece products have pieces at all. Offering a cable here would be offering
+    // to create piece numbers for something that has none (rule 13).
+    PRODUCTS = (prods.data ?? []).filter(p => p.tracking_mode === 'unit');
+    LOCS = locs.data ?? [];
+    STOCK = new Map((stock.data ?? []).map(s => [s.product_id, s]));
+
+    const wanted = new URLSearchParams(location.search).get('product');
+    SELECTED = PRODUCTS.find(p => p.id === wanted) ?? null;
+    renderPicker();
+    // A deep link that names a product this screen cannot show must say so. Silently falling
+    // back to "Pick a product" reads as a broken link.
+    if (wanted && !SELECTED && PRODUCTS.length) {
+      toast('That product is not tracked as numbered pieces, or is no longer active.', 'error');
+    }
+    await renderBody();
+  } catch (err) {
+    $('#body').className = '';
+    $('#body').innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', load);
+  }
+}
+
+function renderPicker() {
+  const host = $('#picker');
+  if (!PRODUCTS.length) { host.innerHTML = ''; return; }
+  host.innerHTML = `
+    <div class="row" style="margin-bottom:14px">
+      <label class="field grow" style="margin:0;max-width:520px">
+        <span class="field__label">Product</span>
+        <select class="field__select" id="p-select">
+          <option value="">Choose a product…</option>
+          ${PRODUCTS.map(p => `<option value="${esc(p.id)}" ${SELECTED?.id === p.id ? 'selected' : ''}>
+            ${esc(p.short_code)} — ${esc(p.brand ? p.brand + ' ' : '')}${esc(p.model_name)}</option>`).join('')}
+        </select>
+      </label>
+    </div>`;
+  $('#p-select').addEventListener('change', async e => {
+    SELECTED = PRODUCTS.find(p => p.id === e.target.value) ?? null;
+    $('#bulk').hidden = !SELECTED;
+    // Keep the URL honest so a refresh, a bookmark or a shared link lands on the same product.
+    const u = new URL(location.href);
+    if (SELECTED) u.searchParams.set('product', SELECTED.id); else u.searchParams.delete('product');
+    history.replaceState(null, '', u);
+    await renderBody();
+  });
+  $('#bulk').hidden = !SELECTED;
+}
+
+async function renderBody() {
+  const body = $('#body');
+  const token = ++bodyToken;
+
+  // Day-one state: no numbered products exist at all. This is the FIRST thing this screen ever
+  // shows in production, so it names what is missing and links to the thing that fixes it.
+  if (!PRODUCTS.length) {
+    body.className = '';
+    body.innerHTML = stateBlock({
+      icon: '🏷️',
+      title: 'No numbered products yet',
+      body: 'Pieces belong to a product, so a product has to exist first — and it has to be one tracked '
+          + 'as numbered pieces. Cables and fog fluid are counted instead, and never get piece numbers.',
+      actionLabel: 'Go to Products', actionId: 'go-products',
+    });
+    $('#go-products').addEventListener('click', () => location.href = 'products.html?new=1');
+    return;
+  }
+
+  if (!SELECTED) {
+    body.className = '';
+    body.innerHTML = stateBlock({
+      icon: '👆',
+      title: 'Pick a product',
+      body: 'Pieces are always found through their product — a sticker carries a bare number like “3”, '
+          + 'which on its own belongs to nothing.',
+    });
+    return;
+  }
+
+  body.className = 'skeleton';
+  body.innerHTML = '<div class="skeleton__row"></div><div class="skeleton__row"></div>';
+
+  // Status comes from the view; purchase_cost is a plain master field on unit and is read
+  // alongside it. The client merges them for display and derives nothing.
+  const [statusRes, costRes] = await Promise.all([
+    sb.from('v_unit_status')
+      .select('unit_id,piece_no,condition,lifecycle,status,at_kind,at_id,last_moved_on,days_in_place')
+      .eq('product_id', SELECTED.id)
+      .order('piece_no'),
+    sb.from('unit').select('id,purchase_cost').eq('product_id', SELECTED.id),
+  ]);
+
+  if (token !== bodyToken) return;   // a newer product was picked while this was in flight
+
+  // Both reads are checked. costRes.error used to be dropped on the floor, and a failed cost
+  // query is indistinguishable from every piece having no cost recorded — a whole column of
+  // em-dashes that looks like data rather than like a failure.
+  if (statusRes.error || costRes.error) {
+    body.className = '';
+    body.innerHTML = errorBlock(statusRes.error || costRes.error, 'retry2');
+    $('#retry2').addEventListener('click', renderBody);
+    return;
+  }
+
+  COSTS.clear();
+  for (const c of (costRes.data ?? [])) COSTS.set(c.id, c.purchase_cost);
+  UNITS = statusRes.data ?? [];
+  body.className = '';
+
+  // A product that exists but has no pieces yet — the state right after adding a product.
+  if (!UNITS.length) {
+    body.innerHTML = stateBlock({
+      icon: '📦',
+      title: `${SELECTED.short_code} has no pieces yet`,
+      body: 'Add them all at once: enter how many, pick where they live, and each one is numbered and '
+          + 'given an opening movement so it can never exist without a location.',
+      actionLabel: 'Add pieces', actionId: 'empty-bulk',
+    });
+    $('#empty-bulk').addEventListener('click', () => openBulk(SELECTED));
+    return;
+  }
+
+  const s = STOCK.get(SELECTED.id);
+  const locName = id => LOCS.find(l => l.id === id)?.name ?? 'an unknown location';
+  const where = u => u.at_kind === 'location' ? locName(u.at_id)
+    : u.at_kind === 'customer' ? 'with a customer'
+    : u.at_kind === 'vendor' ? 'at a repair shop' : 'no movement recorded';
+
+  // Bulk create writes N units and then N movements in two PostgREST calls, and PostgREST cannot
+  // wrap two tables in one transaction. If the second call fails the pieces exist with no
+  // location — and unit rows can never be deleted (0007). v_unit_status calls that `not_recorded`.
+  // Derived from the view rather than remembered from the failed submit, so it survives a refresh
+  // and is still there tomorrow morning.
+  const stranded = UNITS.filter(u => u.status === 'not_recorded');
+
+  body.innerHTML = `
+    ${stranded.length ? `<div class="note note--bad" style="margin-bottom:12px">
+      ${stranded.length === 1 ? 'Piece' : 'Pieces'}
+      ${esc(stranded.map(u => u.piece_no).join(', '))}
+      ${stranded.length === 1 ? 'has' : 'have'} no location recorded, so
+      ${stranded.length === 1 ? 'it is' : 'they are'} counted neither on the shelf nor out.
+      This happens when the pieces are created but their opening movement is not.
+      <div style="margin-top:10px"><button class="btn" id="fix-stranded" type="button">Set their location</button></div>
+    </div>` : ''}
+    <div class="stats">
+      ${[['On the shelf', s?.units_on_hand ?? 0], ['Out', s?.units_out ?? 0],
+         ['At repair', s?.units_at_repair ?? 0], ['Retired', s?.units_retired ?? 0],
+         ['Lost', s?.units_lost ?? 0]]
+        .map(([k, v]) => `<div class="card">
+          <div class="item__meta">${esc(k)}</div><div class="stat__n">${v}</div></div>`).join('')}
+    </div>
+    <div class="card table-wrap scroll-x">
+      <table class="data">
+        <thead><tr><th>Piece</th><th>Status</th><th>Where</th><th>Condition</th><th>Since</th><th>Cost</th></tr></thead>
+        <tbody>${UNITS.map(u => `
+          <tr>
+            <td data-label="Piece"><strong>${esc(u.piece_no)}</strong></td>
+            <td data-label="Status"><span class="badge badge--${esc(u.status)}">${esc(u.status.replace('_', ' '))}</span></td>
+            <td data-label="Where">${esc(where(u))}</td>
+            <td data-label="Condition">${esc((u.condition || '').replace('_', ' '))}</td>
+            <!-- One element, not a text node plus a span: on a phone the cell is a two-column
+                 grid and a bare text node made the "(24d)" a third grid item on its own line. -->
+            <td data-label="Since"><span>${esc(fmtDate(u.last_moved_on))}${
+              u.days_in_place != null ? ` <span class="item__meta">(${esc(u.days_in_place)}d)</span>` : ''}</span></td>
+            <td data-label="Cost">${esc(unitCost(u.unit_id))}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <p class="field__hint">A piece is out because no return has been recorded against it — never because a
+      date has passed. Piece numbers are never reused: a retired or lost number stays dead.</p>`;
+
+  $('#fix-stranded')?.addEventListener('click', () => openSetLocation(stranded));
+}
+
+const unitCost = id => (COSTS.get(id) ?? null) === null ? '—' : money(COSTS.get(id));
+
+/** Active locations only — the ones a piece can actually be put into today. */
+const activeLocs = () => LOCS.filter(l => l.active);
+
+const locationField = (id) => activeLocs().length
+  ? `<select class="field__select" id="${id}">
+       ${activeLocs().map(l => `<option value="${esc(l.id)}">${esc(l.name)} (${esc(l.type)})</option>`).join('')}
+     </select>`
+  // Without this the select rendered with zero options and the only feedback was a toast saying
+  // "Pick a location" over an empty dropdown — a dead end, because there is no Locations screen
+  // yet to go and fix it on.
+  : `<div class="note note--warn">There are no active locations, so a piece has nowhere to be put.
+       Add one in Supabase (table <code>location</code>) before creating pieces.</div>`;
+
+// ---------------------------------------------------------------------------
+// BULK CREATE — the primary path, and the thing that makes intake survivable.
+//
+// docs/structure.md form 3: enter the product once, answer "how many pieces?", and six units
+// appear numbered sequentially at a location set once, each inheriting the product's default cost.
+// Hundreds of boxes become roughly 150 product rows and a number. Demanding a serial number and a
+// rupee figure per box during the godown walk is exactly the task that stalls at unit 40.
+// ---------------------------------------------------------------------------
+
+let bulkOpening = false;
+
+async function openBulk(product) {
+  if (!product) { toast('Pick a product first.', 'error'); return; }
+  if (bulkOpening) return;             // two taps on a slow link opened two sheets
+  bulkOpening = true;
+
+  // The sheet cannot be drawn until the database says which numbers are free, and on a bad link
+  // that wait is seconds long. Say so on the button rather than leaving it looking tappable and
+  // dead.
+  const trigger = $('#bulk');
+  const triggerText = trigger?.textContent;
+  if (trigger) { trigger.disabled = true; trigger.textContent = 'Opening…'; }
+  const restore = () => {
+    bulkOpening = false;
+    if (trigger) { trigger.disabled = false; trigger.textContent = triggerText; }
+  };
+
+  // Piece numbers continue from the highest ever used, so a retired or lost number is skipped
+  // rather than reissued (rule 4: history stays attached to the physical object).
+  const { data: existing, error } = await sb.from('unit')
+    .select('piece_no,lifecycle').eq('product_id', product.id).order('piece_no', { ascending: false });
+  restore();
+  if (error) { toast(networkMessage(error) ?? friendlyUnit(error), 'error'); return; }
+
+  const highest = existing?.length ? existing[0].piece_no : 0;
+  const dead = (existing ?? []).filter(u => u.lifecycle !== 'active').map(u => u.piece_no);
+  const nextNo = highest + 1;
+  const canCreate = activeLocs().length > 0;
+
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="bulk-title" tabindex="-1">
+      <div class="sheet__head">
+        <h2 class="sheet__title" id="bulk-title">Add pieces — ${esc(product.short_code)}</h2>
+        <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
+      </div>
+
+      <div class="grid2">
+        <label class="field"><span class="field__label">How many pieces? *</span>
+          <input class="field__input" id="f-count" type="number" min="1" max="200" step="1"
+                 inputmode="numeric" enterkeyhint="done" value="1">
+          <span class="field__hint">Up to 200 at a time.</span>
+        </label>
+        <label class="field"><span class="field__label">Where do they live? *</span>
+          ${locationField('f-loc')}
+          <span class="field__hint">Each piece gets an opening movement here, so none exists without a location.</span>
+        </label>
+      </div>
+
+      <div class="note" id="preview"></div>
+      ${dead.length ? `<div class="note note--warn" style="margin-top:10px">
+        Piece ${dead.length === 1 ? 'number' : 'numbers'} ${esc(dead.join(', '))}
+        ${dead.length === 1 ? 'is' : 'are'} retired or lost and will not be reused. Numbering continues from ${esc(nextNo)}.
+      </div>` : ''}
+
+      <div class="grid2" style="margin-top:14px">
+        <label class="field"><span class="field__label">Purchase cost each (₹)</span>
+          <input class="field__input" id="f-cost" type="number" step="0.01" min="0" inputmode="decimal"
+                 value="${esc(product.default_purchase_cost ?? '')}">
+          <span class="field__hint">Inherited from the product so nothing is ever blank. Correct it per piece later.</span>
+        </label>
+        <label class="field"><span class="field__label">Purchase date</span>
+          <!-- max=today: a mistyped year puts the purchase in the future, and v_unit_utilisation
+               divides by days owned. -->
+          <input class="field__input" id="f-date" type="date" max="${todayLocal()}">
+        </label>
+        <label class="field"><span class="field__label">Condition</span>
+          <select class="field__select" id="f-cond">
+            ${['good', 'minor_wear', 'needs_attention', 'damaged', 'not_working']
+              .map(c => `<option value="${c}">${c.replace('_', ' ')}</option>`).join('')}
+          </select>
+          <span class="field__hint">How the box actually is. Separate from where it is (rule 3).</span>
+        </label>
+        <label class="field"><span class="field__label">Ownership</span>
+          <select class="field__select" id="f-own">
+            <option value="owned">owned</option><option value="sub_hired">sub-hired</option>
+          </select>
+        </label>
+      </div>
+      <label class="field"><span class="field__label">Note (applied to every piece)</span>
+        <input class="field__input" id="f-notes" placeholder="e.g. bought from Sound Center, Sept 2026"></label>
+
+      <div class="sheet__foot">
+        <button class="btn" data-sheet-close type="button">Cancel</button>
+        <button class="btn btn--primary" id="create" type="button" ${canCreate ? '' : 'disabled'}>Create pieces</button>
+      </div>
+    </div>
+  </div>`);
+
+  const clampCount = () => {
+    const el = $('#f-count');
+    const n = Math.max(1, Math.min(200, Math.floor(Number(el.value) || 1)));
+    // Written back into the field, so what he reads and what the preview promises can never
+    // disagree — typing 500 used to leave "500" on screen under a preview offering 200.
+    if (String(n) !== el.value) el.value = String(n);
+    return n;
+  };
+
+  // Exactly what is about to be written, in the numbers it will be written under, before he taps.
+  const drawPreview = (n) => {
+    $('#preview').innerHTML = n === 1
+      ? `This creates <strong>piece ${nextNo}</strong> — one new box, numbered and given an opening movement.`
+      : `This creates <strong>${n} pieces, numbered ${nextNo} to ${nextNo + n - 1}</strong>,
+         each with an opening movement.`;
+  };
+  // Clamping on every keystroke fights the operator mid-type ("20" becomes "2" then "20"), so the
+  // preview follows him while typing and the field is corrected only when he leaves it.
+  $('#f-count').addEventListener('input', () =>
+    drawPreview(Math.max(1, Math.min(200, Math.floor(Number($('#f-count').value) || 1)))));
+  $('#f-count').addEventListener('change', () => drawPreview(clampCount()));
+  drawPreview(clampCount());
+
+  $('#create')?.addEventListener('click', async () => {
+    const btn = $('#create');
+    if (btn.disabled) return;          // the guard against a double tap landing twice
+    const n = clampCount();
+    const locId = $('#f-loc')?.value;
+    if (!locId) { toast('Pick a location.', 'error'); focusField('#f-loc'); return; }
+
+    const cost = $('#f-cost').value === '' ? null : Number($('#f-cost').value);
+    const date = $('#f-date').value || null;
+    const units = Array.from({ length: n }, (_, i) => ({
+      product_id: product.id,
+      piece_no: nextNo + i,
+      purchase_cost: cost,
+      purchase_date: date,
+      condition: $('#f-cond').value,
+      ownership: $('#f-own').value,
+      notes: $('#f-notes').value.trim() || null,
+    }));
+
+    btn.disabled = true; btn.textContent = 'Creating…';
+    const reenable = () => { btn.disabled = false; btn.textContent = 'Create pieces'; };
+
+    let ins;
+    try {
+      ins = await sb.from('unit').insert(units).select('id,piece_no');
+    } catch (thrown) { ins = { error: thrown }; }
+    if (ins.error) {
+      reenable();
+      toast(networkMessage(ins.error) ?? friendlyUnit(ins.error), 'error');
+      return;
+    }
+
+    // Opening movements. PostgREST cannot wrap two tables in one transaction, so if this second
+    // write fails the pieces exist without a location — and unit rows cannot be deleted (0007).
+    // That is reported precisely rather than swallowed, and the pieces it strands are picked up
+    // again by the `not_recorded` banner in renderBody, which reads the view rather than trusting
+    // anything this submit remembered.
+    const movements = ins.data.map(u => ({
+      movement_type: 'intake',
+      unit_id: u.id,
+      product_id: product.id,
+      qty: 1,
+      to_kind: 'location',
+      to_id: locId,
+      // Explicit, not the column default. The default is the SERVER's current_date, which is UTC:
+      // anything entered before 05:30 IST would be filed under yesterday, and a rental day is a
+      // calendar convention, not a clock one.
+      moved_on: todayLocal(),
+      notes: 'opening stock',
+    }));
+    let mv;
+    try {
+      mv = await sb.from('movement').insert(movements);
+    } catch (thrown) { mv = { error: thrown }; }
+
+    const first = ins.data[0].piece_no, last = ins.data[ins.data.length - 1].piece_no;
+    if (mv.error) {
+      sheet.close();
+      await load();
+      toast(`${ins.data.length === 1 ? `Piece ${first} was` : `Pieces ${first}–${last} were`} created, `
+          + `but the location could not be saved. Use “Set their location” on the red banner to finish. `
+          + `Do not add them again — the numbers are already used.`, 'error');
+      return;
+    }
+
+    toast(n === 1 ? `Piece ${nextNo} created.` : `${n} pieces created, numbered ${nextNo}–${nextNo + n - 1}.`);
+    sheet.close();
+    await load();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The repair path for a half-finished intake.
+//
+// Rule 4 means the piece numbers cannot be given back and 0007 means the rows cannot be deleted,
+// so "try again" is the wrong instruction — it would burn a second block of numbers on the same
+// boxes. The only correct fix is to give the pieces that already exist their opening movement,
+// which is exactly what this does.
+// ---------------------------------------------------------------------------
+
+function openSetLocation(stranded) {
+  const nums = stranded.map(u => u.piece_no).join(', ');
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="loc-title" tabindex="-1">
+      <div class="sheet__head">
+        <h2 class="sheet__title" id="loc-title">Set location — ${esc(SELECTED.short_code)}</h2>
+        <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
+      </div>
+      <p>Records an opening movement for piece${stranded.length === 1 ? '' : 's'}
+         <strong>${esc(nums)}</strong>. No new pieces are created and no number is used up.</p>
+      <label class="field"><span class="field__label">Where are they? *</span>
+        ${locationField('f-fixloc')}</label>
+      <div class="sheet__foot">
+        <button class="btn" data-sheet-close type="button">Cancel</button>
+        <button class="btn btn--primary" id="fix-go" type="button"
+          ${activeLocs().length ? '' : 'disabled'}>Record location</button>
+      </div>
+    </div>
+  </div>`);
+
+  $('#fix-go')?.addEventListener('click', async () => {
+    const btn = $('#fix-go');
+    if (btn.disabled) return;
+    const locId = $('#f-fixloc')?.value;
+    if (!locId) { toast('Pick a location.', 'error'); focusField('#f-fixloc'); return; }
+    btn.disabled = true; btn.textContent = 'Saving…';
+    let res;
+    try {
+      res = await sb.from('movement').insert(stranded.map(u => ({
+        movement_type: 'intake',
+        unit_id: u.unit_id,
+        product_id: SELECTED.id,
+        qty: 1,
+        to_kind: 'location',
+        to_id: locId,
+        moved_on: todayLocal(),
+        notes: 'opening stock (recorded after intake)',
+      })));
+    } catch (thrown) { res = { error: thrown }; }
+    if (res.error) {
+      btn.disabled = false; btn.textContent = 'Record location';
+      toast(networkMessage(res.error) ?? friendlyUnit(res.error), 'error');
+      return;
+    }
+    toast(stranded.length === 1 ? `Piece ${nums} now has a location.` : `Pieces ${nums} now have a location.`);
+    sheet.close();
+    await load();
+  });
+}
+
+function friendlyUnit(e) {
+  const m = e.message || String(e);
+  if (m.includes('unit_product_id_piece_no_key'))
+    return 'One of those piece numbers already exists. Close this and open “Add pieces” again — '
+         + 'numbering restarts from the highest number used.';
+  if (m.includes('cannot be read from this session'))
+    return 'That product could not be read. Sign in again, or reload — it may have been edited elsewhere.';
+  if (e.code === '42501' || m.includes('row-level security'))
+    return 'You are not signed in, or the session expired. Sign in again.';
+  return m;
+}
+
+// Test hook — lets the empty states be exercised for real rather than reasoned about.
+window.__djn = {
+  showNoProducts() { PRODUCTS = []; SELECTED = null; renderPicker(); renderBody(); },
+  showNoPieces() { UNITS = []; SELECTED = PRODUCTS[0] ?? SELECTED; renderPicker(); renderBody(); },
+  reload: load,
+};
+</script>
+</body>
+</html>

@@ -157,6 +157,41 @@ deleted. Harmless, but they read as live paths to anyone tracing what a delete w
 
 ---
 
+## Screens (prompt 6 and after)
+
+**Offline is unimplemented end to end, and the CDN is a hard dependency at boot.** Every screen's
+code is a module whose first line imports the Supabase client from jsdelivr; with the CDN
+unreachable the browser discards the whole module graph in silence. `web/boot.js` now turns that
+into a sentence the operator can act on, but it cannot make the app work — there is no service
+worker and no local copy of the client. `docs/structure.md` form 7 requires dispatch and return to
+queue offline in IndexedDB and sync on reconnect, so this blocks prompt 9. Vendoring the client
+conflicts with keeping it pinned on a CDN, and a service worker is an architecture decision rather
+than a fix.
+
+**No per-piece edit and no lifecycle transitions.** Bulk intake applies one condition, one cost and
+one note to every piece it creates, which is the point of bulk — but nothing anywhere can then edit
+a single piece. A serial number can never be entered (form 3 lists it as a field), a condition can
+never be updated after intake, and nothing can be retired, marked lost, or found. Rules 4 and 12
+both assume those transitions exist.
+
+**`publicUrl()` still accepts an external `http` image URL.** `docs/decisions.md` says product
+images are stored, never linked — a WhatsApp or Drive URL rots and the customer portal then shows a
+broken product. The branch presumably exists for the Sheet importer. Decide whether the importer
+fetches and stores, in which case this branch should go.
+
+**Editing `specs` coerces jsonb values to strings.** Values are read into text inputs and saved back
+with `isNaN(Number(v)) ? v : Number(v)`, so a nested object becomes the literal `[object Object]`
+and the `powered` boolean in the Speaker template becomes the string `"true"`. Silent lossy editing
+of a jsonb column; the right shape depends on what the catalogue importer actually produces.
+
+**`v_product_roi` has no cost basis for pooled or consumable products.** Purchase cost is summed
+from `unit` rows, and pool and consumable products have none — so CBL-XLR reads
+`rental_revenue 8160.00` against `purchase_cost 0` and `roi_pct` NULL, and always will. `pool_qty ×
+default_purchase_cost` is the obvious denominator. This is rule 13 arriving in the ROI report, and
+it was not touched by `0012`, which was scoped to the lifetime-versus-current-fleet question.
+
+---
+
 ## Housekeeping
 
 **Nothing answers "where was this piece on date X".** Every position view is current-state only —

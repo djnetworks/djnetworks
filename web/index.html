@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DJ Network's — Rental System</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-2">
+<script src="boot.js?v=2026-09-07-2" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<!-- The waiting state is in the HTML, not painted by JavaScript, because the JavaScript is what
+     we are waiting for. See boot.js: with the CDN unreachable this page used to be a blank grey
+     rectangle for ever, and on a slow link it was blank for three seconds every time. -->
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title">DJ Network's</h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+
+<script type="module">
+import { sb, $, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate }
+  from './app.js?v=2026-09-07-2';
+
+$('#chrome').innerHTML = chrome('index.html');
+
+requireSession(async () => {
+  const app = $('#app');
+  app.innerHTML = `<h1>Today</h1>
+    <p class="sub">What is out, what is late, and what is on the shelf.</p>
+    <!-- Four skeleton tiles in the same grid the real tiles use, so nothing jumps when the
+         numbers arrive. A one-row skeleton followed by four stacked cards moved the buttons
+         below it 300px down the page. -->
+    <div id="summary" class="stats">
+      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
+      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
+      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
+      <div class="card"><div class="skeleton__row" style="height:44px"></div></div>
+    </div>
+    <div id="extra"></div>
+    <div class="row" style="margin-top:18px">
+      <a class="btn btn--primary" href="products.html">Products</a>
+      <a class="btn" href="units.html">Pieces &amp; intake</a>
+    </div>`;
+
+  try {
+    // Everything derived is read from a view. Nothing here counts anything itself (rule 10);
+    // the reduces below only add up rows the database already decided.
+    const [{ data: fulfil, error: e1 }, { data: outstanding, error: e2 }, { data: stock, error: e3 }] =
+      await Promise.all([
+        sb.from('v_order_fulfilment').select('order_id,order_no,fulfilment_state'),
+        sb.from('v_order_outstanding')
+          .select('order_id,order_no,short_code,piece_no,qty_outstanding,days_overdue,expected_return_date'),
+        // tracking_mode is not decoration here — see the split below. Without it these columns
+        // cannot be read at all.
+        sb.from('v_product_stock')
+          .select('product_id,tracking_mode,units_active,units_on_hand,units_out,units_at_repair'),
+      ]);
+    if (e1 || e2 || e3) throw (e1 || e2 || e3);
+
+    const rows = stock ?? [];
+
+    // -----------------------------------------------------------------------
+    // THE SPLIT BY TRACKING MODE, AND WHY THERE HAS TO BE ONE.
+    //
+    // v_product_stock keeps one set of column names across all three modes, and 0008's own
+    // comment says so plainly: units_on_hand is a count of boxes for `unit`, a quantity of
+    // cables for `pool`, and litres of fog fluid for `consumable`. Adding them produced a single
+    // figure captioned "On the shelf" in which 200 XLR cables buried 40 speakers, and
+    // units_out for a consumable is a cumulative issued-and-gone total — fog fluid burned at a
+    // wedding in March was still being reported as out with a customer. Rule 13, arriving
+    // through the front end: a path that treats all three modes as one number reports a
+    // confident wrong figure, which is the worst kind.
+    // -----------------------------------------------------------------------
+    const sum = (list, col) => list.reduce((n, r) => n + (r[col] ?? 0), 0);
+    const unitRows = rows.filter(r => r.tracking_mode === 'unit');
+    const poolRows = rows.filter(r => r.tracking_mode === 'pool');
+    const consRows = rows.filter(r => r.tracking_mode === 'consumable');
+
+    const onHand = sum(unitRows, 'units_on_hand');
+    const out    = sum(unitRows, 'units_out');
+    const repair = sum(unitRows, 'units_at_repair');
+    const pieces = sum(unitRows, 'units_active');
+
+    const late = (outstanding ?? []).filter(r => (r.days_overdue ?? 0) > 0);
+    // Overdue is a chasing job and the thing chased is an ORDER — one telephone call clears a
+    // whole order. Counting rows would have said "1" for fifteen cables on one job, and "6" for
+    // six boxes on one job. Neither is the number of calls to make.
+    const lateOrders = new Set(late.map(r => r.order_id));
+
+    if (!fulfil?.length && !rows.length) {
+      $('#summary').className = '';
+      $('#summary').innerHTML = stateBlock({
+        icon: '📦',
+        title: 'Nothing in the system yet',
+        body: 'No products, no pieces, no orders. Start with the product master — everything else hangs off it.',
+        actionLabel: 'Add the first product', actionId: 'go-products',
+      });
+      $('#go-products')?.addEventListener('click', () => location.href = 'products.html?new=1');
+      return;
+    }
+
+    $('#summary').className = 'stats';
+    $('#summary').innerHTML = [
+      ['On the shelf', onHand, ''],
+      ['Out with customers', out, ''],
+      ['At a repair shop', repair, ''],
+      ['Orders overdue', lateOrders.size, lateOrders.size ? 'bad' : ''],
+    ].map(([label, n, tone]) => `
+      <div class="card">
+        <div class="item__meta">${esc(label)}</div>
+        <div class="stat__n${tone === 'bad' ? ' stat__n--bad' : ''}">${n}</div>
+      </div>`).join('');
+
+    const extra = $('#extra');
+    let html = '';
+
+    // Numbered pieces only, said out loud, so nobody reads the tiles as the whole fleet.
+    html += `<p class="field__hint" style="margin:-6px 0 14px">Numbered pieces only.`;
+    if (poolRows.length || consRows.length) {
+      const poolOn = sum(poolRows, 'units_on_hand');
+      const poolOut = sum(poolRows, 'units_at_repair') + sum(poolRows, 'units_out');
+      const consOn = sum(consRows, 'units_on_hand');
+      html += ` Counted stock is separate: ${poolOn} on the shelf`
+        + (poolOut ? `, ${poolOut} away` : '')
+        + (consRows.length ? ` · ${consOn} consumable items in stock` : '') + '.';
+    }
+    html += `</p>`;
+
+    // The day-two state: products entered on the laptop, no boxes numbered yet. Four zeros with
+    // no next action is a dead end, and this is the walk round the godown that has to happen.
+    if (unitRows.length && pieces === 0) {
+      html += `<div class="card">
+        <h2 style="font-size:16px;margin:0 0 6px">No pieces yet</h2>
+        <p class="field__hint" style="margin:0 0 12px">${unitRows.length} product${unitRows.length === 1 ? ' is' : 's are'}
+          tracked as numbered pieces, but no boxes have been created. Bulk intake numbers them in one go.</p>
+        <a class="btn btn--primary" href="units.html">Add pieces</a>
+      </div>`;
+    }
+
+    if (late.length) {
+      // Overdue and out are different problems: out is normal, overdue is a call to make. This
+      // block is the call list, so it carries the order number and the customer's due date —
+      // a product code and a piece number alone cannot be acted on.
+      const SHOWN = 5;
+      const lines = late.slice(0, SHOWN).map(r => `<li>
+        <strong>${esc(r.order_no ?? '—')}</strong> · ${esc(r.short_code)}${
+          r.piece_no ? ' piece ' + esc(r.piece_no) : ' ×' + esc(r.qty_outstanding)}
+        — <span class="num">${esc(r.days_overdue)}</span> day${r.days_overdue === 1 ? '' : 's'} late,
+        due ${esc(fmtDate(r.expected_return_date))}</li>`).join('');
+      html += `<div class="card">
+        <h2 style="font-size:16px;margin:0 0 8px">Overdue</h2>
+        <ul style="margin:0;padding-left:20px">${lines}</ul>
+        ${late.length > SHOWN
+          // Silently cutting the list at five hides the rest of the problem.
+          ? `<p class="field__hint">Showing ${SHOWN} of ${late.length} overdue items,
+             across ${lateOrders.size} order${lateOrders.size === 1 ? '' : 's'}.</p>`
+          : ''}
+        <p class="field__hint">An item is late because no return has been recorded — never because a date passed.</p>
+      </div>`;
+    }
+
+    extra.innerHTML = html;
+  } catch (err) {
+    $('#summary').className = '';
+    $('#summary').innerHTML = errorBlock(err, 'retry-home');
+    $('#retry-home')?.addEventListener('click', () => location.reload());
+  }
+});
+</script>
+</body>
+</html>

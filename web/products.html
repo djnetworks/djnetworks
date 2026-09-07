@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Products — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-2">
+<script src="boot.js?v=2026-09-07-2" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<!-- Real waiting state in the HTML. The module that paints everything else is itself loaded
+     over the network; see boot.js. -->
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title">DJ Network's</h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+<div id="sheet-host"></div>
+
+<script type="module">
+import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
+         openSheet, focusField, networkMessage }
+  from './app.js?v=2026-09-07-2';
+
+$('#chrome').innerHTML = chrome('products.html');
+
+// ---------------------------------------------------------------------------
+// Spec templates, keyed by category name.
+//
+// specs is jsonb precisely so this list can change without a migration — a speaker has wattage and
+// SPL, a moving head has gobos and DMX channels, and a fixed column set would be mostly empty and
+// would grow a column every time a new category is bought (docs/structure.md, form 2).
+//
+// These are PROMPTS, not a schema. The form offers them, pre-fills nothing, and always allows
+// arbitrary extra keys — so a spec nobody anticipated can still be recorded, and a category with no
+// template here still works.
+// ---------------------------------------------------------------------------
+const SPEC_TEMPLATES = {
+  'Speaker':            ['watts', 'spl_db', 'driver_inch', 'powered', 'weight_kg'],
+  'Amplifier':          ['watts_per_channel', 'channels', 'ohms', 'rack_u'],
+  'Mixer':              ['channels', 'aux_sends', 'fx', 'phantom_power'],
+  'Microphone':         ['type', 'band_mhz', 'channels', 'polar_pattern'],
+  'Mic accessory':      ['fits', 'material'],
+  'DJ':                 ['channels', 'media', 'software'],
+  'Lighting - moving':  ['watts', 'gobos', 'dmx_channels', 'beam_angle'],
+  'Lighting - static':  ['watts', 'leds', 'dmx_channels'],
+  'Lighting - effect':  ['watts', 'coverage_m', 'dmx_channels'],
+  'Lighting - control': ['channels', 'universes'],
+  'Signal':             ['channels', 'connector'],
+  'Playback':           ['formats', 'outputs'],
+  'Visual':             ['resolution', 'lumens', 'size_ft'],
+  'Effects':            ['tank_litres', 'coverage_m', 'warmup_min'],
+  'Truss':              ['length_m', 'section', 'load_kg'],
+  'Stand & rigging':    ['max_height_m', 'load_kg'],
+  'Stage':              ['size_ft', 'height_adjustable', 'load_kg_sqm'],
+  'Power':              ['kva', 'phase', 'fuel'],
+  'Cable':              ['length_m', 'connector', 'gauge'],
+  'Backline - keys':    ['keys', 'weighted', 'sounds'],
+  'Backline - drums':   ['pieces', 'sizes', 'hardware_included'],
+  'Backline - guitar':  ['watts', 'speaker_inch', 'channels'],
+  'Case & transport':   ['fits', 'wheels', 'internal_size'],
+  'Consumable':         ['litres', 'shelf_life_months'],
+  'Tool & spare':       ['fits'],
+};
+
+const TRACKING_HELP = {
+  unit: 'Numbered pieces with stickers. Every box has its own history, and pieces are created on the Pieces screen.',
+  pool: 'Counted, never numbered — cables, stands, clamps. One quantity, no piece numbers, no stickers.',
+  consumable: 'Issued and charged, never expected back — fog fluid, tape, batteries. A quantity that depletes.',
+};
+
+let CATS = [], SUBS = [], PRODUCTS = [], STOCK = new Map();
+
+requireSession(async () => { await boot(); });
+
+async function boot() {
+  const app = $('#app');
+  app.innerHTML = `
+    <div class="row row--between">
+      <div><h1>Products</h1><p class="sub" id="count-line">The rentable things. Pick a product, then a piece.</p></div>
+      <button class="btn btn--primary" id="new-product">Add product</button>
+    </div>
+    <div class="row" id="filters" hidden>
+      <input class="field__input grow" id="q" type="search" placeholder="Search code, brand or model…"
+             autocapitalize="none" spellcheck="false">
+      <select class="field__select" id="f-mode" style="max-width:200px">
+        <option value="">All tracking modes</option>
+        <option value="unit">Numbered pieces</option>
+        <option value="pool">Counted (pool)</option>
+        <option value="consumable">Consumable</option>
+      </select>
+    </div>
+    <div id="list" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
+
+  $('#new-product').addEventListener('click', () => openEditor(null));
+  $('#q').addEventListener('input', renderList);
+  $('#f-mode').addEventListener('change', renderList);
+
+  await load();
+  if (new URLSearchParams(location.search).get('new') === '1') openEditor(null);
+}
+
+async function load() {
+  try {
+    // Four requests, not five: `location` was fetched on every load and never read by anything
+    // on this screen. A wasted round-trip is a wasted second on a godown link.
+    const [cats, subs, prods, stock] = await Promise.all([
+      sb.from('category').select('id,name,sort_order').eq('active', true).order('sort_order'),
+      sb.from('subcategory').select('id,category_id,name,sort_order').eq('active', true).order('sort_order'),
+      // product is a master table, read directly. Derived numbers come from the view below —
+      // the client never counts pieces itself.
+      sb.from('product').select('*').order('short_code'),
+      sb.from('v_product_stock').select('*'),
+    ]);
+    for (const r of [cats, subs, prods, stock]) if (r.error) throw r.error;
+    CATS = cats.data ?? []; SUBS = subs.data ?? []; PRODUCTS = prods.data ?? [];
+    STOCK = new Map((stock.data ?? []).map(s => [s.product_id, s]));
+    renderList();
+  } catch (err) {
+    $('#list').className = '';
+    $('#list').innerHTML = errorBlock(err, 'retry-list');
+    $('#retry-list')?.addEventListener('click', load);
+  }
+}
+
+function renderList() {
+  const list = $('#list');
+  list.className = 'list';
+
+  // The catalogue is empty on day one in production, so this is the FIRST thing the screen
+  // ever shows. It has to say what is missing and offer the action that fixes it.
+  if (!PRODUCTS.length) {
+    $('#filters').hidden = true;
+    $('#count-line').textContent = 'Nothing listed yet.';
+    list.className = '';
+    list.innerHTML = stateBlock({
+      icon: '🎛️',
+      title: 'The catalogue is empty',
+      body: 'Hundreds of items exist in the godown and none are listed yet. Add one product to begin — '
+          + 'or import the whole catalogue from the Google Sheet, which is the faster path for a large fleet.',
+      actionLabel: 'Add the first product', actionId: 'empty-new',
+    });
+    $('#empty-new').addEventListener('click', () => openEditor(null));
+    return;
+  }
+
+  $('#filters').hidden = false;
+  const q = ($('#q').value || '').trim().toLowerCase();
+  const mode = $('#f-mode').value;
+  const rows = PRODUCTS.filter(p => {
+    if (mode && p.tracking_mode !== mode) return false;
+    if (!q) return true;
+    return [p.short_code, p.brand, p.model_name, p.model_number].some(v => (v || '').toLowerCase().includes(q));
+  });
+
+  $('#count-line').textContent =
+    `${rows.length} of ${PRODUCTS.length} product${PRODUCTS.length === 1 ? '' : 's'}.`;
+
+  // Filtered-to-nothing is a DIFFERENT state from an empty catalogue, and says so.
+  if (!rows.length) {
+    list.className = '';
+    list.innerHTML = stateBlock({
+      icon: '🔍',
+      title: 'No product matches that',
+      body: `Nothing matches ${q ? `“${q}”` : 'this filter'}. The catalogue has ${PRODUCTS.length} products in it.`,
+      actionLabel: 'Clear the filters', actionId: 'clear-filters',
+    });
+    $('#clear-filters').addEventListener('click', () => {
+      $('#q').value = ''; $('#f-mode').value = ''; renderList();
+    });
+    return;
+  }
+
+  list.innerHTML = rows.map(p => {
+    const s = STOCK.get(p.id);
+    const right = p.tracking_mode === 'unit'
+      ? `${s?.units_on_hand ?? 0} on shelf<br><span class="badge badge--muted">${s?.units_active ?? 0} pieces</span>`
+      : `${s?.units_on_hand ?? 0} in stock`;
+    return `<button class="item" data-id="${esc(p.id)}">
+      ${p.image_url
+        ? `<img class="item__thumb" src="${esc(publicUrl(p.image_url))}" alt="" loading="lazy">`
+        : `<span class="item__thumb">${esc((p.short_code || '?').slice(0, 4))}</span>`}
+      <span class="item__main">
+        <span class="item__title">${esc(p.short_code)} — ${esc(p.brand ? p.brand + ' ' : '')}${esc(p.model_name)}</span>
+        <span class="item__meta">
+          <span class="badge badge--${esc(p.tracking_mode)}">${esc(labelMode(p.tracking_mode))}</span>
+          ${p.rentable ? '' : '<span class="badge badge--muted">not rentable</span>'}
+          ${p.active ? '' : '<span class="badge badge--muted">inactive</span>'}
+          &nbsp;${esc(money(p.base_rate_per_day))}/day
+        </span>
+      </span>
+      <span class="item__right">${right}</span>
+    </button>`;
+  }).join('');
+
+  $$('.item', list).forEach(b =>
+    b.addEventListener('click', () => openEditor(PRODUCTS.find(p => p.id === b.dataset.id))));
+}
+
+const labelMode = m => ({ unit: 'Numbered pieces', pool: 'Counted', consumable: 'Consumable' }[m] ?? m);
+const publicUrl = path => path?.startsWith('http') ? path
+  : `${sb.storage.from('product-images').getPublicUrl(path).data.publicUrl}`;
+
+// ---------------------------------------------------------------------------
+// Detail / edit
+// ---------------------------------------------------------------------------
+
+function openEditor(p) {
+  const isNew = !p;
+  p = p ?? {
+    short_code: '', category_id: '', subcategory_id: '', brand: '', model_name: '', model_number: '',
+    description: '', specs: {}, inclusions: [], kit_contents: [], tracking_mode: 'unit',
+    rentable: true, base_rate_per_day: '', default_purchase_cost: '', pool_qty: '', active: true,
+  };
+  const s = p.id ? STOCK.get(p.id) : null;
+  // Numbered pieces already exist for this product. That matters below: changing tracking_mode
+  // away from `unit` while boxes exist is a measured, silent data loss — see the select.
+  const hasPieces = !!(s && p.tracking_mode === 'unit' && (s.units_active ?? 0) > 0);
+
+  const sheet = openSheet(`
+  <div class="sheet" id="sheet">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
+      <div class="sheet__head">
+        <h2 class="sheet__title" id="sheet-title">${isNew ? 'Add product' : esc(p.short_code)}</h2>
+        <button class="btn btn--ghost" data-sheet-close aria-label="Close" type="button">✕</button>
+      </div>
+
+      <div class="grid2">
+        <label class="field"><span class="field__label">Short code *</span>
+          <input class="field__input" id="f-code" value="${esc(p.short_code)}" required
+                 autocapitalize="characters" spellcheck="false">
+          <span class="field__hint">Unique. Appears on every screen and in the Sheet.</span></label>
+        <label class="field"><span class="field__label">Model name *</span>
+          <input class="field__input" id="f-model" value="${esc(p.model_name)}" required></label>
+        <label class="field"><span class="field__label">Brand</span>
+          <input class="field__input" id="f-brand" value="${esc(p.brand)}"></label>
+        <label class="field"><span class="field__label">Model number</span>
+          <input class="field__input" id="f-modelno" value="${esc(p.model_number)}"></label>
+        <label class="field"><span class="field__label">Category *</span>
+          <select class="field__select" id="f-cat" required>
+            <option value="">Choose…</option>
+            ${CATS.map(c => `<option value="${esc(c.id)}" ${c.id === p.category_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+          </select></label>
+        <label class="field"><span class="field__label">Subcategory</span>
+          <select class="field__select" id="f-sub"></select></label>
+      </div>
+
+      <label class="field"><span class="field__label">Description</span>
+        <textarea class="field__area" id="f-desc">${esc(p.description)}</textarea></label>
+
+      <label class="field"><span class="field__label">How is this tracked? *</span>
+        <!-- Locked once numbered pieces exist. Flipping unit to pool is permitted by the schema
+             with pool_qty left NULL, and docs/backlog.md records the measured result: a product
+             with 6 boxes, 3 on the shelf and 3 committed, went from 3 / 3 / 0 to 0 / 3 / -3 on
+             one dropdown change. The histories survive; the number on the screen does not.
+             There is no undo for that on this screen, so it does not offer it. -->
+        <select class="field__select" id="f-mode-edit" ${hasPieces ? 'disabled' : ''}>
+          ${['unit', 'pool', 'consumable'].map(m =>
+            `<option value="${m}" ${m === p.tracking_mode ? 'selected' : ''}>${labelMode(m)}</option>`).join('')}
+        </select>
+        ${hasPieces ? `<span class="field__hint">Cannot be changed: ${s.units_active} numbered
+          piece(s) already exist. Switching to a counted mode would drop this product's availability
+          to zero while the boxes carry on existing.</span>` : ''}
+        <span class="field__hint" id="mode-help"></span></label>
+
+      <div id="mode-fields"></div>
+
+      <div class="grid2">
+        <label class="field"><span class="field__label">Rate per day (₹)</span>
+          <input class="field__input" id="f-rate" type="number" step="0.01" min="0" inputmode="decimal"
+                 value="${esc(p.base_rate_per_day)}">
+          <span class="field__hint">A default for new orders. What was actually agreed is stored on the line.</span></label>
+        <label class="field"><span class="field__label">Default purchase cost (₹)</span>
+          <input class="field__input" id="f-cost" type="number" step="0.01" min="0" inputmode="decimal"
+                 value="${esc(p.default_purchase_cost)}">
+          <span class="field__hint">Seeds every new piece so no box is ever blank. Editable per piece.</span></label>
+      </div>
+
+      <div class="row" style="margin-bottom:14px">
+        <label class="field field--inline" style="margin:0">
+          <input type="checkbox" id="f-rentable" ${p.rentable ? 'checked' : ''}>
+          <span>Can be hired out</span></label>
+        <label class="field field--inline" style="margin:0">
+          <input type="checkbox" id="f-active" ${p.active ? 'checked' : ''}>
+          <span>Active in the catalogue</span></label>
+      </div>
+
+      <div class="card" style="background:#fbfcfd">
+        <div class="row row--between" style="margin-bottom:8px">
+          <strong>Specifications</strong>
+          <button class="btn btn--sm" id="add-spec" type="button">Add a field</button>
+        </div>
+        <p class="field__hint" style="margin-top:0">Prompted by category. Leave blank what you do not know —
+          a half-filled spec is worth more than a blank one, and these are free-form on purpose.</p>
+        <div id="specs"></div>
+      </div>
+
+      <div class="grid2">
+        <label class="field"><span class="field__label">Inclusions (one per line)</span>
+          <textarea class="field__area" id="f-incl">${esc((p.inclusions ?? []).join('\n'))}</textarea>
+          <span class="field__hint">Travels with the piece and is checked at dispatch and return — the power cable, the mic.</span></label>
+        <label class="field"><span class="field__label">Kit contents (one per line)</span>
+          <textarea class="field__area" id="f-kit">${esc((p.kit_contents ?? []).join('\n'))}</textarea>
+          <span class="field__hint">What the customer is told a kit is made of.</span></label>
+      </div>
+
+      <div class="card" style="background:#fbfcfd">
+        <div class="row row--between" style="margin-bottom:8px"><strong>Photos</strong></div>
+        <div id="images">${isNew ? '<p class="field__hint">Save the product first, then add photos.</p>' : '<p class="field__hint">Loading…</p>'}</div>
+        ${isNew ? '' : `
+        <!-- The inputs were [hidden], which takes them out of the tab order and out of the
+             accessibility tree, so "Take a photo" could not be reached by keyboard at all.
+             .file-btn keeps them focusable and invisible instead. -->
+        <div class="row" style="margin-top:10px">
+          <label class="btn btn--sm file-btn" id="btn-camera">
+            Take a photo
+            <input type="file" id="f-camera" accept="image/*" capture="environment">
+          </label>
+          <label class="btn btn--sm file-btn" id="btn-file">
+            Choose a file
+            <input type="file" id="f-file" accept="image/*">
+          </label>
+        </div>`}
+      </div>
+
+      ${p.id && s ? `<div class="note" style="margin-top:12px">
+        ${p.tracking_mode === 'unit'
+          ? `${s.units_active} piece(s) exist — ${s.units_on_hand} on the shelf, ${s.units_out} out, ${s.units_at_repair} at a repair shop.
+             Pieces are created on the <a href="units.html?product=${esc(p.id)}">Pieces screen</a>.`
+          // Consumables are issued and never come back, so "in stock" is the only figure that
+          // means anything for them; 0008 warns that qty_at_customer reads as nonsense there.
+          : `${s.units_on_hand} in stock. Counted stock has no piece numbers; adjust it by recording movements, not by editing a total.`}
+      </div>` : ''}
+
+      <div class="sheet__foot">
+        <button class="btn" data-sheet-close type="button">Cancel</button>
+        <button class="btn btn--primary" id="save" type="button">${isNew ? 'Add product' : 'Save changes'}</button>
+      </div>
+    </div>
+  </div>`, () => {
+    // Leaving ?new=1 in the address bar meant a refresh re-opened an empty Add form over the
+    // list, every time, with no way to get rid of it but editing the URL.
+    const u = new URL(location.href);
+    if (u.searchParams.has('new')) { u.searchParams.delete('new'); history.replaceState(null, '', u); }
+  });
+  const close = () => sheet.close();
+
+  const syncSubs = () => {
+    const catId = $('#f-cat').value;
+    const opts = SUBS.filter(x => x.category_id === catId);
+    $('#f-sub').innerHTML = `<option value="">—</option>` +
+      opts.map(x => `<option value="${esc(x.id)}" ${x.id === p.subcategory_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    renderSpecs();
+  };
+  $('#f-cat').addEventListener('change', syncSubs);
+
+  const syncMode = () => {
+    const m = $('#f-mode-edit').value;
+    $('#mode-help').textContent = TRACKING_HELP[m];
+    // tracking_mode drives the form. A unit product must have pool_qty NULL — that is a CHECK
+    // constraint in 0001, and offering the field would just produce a silent rejected write.
+    $('#mode-fields').innerHTML = m === 'unit'
+      ? `<div class="note">Numbered pieces are created on the Pieces screen, not here. This product has
+           no single quantity — it has boxes, each with its own number and history.</div><div style="height:14px"></div>`
+      : `<label class="field"><span class="field__label">Quantity owned *</span>
+           <input class="field__input" id="f-poolqty" type="number" min="0" step="1" inputmode="numeric"
+                  value="${esc(p.pool_qty ?? '')}">
+           <span class="field__hint">The opening count. Dispatches, returns and write-offs are netted on top of it,
+             so this is a starting balance rather than a running total.</span></label>`;
+  };
+  $('#f-mode-edit').addEventListener('change', syncMode);
+
+  /** Read the spec rows as they stand on screen right now, not as they were when the sheet opened. */
+  function currentSpecs() {
+    const out = {};
+    $$('.spec-row').forEach(r => {
+      const k = $('.spec-k', r).value.trim();
+      if (k) out[k] = $('.spec-v', r).value;
+    });
+    return out;
+  }
+
+  function renderSpecs() {
+    const catName = CATS.find(c => c.id === $('#f-cat').value)?.name;
+    const template = SPEC_TEMPLATES[catName] ?? [];
+    // Merge what is TYPED with what was saved. Re-rendering from p.specs alone threw away every
+    // value the operator had entered the moment he corrected the category — and the category
+    // dropdown sits directly above the spec block, so that was one stray tap away.
+    const existing = { ...(p.specs ?? {}), ...currentSpecs() };
+    const keys = [...new Set([...template, ...Object.keys(existing)])];
+    $('#specs').innerHTML = keys.map(k => specRow(k, existing[k])).join('')
+      || `<p class="field__hint">No template for this category. Use “Add a field” for anything worth recording.</p>`;
+    wireSpecRows();
+  }
+  const specRow = (k = '', v = '') => `
+    <div class="spec-row">
+      <input class="field__input spec-k" value="${esc(k)}" placeholder="name" spellcheck="false">
+      <input class="field__input spec-v" value="${esc(v ?? '')}" placeholder="value">
+      <button class="btn btn--sm spec-x" type="button" aria-label="Remove">✕</button>
+    </div>`;
+  function wireSpecRows() {
+    $$('.spec-x').forEach(b => b.onclick = () => b.closest('.spec-row').remove());
+  }
+  $('#add-spec').addEventListener('click', () => {
+    $('#specs').insertAdjacentHTML('beforeend', specRow());
+    wireSpecRows();
+  });
+
+  syncSubs(); syncMode();
+  if (p.id) loadImages(p.id);
+  if (p.id) {
+    $('#f-camera').addEventListener('change', e => uploadImage(p.id, e.target.files[0], e.target));
+    $('#f-file').addEventListener('change', e => uploadImage(p.id, e.target.files[0], e.target));
+  }
+
+  $('#save').addEventListener('click', async () => {
+    const btn = $('#save');
+    if (btn.disabled) return;            // a double tap must not insert the product twice
+    const mode = $('#f-mode-edit').value;
+    const specs = {};
+    $$('.spec-row').forEach(r => {
+      const k = $('.spec-k', r).value.trim();
+      const v = $('.spec-v', r).value.trim();
+      if (k && v !== '') specs[k] = isNaN(Number(v)) ? v : Number(v);
+    });
+    const lines = id => ($(id).value || '').split('\n').map(x => x.trim()).filter(Boolean);
+
+    const row = {
+      short_code: $('#f-code').value.trim(),
+      model_name: $('#f-model').value.trim(),
+      brand: $('#f-brand').value.trim() || null,
+      model_number: $('#f-modelno').value.trim() || null,
+      category_id: $('#f-cat').value || null,
+      subcategory_id: $('#f-sub').value || null,
+      description: $('#f-desc').value.trim() || null,
+      tracking_mode: mode,
+      rentable: $('#f-rentable').checked,
+      active: $('#f-active').checked,
+      base_rate_per_day: numOrNull($('#f-rate').value),
+      default_purchase_cost: numOrNull($('#f-cost').value),
+      // 0001's CHECK: pool_qty must be null for unit-tracked products.
+      pool_qty: mode === 'unit' ? null : numOrNull($('#f-poolqty')?.value),
+      specs, inclusions: lines('#f-incl'), kit_contents: lines('#f-kit'),
+    };
+
+    // Say which field, and put the cursor in it. The sheet scrolls, so a message in a toast at
+    // the bottom of the screen names a problem without saying where it is — and the offending
+    // field is usually off-screen by the time he has scrolled down to Save.
+    const missing = !row.short_code ? ['#f-code', 'a short code']
+                  : !row.model_name ? ['#f-model', 'a model name']
+                  : !row.category_id ? ['#f-cat', 'a category'] : null;
+    if (missing) {
+      toast(`This product still needs ${missing[1]}.`, 'error');
+      focusField(missing[0]);
+      return;
+    }
+    if (mode !== 'unit' && (row.pool_qty === null || Number.isNaN(row.pool_qty))) {
+      // Counted stock with a NULL quantity reads as zero everywhere downstream — v_pool_stock
+      // treats pool_qty as the opening balance, so leaving it blank silently publishes "none of
+      // this in stock" for a shelf with two hundred on it.
+      toast('Counted stock needs a quantity owned — it is the opening count everything else nets against.', 'error');
+      focusField('#f-poolqty');
+      return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Saving…';
+    let res;
+    try {
+      res = p.id
+        ? await sb.from('product').update(row).eq('id', p.id).select().single()
+        : await sb.from('product').insert(row).select().single();
+    } catch (thrown) { res = { error: thrown }; }
+
+    if (res.error) {
+      btn.disabled = false; btn.textContent = isNew ? 'Add product' : 'Save changes';
+      toast(friendly(res.error), 'error');
+      return;
+    }
+    toast(p.id ? 'Product saved.' : `${row.short_code} added.`);
+    close();
+    await load();
+  });
+}
+
+const numOrNull = v => (v === '' || v === null || v === undefined) ? null : Number(v);
+
+/** Turn a Postgres error into something an operator can act on. */
+function friendly(e) {
+  const m = e.message || String(e);
+  const net = networkMessage(e);
+  if (net) return net;
+  if (m.includes('product_short_code_key')) return 'That short code is already used by another product.';
+  if (m.includes('product_pool_qty_only_for_pools'))
+    return 'A numbered-piece product cannot carry a quantity. Switch the tracking mode, or clear the quantity.';
+  if (e.code === '23503') return 'That category or subcategory no longer exists. Reload and pick again.';
+  if (e.code === '42501' || m.includes('row-level security'))
+    return 'You are not signed in, or the session expired. Sign in again.';
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Images. Three entry routes, one bucket (0006). Nothing links to an external URL:
+// a WhatsApp or Drive link rots and the customer portal then shows a broken product.
+// ---------------------------------------------------------------------------
+
+async function loadImages(productId) {
+  const box = $('#images');
+  box.innerHTML = `<p class="field__hint">Loading photos…</p>`;
+  let data, error;
+  try {
+    ({ data, error } = await sb.from('product_image')
+      .select('id,storage_path,is_primary,sort_order').eq('product_id', productId).order('sort_order'));
+  } catch (thrown) { error = thrown; }
+  if (error) {
+    // A failed read used to render as a red box with a raw message and no way forward, so the
+    // only route back was closing and re-opening the whole product.
+    box.innerHTML = `<p class="signin__err">${esc(friendly(error))}</p>
+      <button class="btn btn--sm" id="retry-images" type="button">Try again</button>`;
+    $('#retry-images').addEventListener('click', () => loadImages(productId));
+    return;
+  }
+  if (!data?.length) {
+    box.innerHTML = `<p class="field__hint">No photo yet. A photo of the actual box helps more than a
+      marketing shot — it is what the customer is shown, and what tells two similar boxes apart.</p>`;
+    return;
+  }
+  box.innerHTML = `<div class="thumbs">${data.map(i => `
+    <div class="thumb ${i.is_primary ? 'is-primary' : ''}">
+      <img src="${esc(publicUrl(i.storage_path))}" alt="" loading="lazy">
+      <button class="btn btn--sm thumb__btn" type="button" data-id="${esc(i.id)}" data-primary="${i.is_primary}"
+        ${i.is_primary ? 'disabled' : ''}>${i.is_primary ? 'Primary' : 'Make primary'}</button>
+    </div>`).join('')}</div>`;
+  $$('.thumb__btn', box).forEach(b => b.addEventListener('click', async () => {
+    if (b.dataset.primary === 'true' || b.disabled) return;
+    b.disabled = true; b.textContent = 'Setting…';
+    // Two writes, no transaction: if the second fails after the first has cleared every flag,
+    // the product is left with NO primary image and 0006's image_url sync has nothing to point
+    // at. Reported rather than swallowed, and the list is reloaded so the screen shows the truth.
+    let err = null;
+    try {
+      const clear = await sb.from('product_image').update({ is_primary: false }).eq('product_id', productId);
+      err = clear.error
+        ?? (await sb.from('product_image').update({ is_primary: true }).eq('id', b.dataset.id)).error;
+    } catch (thrown) { err = thrown; }
+    if (err) {
+      toast(`Could not set the primary photo: ${friendly(err)} This product may now have no primary photo — `
+          + `pick one again.`, 'error');
+      await loadImages(productId);
+      return;
+    }
+    toast('Primary photo set.');
+    await loadImages(productId);
+    await load();
+  }));
+}
+
+let uploading = false;
+async function uploadImage(productId, file, inputEl) {
+  if (!file) return;
+  if (uploading) return;
+  if (!file.type.startsWith('image/')) { toast('That is not an image file.', 'error'); return; }
+  if (file.size > 10 * 1024 * 1024) { toast('That photo is over 10 MB. Take it again at a smaller size.', 'error'); return; }
+
+  // A phone photo over a godown link takes longer than a toast lives, and the old 'Uploading…'
+  // toast timed out after 3.5 seconds while the upload carried on — leaving the screen looking
+  // idle. The buttons now say what is happening and cannot be tapped again meanwhile.
+  uploading = true;
+  const btns = [$('#btn-camera'), $('#btn-file')].filter(Boolean);
+  const labels = btns.map(b => b.firstChild?.nodeValue);
+  btns.forEach(b => { b.classList.add('is-busy'); if (b.firstChild) b.firstChild.nodeValue = ' Uploading… '; });
+  $$('#btn-camera input, #btn-file input').forEach(i => i.disabled = true);
+  const done = () => {
+    uploading = false;
+    btns.forEach((b, i) => { b.classList.remove('is-busy'); if (b.firstChild) b.firstChild.nodeValue = labels[i]; });
+    $$('#btn-camera input, #btn-file input').forEach(i => i.disabled = false);
+    // Without this, choosing the same file twice in a row fires no change event at all.
+    if (inputEl) inputEl.value = '';
+  };
+
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${productId}/${Date.now()}.${ext}`;
+  try {
+    const up = await sb.storage.from('product-images').upload(path, file, { upsert: false });
+    if (up.error) { done(); toast(`The photo did not upload: ${friendly(up.error)}`, 'error'); return; }
+
+    // The count decides whether this becomes the primary image. If the count itself failed it
+    // came back as null, which read as zero, which would have set a SECOND primary — and 0006
+    // syncs product.image_url from the primary, so which photo the customer sees would then be
+    // whichever row Postgres happened to return.
+    const c = await sb.from('product_image')
+      .select('id', { count: 'exact', head: true }).eq('product_id', productId);
+    if (c.error) {
+      done();
+      toast(`The photo uploaded but could not be attached: ${friendly(c.error)} Try adding it again.`, 'error');
+      return;
+    }
+    const ins = await sb.from('product_image')
+      .insert({ product_id: productId, storage_path: path, source: 'upload', is_primary: (c.count ?? 0) === 0 });
+    if (ins.error) {
+      done();
+      toast(`The photo uploaded but could not be attached to the product: ${friendly(ins.error)} `
+          + `Try adding it again.`, 'error');
+      return;
+    }
+    done();
+    toast('Photo added.');
+    await loadImages(productId);
+    await load();
+  } catch (thrown) {
+    done();
+    toast(`The photo did not upload: ${friendly(thrown)}`, 'error');
+  }
+}
+
+// Test hook. Lets the empty states be exercised for real in a browser rather than reasoned about.
+// Reads nothing and writes nothing; it only re-renders the list from a supplied array.
+window.__djn = {
+  showEmptyCatalogue() { PRODUCTS = []; STOCK = new Map(); renderList(); },
+  reload: load,
+};
+</script>
+</body>
+</html>

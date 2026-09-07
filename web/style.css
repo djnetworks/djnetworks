@@ -1,0 +1,305 @@
+/* style.css — shared across every screen.
+   Built for a phone held in one hand at a van as much as a laptop in the shop:
+   big tap targets, no hover-only affordances, readable in daylight. */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --line: #dfe3e8;
+  --ink: #16191d;
+  --ink-soft: #5b636d;
+  /* Was #8b939d, which is 3.1:1 on white — below the 4.5:1 needed for normal text, and this is
+     the colour every .field__hint uses at 12px. The hints are where the explanations live, and
+     they were being read in a godown in poor light. #6f7781 measures 4.5:1. */
+  --ink-faint: #6f7781;
+  --accent: #1f5fd0;
+  --accent-ink: #ffffff;
+  --ok: #0f7b45;
+  --warn: #9a6700;
+  --bad: #b3261e;
+  --bad-bg: #fdecea;
+  --radius: 10px;
+  --tap: 44px;              /* minimum tap target */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+[hidden] { display: none !important; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20;
+}
+.topbar__brand { font-weight: 700; color: var(--ink); text-decoration: none; }
+.topbar__nav { display: flex; gap: 4px; }
+.topbar__tab {
+  padding: 8px 12px; border-radius: var(--radius); text-decoration: none;
+  color: var(--ink-soft); font-weight: 600; min-height: var(--tap);
+  display: inline-flex; align-items: center;
+}
+.topbar__tab.is-active { background: #eaf0fb; color: var(--accent); }
+.topbar__who { margin-left: auto; color: var(--ink-faint); font-size: 13px; }
+
+/* On a phone the bar wrapped to THREE rows once signed in — measured at 159px on a 375x812
+   screen, a fifth of the display, sticky, on every screen. The brand is a link to Home and the
+   Home tab already goes there; the email address identifies the only user this system has to
+   himself. Both are decoration on a phone, and the tabs are the function. Dropping them puts the
+   whole bar back on one row. */
+@media (max-width: 620px) {
+  .topbar { padding: 6px 10px; gap: 6px; }
+  .topbar__brand, .topbar__who { display: none; }
+  .topbar__nav { flex: 1 1 auto; }
+  .topbar__tab { padding: 8px 10px; }
+}
+
+/* ---------- layout ---------- */
+.wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.row--between { justify-content: space-between; }
+.grow { flex: 1 1 220px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--ink-soft); margin: 0 0 16px; }
+
+/* ---------- buttons ---------- */
+.btn {
+  min-height: var(--tap); padding: 10px 16px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.btn:hover { border-color: var(--ink-faint); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn--danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn--ghost { background: transparent; }
+.btn--block { width: 100%; }
+/* Smaller type, NOT a smaller target. min-height was 36px and the spec-row ✕ was 37px wide;
+   both are under the 44px a thumb needs, on a screen used one-handed at a van. */
+.btn--sm { min-height: var(--tap); min-width: var(--tap); padding: 6px 12px; font-size: 14px; }
+
+/* Buttons and links had no focus ring of their own — only fields did — so the keyboard-only
+   path round these screens was invisible on the blue primary button. */
+.btn:focus-visible, a:focus-visible, .item:focus-visible {
+  outline: 3px solid var(--accent); outline-offset: 2px;
+}
+.btn--primary:focus-visible { outline-color: var(--ink); }
+
+/* A file input hidden with [hidden] is not focusable, so "Take a photo" could not be reached by
+   keyboard at all. Kept in the tab order, moved out of sight, and the label shows the ring. */
+.file-btn { position: relative; display: inline-flex; align-items: center; }
+.file-btn input[type=file] {
+  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+}
+.file-btn:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+.file-btn.is-busy { opacity: .55; cursor: progress; }
+.file-btn.is-busy input { cursor: progress; }
+
+/* ---------- fields ---------- */
+.field { display: block; margin-bottom: 14px; }
+.field__label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+.field__hint { display: block; font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
+.field__input, .field__select, .field__area {
+  width: 100%; min-height: var(--tap); padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font: inherit; background: var(--surface); color: var(--ink);
+}
+.field__area { min-height: 80px; resize: vertical; }
+.field__input:focus, .field__select:focus, .field__area:focus {
+  outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent);
+}
+.field--inline { display: flex; align-items: center; gap: 8px; }
+.field--inline input[type=checkbox] { width: 20px; height: 20px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+@media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* ---------- cards / list ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+}
+.list { display: grid; gap: 10px; }
+.item {
+  display: flex; gap: 12px; align-items: center; text-align: left; width: 100%;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px; cursor: pointer; font: inherit; color: inherit; min-height: var(--tap);
+}
+.item:hover { border-color: var(--accent); }
+.item__thumb {
+  width: 52px; height: 52px; border-radius: 8px; object-fit: cover;
+  background: #eef1f5; flex: none; display: grid; place-items: center;
+  color: var(--ink-faint); font-size: 11px; font-weight: 700;
+}
+.item__main { flex: 1 1 auto; min-width: 0; }
+.item__title { font-weight: 600; }
+.item__meta { color: var(--ink-soft); font-size: 13px; }
+.item__right { text-align: right; flex: none; color: var(--ink-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* ---------- stat tiles ----------
+   Was a .row of .card.grow with flex-basis 220px, so at 375px every tile took a full row: five
+   counters became 600px of scrolling before the piece list came into view. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stats .card { margin: 0; padding: 10px 12px; }
+.stat__n { font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stat__n--bad { color: var(--bad); }
+
+/* ---------- badges ---------- */
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; background: #eef1f5; color: var(--ink-soft);
+}
+.badge--unit { background: #e8f0fe; color: #1a4fa0; }
+.badge--pool { background: #e6f4ec; color: var(--ok); }
+.badge--consumable { background: #fdf0e3; color: var(--warn); }
+.badge--available { background: #e6f4ec; color: var(--ok); }
+.badge--out { background: #fdecea; color: var(--bad); }
+.badge--at_repair { background: #fdf0e3; color: var(--warn); }
+.badge--retired, .badge--lost { background: #eceef1; color: var(--ink-soft); }
+.badge--muted { background: #eceef1; color: var(--ink-soft); }
+/* v_unit_status returns `not_recorded` for a piece with no movement — the exact state a bulk
+   create leaves behind when the units insert succeeds and the opening-movement insert fails
+   (two calls, no transaction). There was no rule for it, so it fell through to the default grey
+   and read as calmly as `retired`. A piece whose location is unknown is a problem, not a state. */
+.badge--not_recorded { background: var(--bad-bg); color: var(--bad); }
+
+/* ---------- state blocks (loading / empty / error) ---------- */
+.state {
+  background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
+  padding: 40px 24px; text-align: center;
+}
+.state--error { border-color: var(--bad); background: var(--bad-bg); }
+.state__icon { font-size: 28px; margin-bottom: 8px; }
+.state__title { font-size: 18px; margin: 0 0 6px; }
+.state__body { color: var(--ink-soft); margin: 0 auto 16px; max-width: 46ch; }
+
+.skeleton { display: grid; gap: 10px; }
+.skeleton__row {
+  height: 76px; border-radius: var(--radius);
+  background: linear-gradient(90deg, #eef1f5 25%, #e4e8ee 37%, #eef1f5 63%);
+  background-size: 400% 100%; animation: shimmer 1.2s ease-in-out infinite;
+}
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton__row { animation: none; } }
+
+/* ---------- sign in ---------- */
+.signin {
+  max-width: 380px; margin: 12vh auto; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
+}
+.signin__title { margin: 0 0 4px; font-size: 22px; }
+.signin__sub { margin: 0 0 20px; color: var(--ink-soft); }
+.signin__err {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: var(--radius);
+  background: var(--bad-bg); color: var(--bad); font-size: 14px;
+}
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(120%);
+  background: var(--ink); color: #fff; padding: 12px 18px; border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 60; max-width: 90vw;
+  transition: transform .18s ease, opacity .18s ease, visibility .18s; font-weight: 600;
+  /* An empty toast has no height, so translateY(120%) moves it almost nowhere and it shows as a
+     dark sliver along the bottom of every screen. Hide it outright until it has something to say. */
+  opacity: 0; visibility: hidden;
+}
+.toast--show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
+.toast--error { background: var(--bad); }
+.toast--ok { background: var(--ok); }
+/* Error toasts never time out, by design. That left them parked over the bottom of the screen —
+   which at 375px is where the primary action lives — with nothing to dismiss them. The whole
+   toast is now the dismiss target. */
+.toast { cursor: pointer; text-align: left; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+.toast--error::after { content: '  (tap to dismiss)'; font-weight: 400; opacity: .85; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* ---------- modal / drawer ---------- */
+.sheet {
+  position: fixed; inset: 0; background: rgba(16,19,23,.45);
+  display: grid; place-items: end center; z-index: 50;
+}
+.sheet__panel {
+  background: var(--surface); width: min(760px, 100%); max-height: 92vh; overflow: auto;
+  border-radius: 14px 14px 0 0; padding: 20px;
+}
+@media (min-width: 700px) {
+  .sheet { place-items: center; }
+  .sheet__panel { border-radius: 14px; }
+}
+.sheet__head {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+  position: sticky; top: -20px; background: var(--surface); z-index: 1;
+  padding: 20px 0 12px; margin-top: -20px;
+}
+.sheet__title { font-size: 18px; font-weight: 700; flex: 1; margin: 0; }
+/* Sticky, because on a 375x812 screen the bulk-intake sheet is 966px of content in a 747px panel
+   and "Create pieces" sat 219px below the fold, under five optional fields. Bulk intake is the
+   flow the whole godown walk depends on: pick product, type a count, pick a location, create.
+   The primary action must not need a scroll past detail he is not filling in. */
+.sheet__foot {
+  display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;
+  padding: 14px 0 calc(4px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line); flex-wrap: wrap;
+  position: sticky; bottom: -20px; background: var(--surface);
+}
+.sheet__foot .btn { flex: 1 1 auto; }
+@media (min-width: 700px) { .sheet__foot .btn { flex: 0 0 auto; } }
+
+/* ---------- misc ---------- */
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
+.kv dt { color: var(--ink-soft); }
+.kv dd { margin: 0; }
+.spec-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; }
+.thumbs { display: flex; gap: 10px; flex-wrap: wrap; }
+/* The "Make primary" button used to be overlaid on the image at 84x26 — a quarter of the height
+   a thumb needs. Stacked below the photo instead, at full target height. */
+.thumb { display: grid; gap: 4px; width: 96px; }
+.thumb img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #eef1f5; }
+.thumb.is-primary img { border: 2px solid var(--accent); }
+.thumb__btn { width: 100%; font-size: 12px; padding: 4px 6px; }
+.pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.note { font-size: 13px; color: var(--ink-soft); background: #f0f3f7; padding: 10px 12px; border-radius: var(--radius); }
+.note--warn { background: #fdf0e3; color: #7a5200; }
+.note--bad { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+
+/* Money and counts are read down a column and compared. The system font's proportional digits
+   make 1 narrower than 8, so ₹1,26,500.00 and ₹42,500.00 do not line up without this. */
+table.data { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+table.data th, table.data td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+table.data th { color: var(--ink-soft); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+.num { font-variant-numeric: tabular-nums; }
+.scroll-x { overflow-x: auto; }
+
+/* ---------- the piece table on a phone ----------
+   Six columns measured 471px inside a 341px card at 375px wide: "Since" and "Cost" were off the
+   right edge behind a sideways scroll with no affordance saying it was there. A row has to show
+   enough to identify the piece without being swiped or opened, so each row becomes a block and
+   every value carries its own label. */
+@media (max-width: 620px) {
+  .table-wrap { background: transparent; border: 0; padding: 0; }
+  .table-wrap.scroll-x { overflow-x: visible; }
+  table.data thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  table.data tr {
+    display: block; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px;
+  }
+  table.data td {
+    display: grid; grid-template-columns: 8.5em 1fr; gap: 10px;
+    padding: 3px 0; border: 0; align-items: baseline;
+  }
+  table.data td::before {
+    content: attr(data-label); color: var(--ink-soft);
+    font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  /* A grid item stretches by default, which turned every status pill into a full-width bar. */
+  table.data td > * { justify-self: start; }
+}
