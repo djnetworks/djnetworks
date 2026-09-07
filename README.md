@@ -10,30 +10,29 @@ Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 
 ## Status
 
-Ten migrations (`0001`-`0010`) are applied and a development fixture
-(`supabase/seed/dev_seed.sql`) is loaded, on Supabase project `hjidocpqcrfbjucvqggu` in
-`ap-south-1` (Mumbai), org `djnetworks`. Verified against that database: 16 tables, 9 views,
-14 functions, RLS on every table, `security_invoker` on every view, `search_path` pinned on every
-function, zero security advisor findings. No screen exists yet.
+**Not deployed, and deliberately so.** See the BLOCKING entry at the top of `docs/backlog.md`:
+self-registration is open on the Supabase project and `authenticated` has full access to all 16
+tables, so publishing the page — which necessarily publishes the publishable key — would hand the
+database to anyone who reads the source. Turn signups off first, then create the one operator
+account.
 
-**The catalogue is empty** — hundreds of items exist physically, none are listed. Bulk import through
-the Google Sheet is the intended path, and it matters more than any screen in the application. The
-seed fixture is development data and is not the catalogue.
+**Nothing has been driven by a signed-in user yet.** There is no account in `auth.users`. Every
+screen's read path, write path and offline behaviour is argued from code and verified at the
+database level; none of it has been watched working end to end. Treat it as unproven.
 
-## Verification, and why it is weaker than it was
+What exists:
 
-The Cowork chat's Supabase connector is bound to the OLD account and cannot reach this database —
-not to write, not even to read a number back. It was the independent session that could confirm a
-view returned what this repo claimed. It cannot any more.
+| | |
+|---|---|
+| Database | 16 tables, 9 views, 21 functions. Migrations `0001`–`0016`, applied to `hjidocpqcrfbjucvqggu` (ap-south-1). |
+| Screens | 10 static pages under `web/`, no build step. Nine behind an operator sign-in, plus the customer portal. |
+| Offline | Vendored Supabase client, service worker for the app shell, IndexedDB for queued writes, explicit per-job prefetch. |
+| Sheet | Read-only mirror OUT, deployed as the `sheet-mirror` Edge Function with `sheet/DataSync.gs`. The bulk import lane is NOT built. |
+| Fixture | `supabase/seed/dev_seed.sql` — development data, not the catalogue. |
 
-Everything now happens in one place, so **whoever writes a migration is also the only one who checks
-it.** A clean run proves only that the code agrees with itself. See `CLAUDE.md`, "Who applies schema
-changes", for what to do instead — assert on numbers, replay locally as a second construction, roll
-probes back, and hand `guardrail-reviewer` and `logic-verifier` a failure to hunt rather than a
-question about whether the code looks right.
-
-The publishable key in the frontend is **public by design**. RLS is the only thing protecting the
-data.
+**The catalogue is still empty** — hundreds of items exist physically, none are listed. Bulk import
+through the Google Sheet is the intended path and it matters more than any screen. The seed fixture
+is test data and is not the catalogue.
 
 ## Layout
 

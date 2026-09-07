@@ -15,6 +15,31 @@ the truth can no longer read this database at all.
 
 ---
 
+## BLOCKING — do not deploy until this is done
+
+**Self-registration is open, and the publishable key is about to become public.** Measured
+2026-09-07 against `hjidocpqcrfbjucvqggu`:
+
+    disable_signup      false          anyone may create an account
+    email provider      enabled
+    mailer_autoconfirm  false          they confirm from an inbox they control
+    auth.users          0 rows         no operator account exists yet either
+
+`web/config.js` is committed and ships the publishable key to the browser, which is correct and by
+design — but it is only safe because the sole route to `authenticated` is supposed to be an account
+chachu created. With signups open, the route is a public form. And `authenticated` is not a limited
+role here: the `operator_all` policy grants ALL on **all 16 tables**. So publishing the site as it
+stands hands the whole database — customers, ledger, movements, orders — to anyone who reads the
+page source and confirms an email.
+
+**Fix before any deploy:** Authentication → Sign In / Providers → Email → turn OFF *Allow new users
+to sign up*. Then create the one operator account under Authentication → Users → Add user, with
+*Auto Confirm* ticked.
+
+This is why GitHub Pages deployment was refused in Batch D rather than done and flagged.
+
+---
+
 ## Decisions the owner has to make first
 
 These are not bugs. The answer changes the fix, so writing the fix now would be guessing.

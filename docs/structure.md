@@ -42,6 +42,13 @@ enum holding both would drift the way a `current_location` column drifts. The vi
 a convenience `fulfilment_state` label computed from them — because an order with 4 ordered, 2 gone
 and 1 back is genuinely both partly dispatched and partly returned, and no single label says so.
 
+**The portal reads through two functions, split on purpose.** `fn_portal_snapshot(customer_id)` is
+the query and is callable by nobody; `fn_portal_view(phone, code)` is the gate and is the only thing
+`anon` may execute. Replacing the static access code with a one-time code changes the gate and
+leaves the query untouched — see `docs/open-questions.md` item 2. Opening anon SELECT on any table
+to make the portal work would publish that table to everyone holding the publishable key, which
+ships in the page source.
+
 The three-tier product model matters and is easy to get wrong:
 
 - **Product** — the rentable thing, priced, with specs. Sometimes a single item, sometimes a kit.
@@ -54,7 +61,25 @@ The three-tier product model matters and is easy to get wrong:
 
 ## The twelve forms
 
-Build order is dependency order.
+Build order is dependency order. Built so far, as static pages under `web/`:
+
+| Form | Screen | State |
+|---|---|---|
+| 1 · Categories and subcategories | — | seeded by `0005`, no screen; chachu has not pruned the 187 |
+| 2 · Product master | `products.html` | built, not driven signed in |
+| 3 · Unit intake | `units.html` | built, bulk create is the primary path |
+| 4 · Locations | — | seeded by `0004`, no screen yet |
+| 5 · Customers | `customers.html` | built, issues the portal code |
+| 6 · Order | `orders.html` | built |
+| 7 · Dispatch | `dispatch.html` | built, offline-capable with explicit prefetch |
+| 8 · Return | `return.html` | built |
+| 9 · Internal transfer | — | not built |
+| 10 · Repair | — | not built |
+| 11 · Payments and ledger | `ledger.html` | built |
+| 12 · Customer portal | `portal.html` | built |
+
+Plus `index.html` (today) and `analysis.html` (the reports below). **None of these has been operated
+by a signed-in user** — there is no account yet.
 
 **1 · Categories and subcategories.** Two editable lists, seeded. The work is chachu striking out
 what he does not own.
