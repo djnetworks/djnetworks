@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dispatch — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-4">
+<script src="vendor/supabase.js?v=2026-09-07-4" defer></script>
+<script src="boot.js?v=2026-09-07-4" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title">DJ Network's</h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+
+<script type="module">
+import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
+         errorBlock, toast, initOffline, registerQueueHandlers, syncNow, revealActiveTab }
+  from './app.js?v=2026-09-07-4';
+
+$('#chrome').innerHTML = chrome('dispatch.html');
+revealActiveTab();
+
+// ---------------------------------------------------------------------------
+// The write this screen makes, and how it is replayed.
+//
+// Registered BEFORE initOffline so a queue left over from a previous visit — the phone was locked,
+// the tab was killed, the van drove out of signal — can be replayed the moment this page opens.
+// The payload is plain JSON on purpose: it has to survive a browser restart.
+// ---------------------------------------------------------------------------
+registerQueueHandlers({
+  async dispatch(payload) {
+    const { error } = await sb.from('movement').insert(payload.movements);
+    if (error) throw error;
+    // Revenue posted on confirmation as `upcoming` becomes `due` when the gear actually leaves.
+    // Doing it here rather than on the order screen is the point: it is due because it went out.
+    const { error: e2 } = await sb.from('ledger_entry')
+      .update({ state: 'due' }).eq('order_id', payload.order_id).eq('state', 'upcoming');
+    if (e2) throw e2;
+  },
+});
+initOffline();
+
+let ORDER = null, CUSTOMER = null, LINES = [], PRODUCTS = new Map(), LOCS = [], AVAIL = new Map();
+let PINNED = new Map(), DISPATCHED = new Map(), PICK = new Map(), POOLPICK = new Map();
+let FROM_CACHE = false, CACHED_AT = null;
+
+requireSession(async () => { await boot(); });
+
+const orderId = new URLSearchParams(location.search).get('order');
+
+async function boot() {
+  if (!orderId) { await renderChooser(); return; }
+  await load();
+}
+
+// ---------------------------------------------------------------------------
+// Without an order id this screen has nothing to do. It NEVER offers the catalogue as an entry
+// point: dispatch opens from the job, so chachu taps six numbers out of eight rather than
+// searching three hundred (docs/structure.md form 7).
+// ---------------------------------------------------------------------------
+async function renderChooser() {
+  const app = $('#app');
+  app.innerHTML = `<h1>Dispatch</h1><p class="sub">Loading jobs…</p><div id="jobs"></div>`;
+  const cached = await store.cacheKeys('order:');
+  const { data, error } = await sb.from('v_order_fulfilment')
+    .select('order_id,order_no,fulfilment_state,qty_ordered,qty_dispatched,qty_undispatched,order_status')
+    .catch(() => ({ data: null, error: { message: 'offline' } }));
+
+  if (error || !data) {
+    app.querySelector('.sub').textContent = 'No connection.';
+    $('#jobs').innerHTML = cached.length
+      ? `<p class="field__hint">These jobs were loaded for offline use and are on this phone:</p>
+         <div class="list">${cached.map(c => `<a class="item" href="dispatch.html?order=${esc(c.data.order.id)}">
+           <span class="item__main"><span class="item__title">${esc(c.data.order.order_no)}</span>
+           <span class="item__meta">loaded ${esc(fmtDate(c.cached_at))}</span></span></a>`).join('')}</div>`
+      : stateBlock({ icon: '📡', title: 'No connection, and no job loaded',
+          body: 'Nothing has been loaded onto this phone for offline use. Open the job while you '
+              + 'still have signal — the pick list is a read, and with no signal there is nothing to pick from.' });
+    return;
+  }
+
+  const live = data.filter(f => !['closed', 'cancelled'].includes(f.order_status) && f.qty_undispatched > 0);
+  app.querySelector('.sub').textContent = 'Open the job you are loading. Dispatch always starts from the order.';
+  $('#jobs').innerHTML = live.length
+    ? `<div class="list">${live.map(f => `<a class="item" href="dispatch.html?order=${esc(f.order_id)}">
+        <span class="item__main"><span class="item__title">${esc(f.order_no)}</span>
+          <span class="item__meta">${esc(f.qty_dispatched)} of ${esc(f.qty_ordered)} loaded ·
+          ${esc(f.qty_undispatched)} still to go</span></span>
+        <span class="item__right">›</span></a>`).join('')}</div>`
+    : stateBlock({ icon: '✅', title: 'Nothing waiting to go out',
+        body: 'Every live order has been fully dispatched. New jobs appear here as soon as they are agreed.' });
+}
+
+async function load() {
+  const app = $('#app');
+  app.innerHTML = `<div id="head"></div><div id="body" class="skeleton">
+    <div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
+  try {
+    const [o, l, locs] = await Promise.all([
+      sb.from('rental_order').select('*, customer:customer_id(id,name,business_name,whatsapp)').eq('id', orderId).single(),
+      sb.from('order_line').select('*').eq('order_id', orderId),
+      sb.from('location').select('id,name,type').eq('active', true).order('name'),
+    ]);
+    if (o.error) throw o.error;
+    if (l.error) throw l.error;
+    if (locs.error) throw locs.error;
+    ORDER = o.data; CUSTOMER = o.data.customer; LINES = l.data ?? []; LOCS = locs.data ?? [];
+
+    const ids = [...new Set(LINES.map(x => x.product_id))];
+    const p = await sb.from('product').select('id,short_code,brand,model_name,tracking_mode,inclusions').in('id', ids);
+    if (p.error) throw p.error;
+    PRODUCTS = new Map((p.data ?? []).map(x => [x.id, x]));
+
+    await refreshAvailability();
+    await recordDispatched();
+    FROM_CACHE = false;
+    render();
+    await cacheForOffline(true);       // opening the job while in signal is what loads it
+  } catch (err) {
+    // No signal, or the job could not be read. Fall back to whatever was deliberately loaded.
+    const c = await store.cacheGet('order:' + orderId);
+    if (c) {
+      ({ order: ORDER, customer: CUSTOMER, lines: LINES, locations: LOCS } = c.data);
+      PRODUCTS = new Map(c.data.products.map(x => [x.id, x]));
+      AVAIL = new Map(Object.entries(c.data.avail));
+      PINNED = new Map(Object.entries(c.data.pinned ?? {}));
+      DISPATCHED = new Map(Object.entries(c.data.dispatched ?? {}));
+      FROM_CACHE = true; CACHED_AT = c.cached_at;
+      render();
+      return;
+    }
+    $('#body').className = '';
+    $('#body').innerHTML = stateBlock({
+      icon: '📡', title: 'This job is not on this phone',
+      body: 'There is no connection and this order was never loaded for offline use. Dispatch needs '
+          + 'to know which pieces are on the shelf, and that is a read — there is nothing to pick from. '
+          + 'Open it once while you have signal and it will be here.',
+    });
+  }
+}
+
+async function refreshAvailability() {
+  AVAIL = new Map(); PINNED = new Map();
+  for (const line of LINES) {
+    const p = PRODUCTS.get(line.product_id);
+    if (!p) continue;
+    if (p.tracking_mode === 'unit') {
+      const { data, error } = await sb.from('v_unit_status')
+        .select('unit_id,piece_no,condition,status,at_kind,at_id')
+        .eq('product_id', line.product_id).eq('status', 'available').order('piece_no');
+      if (error) throw error;
+      AVAIL.set(line.product_id, data ?? []);
+      if (line.pinned_unit_id) PINNED.set(line.product_id, line.pinned_unit_id);
+    } else {
+      // Rule 13: pooled and consumable products have no pieces at all. Their availability is a
+      // quantity from v_pool_stock, and asking v_unit_status would return nothing and read as zero.
+      const { data, error } = await sb.from('v_pool_stock')
+        .select('product_id,qty_on_hand').eq('product_id', line.product_id).maybeSingle();
+      if (error) throw error;
+      AVAIL.set(line.product_id, data?.qty_on_hand ?? 0);
+    }
+  }
+}
+
+async function recordDispatched() {
+  const { data, error } = await sb.from('movement')
+    .select('unit_id,product_id,qty').eq('order_id', orderId).eq('movement_type', 'dispatch');
+  if (error) throw error;
+  DISPATCHED = new Map();
+  for (const m of (data ?? [])) {
+    const cur = DISPATCHED.get(m.product_id) ?? { pieces: [], qty: 0 };
+    if (m.unit_id) cur.pieces.push(m.unit_id); else cur.qty += m.qty;
+    DISPATCHED.set(m.product_id, cur);
+  }
+}
+
+async function cacheForOffline(quiet) {
+  await store.cachePut('order:' + orderId, {
+    order: ORDER, customer: CUSTOMER, lines: LINES, locations: LOCS,
+    products: [...PRODUCTS.values()],
+    avail: Object.fromEntries(AVAIL),
+    pinned: Object.fromEntries(PINNED),
+    dispatched: Object.fromEntries(DISPATCHED),
+  });
+  CACHED_AT = new Date().toISOString();
+  if (!quiet) toast('Loaded onto this phone. You can now work on this job with no signal.');
+  paintOfflineBadge();
+}
+
+function paintOfflineBadge() {
+  const el = $('#offline-state');
+  if (!el) return;
+  el.innerHTML = FROM_CACHE
+    ? `<span class="badge badge--at_repair">working offline</span>
+       <span class="field__hint">Loaded ${esc(fmtDate(CACHED_AT))}. Numbers are as they were then.</span>`
+    : CACHED_AT
+      ? `<span class="badge badge--available">loaded for offline</span>
+         <span class="field__hint">This job is on this phone. It will still open with no signal.</span>`
+      : `<button class="btn btn--sm" id="load-offline">Load for offline</button>`;
+  $('#load-offline')?.addEventListener('click', () => cacheForOffline(false));
+}
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
+
+function render() {
+  const cust = CUSTOMER?.business_name || CUSTOMER?.name || 'customer';
+  $('#head').innerHTML = `
+    <div class="row row--between">
+      <div>
+        <h1>${esc(ORDER.order_no)}</h1>
+        <p class="sub">${esc(cust)} · ${esc(fmtDate(ORDER.out_date))} → ${esc(fmtDate(ORDER.expected_return_date))}
+          ${ORDER.venue_name ? '· ' + esc(ORDER.venue_name) : ''}</p>
+      </div>
+      <a class="btn btn--ghost btn--sm" href="orders.html">Order</a>
+    </div>
+    <div class="row" id="offline-state" style="margin-bottom:12px"></div>
+    ${['closed', 'cancelled'].includes(ORDER.status) ? `<div class="note note--warn">
+      This order is ${esc(ORDER.status)}. Anything already out stays out until it is returned, but
+      nothing more should be loaded against it.</div>` : ''}`;
+  paintOfflineBadge();
+
+  const body = $('#body');
+  body.className = '';
+  if (!LINES.length) {
+    body.innerHTML = stateBlock({ icon: '📋', title: 'This order has no lines',
+      body: 'Nothing has been agreed on this job yet, so there is nothing to load.' });
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="card">
+      <label class="field"><span class="field__label">Loading from *</span>
+        <select class="field__select" id="f-loc">
+          ${LOCS.map(l => `<option value="${esc(l.id)}">${esc(l.name)} (${esc(l.type)})</option>`).join('')}
+        </select>
+        <span class="field__hint">Only pieces sitting at this location are offered below.</span></label>
+    </div>
+    <div id="lines"></div>
+    <div class="card">
+      <strong>How is it going?</strong>
+      <div class="grid2" style="margin-top:10px">
+        <label class="field"><span class="field__label">Dispatch method *</span>
+          <select class="field__select" id="f-method">
+            <option value="delivered_by_chachu">Delivered by chachu</option>
+            <option value="porter">Porter</option>
+            <option value="self_collection">Customer collected</option>
+            <option value="other">Other</option>
+          </select>
+          <span class="field__hint">Chosen every time. There is no staff list — one employee and a
+            rotating cast of porters would be stale within a month.</span></label>
+        <label class="field"><span class="field__label">Carrier name</span>
+          <input class="field__input" id="f-carrier" placeholder="who is taking it"></label>
+        <label class="field"><span class="field__label">Carrier phone</span>
+          <input class="field__input" id="f-carrier-phone" type="tel" inputmode="tel"></label>
+        <label class="field"><span class="field__label">Vehicle</span>
+          <input class="field__input" id="f-vehicle"></label>
+        <label class="field"><span class="field__label">Received by</span>
+          <input class="field__input" id="f-recv" value="${esc(ORDER.venue_contact_name ?? '')}">
+          <span class="field__hint">Prefilled from the venue contact — the man at the hall, not the
+            man who booked. Change it if somebody else signs.</span></label>
+        <label class="field"><span class="field__label">Their phone</span>
+          <input class="field__input" id="f-recv-phone" type="tel" inputmode="tel"
+                 value="${esc(ORDER.venue_contact_phone ?? '')}"></label>
+      </div>
+      <label class="field"><span class="field__label">Note</span>
+        <input class="field__input" id="f-note"></label>
+    </div>
+    <div class="dispatch-bar">
+      <div id="pick-summary" class="field__hint"></div>
+      <button class="btn btn--primary btn--block" id="go">Dispatch</button>
+    </div>`;
+
+  $('#f-loc').addEventListener('change', renderLines);
+  $('#go').addEventListener('click', doDispatch);
+  renderLines();
+}
+
+function renderLines() {
+  const locId = $('#f-loc').value;
+  $('#lines').innerHTML = LINES.map((line, i) => {
+    const p = PRODUCTS.get(line.product_id);
+    if (!p) return '';
+    const done = DISPATCHED.get(line.product_id) ?? { pieces: [], qty: 0 };
+    const alreadyN = p.tracking_mode === 'unit' ? done.pieces.length : done.qty;
+    const remaining = Math.max(line.qty - alreadyN, 0);
+
+    if (p.tracking_mode !== 'unit') {
+      const onHand = AVAIL.get(line.product_id) ?? 0;
+      return `<div class="card" data-line="${i}">
+        <div class="row row--between">
+          <strong>${esc(p.short_code)} — ${esc(p.model_name)}</strong>
+          <span class="badge badge--${esc(p.tracking_mode)}">${esc(p.tracking_mode)}</span>
+        </div>
+        <p class="field__hint">Counted stock, no piece numbers. ${esc(alreadyN)} of ${esc(line.qty)} already sent
+          · ${esc(onHand)} on the shelf.</p>
+        ${remaining === 0 ? '<p class="field__hint" style="color:var(--ok)">This line is complete.</p>'
+        : `<label class="field"><span class="field__label">How many are you sending now?</span>
+             <input class="field__input pool-qty" data-product="${esc(line.product_id)}" type="number"
+                    min="0" max="${esc(Math.min(remaining, onHand))}" step="1" inputmode="numeric" value="0">
+             <span class="field__hint">${esc(remaining)} still owed on this line.
+               ${onHand < remaining ? `Only ${esc(onHand)} on the shelf.` : ''}</span></label>`}
+      </div>`;
+    }
+
+    const all = AVAIL.get(line.product_id) ?? [];
+    const here = all.filter(u => u.at_kind === 'location' && (!locId || u.at_id === locId));
+    const pinnedId = PINNED.get(line.product_id);
+    const pinnedHere = pinnedId ? here.find(u => u.unit_id === pinnedId) : null;
+    const pinnedElsewhere = pinnedId && !pinnedHere;
+    const sorted = pinnedHere ? [pinnedHere, ...here.filter(u => u.unit_id !== pinnedId)] : here;
+
+    return `<div class="card" data-line="${i}">
+      <div class="row row--between">
+        <strong>${esc(p.short_code)} — ${esc(p.model_name)}</strong>
+        <span class="item__meta">${esc(alreadyN)} of ${esc(line.qty)} loaded</span>
+      </div>
+      ${pinnedId ? (pinnedHere
+        ? `<p class="field__hint">Piece ${esc(pinnedHere.piece_no)} is pinned to this line and is offered first.</p>`
+        : `<div class="note note--warn">The piece pinned to this line is <strong>not on the shelf here</strong>.
+             It may be out, at a repair shop, or at another location. Send a different one, or find it first.</div>`) : ''}
+      ${remaining === 0
+        ? '<p class="field__hint" style="color:var(--ok)">This line is complete.</p>'
+        : !sorted.length
+          ? `<div class="note note--warn">Nothing of this product is on the shelf at this location.
+               ${esc(remaining)} still owed. Try another location, or send what you have and finish later —
+               partial dispatch is normal.</div>`
+          : `<p class="field__hint">Tap the pieces going out. ${esc(remaining)} still owed,
+               ${esc(sorted.length)} here.</p>
+             <div class="pieces">${sorted.map(u => `
+               <button class="piece ${PICK.has(u.unit_id) ? 'is-on' : ''}" data-unit="${esc(u.unit_id)}"
+                       data-product="${esc(line.product_id)}" type="button"
+                       aria-pressed="${PICK.has(u.unit_id) ? 'true' : 'false'}">
+                 <span class="piece__no">${esc(u.piece_no)}</span>
+                 ${u.unit_id === pinnedId ? '<span class="piece__tag">pinned</span>' : ''}
+                 ${u.condition !== 'good' ? `<span class="piece__tag">${esc(u.condition.replace('_', ' '))}</span>` : ''}
+               </button>`).join('')}</div>
+             <div class="incl" id="incl-${i}"></div>`}
+    </div>`;
+  }).join('');
+
+  $$('.piece').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.unit;
+    if (PICK.has(id)) PICK.delete(id);
+    else PICK.set(id, { product_id: b.dataset.product, inclusions: null });
+    b.classList.toggle('is-on');
+    b.setAttribute('aria-pressed', PICK.has(id) ? 'true' : 'false');
+    renderInclusions(); paintSummary();
+  }));
+  $$('.pool-qty').forEach(inp => inp.addEventListener('input', () => {
+    const n = Math.max(0, Number(inp.value) || 0);
+    POOLPICK.set(inp.dataset.product, n);
+    paintSummary();
+  }));
+  renderInclusions(); paintSummary();
+}
+
+function renderInclusions() {
+  LINES.forEach((line, i) => {
+    const host = $(`#incl-${i}`);
+    if (!host) return;
+    const p = PRODUCTS.get(line.product_id);
+    const list = Array.isArray(p?.inclusions) ? p.inclusions : [];
+    const picked = [...PICK.entries()].filter(([, v]) => v.product_id === line.product_id);
+    if (!list.length || !picked.length) { host.innerHTML = ''; return; }
+    host.innerHTML = `<div class="note" style="margin-top:10px">
+      <strong>Check what travels with each piece</strong>
+      ${picked.map(([unitId]) => {
+        const u = (AVAIL.get(line.product_id) ?? []).find(x => x.unit_id === unitId);
+        return `<div style="margin-top:8px"><div class="item__meta">Piece ${esc(u?.piece_no ?? '?')}</div>
+          <div class="pill-row">${list.map(item => `
+            <label class="field field--inline" style="margin:0">
+              <input type="checkbox" class="incl-box" data-unit="${esc(unitId)}" data-item="${esc(item)}" checked>
+              <span>${esc(item)}</span></label>`).join('')}</div></div>`;
+      }).join('')}
+      <span class="field__hint">Unticking one is how you catch that the cable did not come back.</span>
+    </div>`;
+  });
+  $$('.incl-box').forEach(cb => cb.addEventListener('change', () => {
+    const unit = cb.dataset.unit;
+    const cur = PICK.get(unit); if (!cur) return;
+    const boxes = $$(`.incl-box[data-unit="${CSS.escape(unit)}"]`);
+    cur.inclusions = boxes.filter(b => b.checked).map(b => b.dataset.item);
+    PICK.set(unit, cur);
+  }));
+}
+
+function paintSummary() {
+  const pieces = PICK.size;
+  const pooled = [...POOLPICK.values()].reduce((a, b) => a + b, 0);
+  const el = $('#pick-summary');
+  if (!el) return;
+  el.textContent = (pieces || pooled)
+    ? `${pieces ? pieces + ' piece(s)' : ''}${pieces && pooled ? ' and ' : ''}${pooled ? pooled + ' counted item(s)' : ''} selected.`
+    : 'Nothing selected yet. Partial dispatch is normal — send what is ready.';
+  $('#go').disabled = !(pieces || pooled);
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+
+async function doDispatch() {
+  const btn = $('#go');
+  const locId = $('#f-loc').value;
+  if (!locId) { toast('Pick where you are loading from.', 'error'); return; }
+
+  const common = {
+    order_id: orderId, product_id: null,
+    from_kind: 'location', from_id: locId,
+    to_kind: 'customer', to_id: CUSTOMER.id,
+    // The phone's local date, not the server's. current_date is UTC, so anything before 05:30 IST
+    // would file under yesterday — and a rental day is a calendar convention, not a clock one.
+    moved_on: todayLocal(),
+    dispatch_method: $('#f-method').value,
+    carrier_name: $('#f-carrier').value.trim() || null,
+    carrier_phone: $('#f-carrier-phone').value.trim() || null,
+    vehicle_no: $('#f-vehicle').value.trim() || null,
+    receiver_name: $('#f-recv').value.trim() || null,
+    receiver_phone: $('#f-recv-phone').value.trim() || null,
+    notes: $('#f-note').value.trim() || null,
+  };
+
+  const movements = [];
+  for (const [unitId, v] of PICK.entries()) {
+    const u = (AVAIL.get(v.product_id) ?? []).find(x => x.unit_id === unitId);
+    movements.push({
+      ...common, movement_type: 'dispatch', unit_id: unitId, product_id: v.product_id, qty: 1,
+      condition_at_move: u?.condition ?? null,
+      inclusions_checked: v.inclusions ?? (PRODUCTS.get(v.product_id)?.inclusions ?? []),
+    });
+  }
+  for (const [productId, qty] of POOLPICK.entries()) {
+    if (qty > 0) movements.push({
+      ...common, movement_type: 'dispatch', unit_id: null, product_id: productId, qty,
+    });
+  }
+  if (!movements.length) { toast('Nothing selected.', 'error'); return; }
+
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const label = `Dispatch ${movements.length} item(s) on ${ORDER.order_no}`;
+
+  if (!navigator.onLine) {
+    await store.enqueue('dispatch', { movements, order_id: orderId }, label);
+    toast(`No signal — ${movements.length} item(s) held on this phone and sent when the signal returns.`);
+    PICK.clear(); POOLPICK.clear();
+    btn.disabled = false; btn.textContent = 'Dispatch';
+    await load();
+    return;
+  }
+
+  try {
+    const { error } = await sb.from('movement').insert(movements);
+    if (error) throw error;
+    const { error: e2 } = await sb.from('ledger_entry')
+      .update({ state: 'due' }).eq('order_id', orderId).eq('state', 'upcoming');
+    if (e2) throw e2;
+    toast(`${movements.length} item(s) dispatched.`);
+    PICK.clear(); POOLPICK.clear();
+    await load();
+  } catch (err) {
+    // A network failure mid-write is queued rather than lost; anything else is a real rejection
+    // the operator has to see, because the boxes may already be on the van.
+    const msg = err?.message || String(err);
+    if (/fetch|network|Failed to fetch/i.test(msg)) {
+      await store.enqueue('dispatch', { movements, order_id: orderId }, label);
+      toast('Connection dropped — held on this phone and sent when the signal returns.');
+      PICK.clear(); POOLPICK.clear(); await load();
+    } else {
+      toast(msg, 'error');
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = 'Dispatch';
+  }
+}
+
+window.__djn = { reload: load, cacheNow: () => cacheForOffline(false) };
+</script>
+</body>
+</html>

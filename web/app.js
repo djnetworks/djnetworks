@@ -4,10 +4,23 @@
 // line costs, or what a customer owes — it asks the database and renders the answer. See the
 // djn-architecture skill, "Where logic goes".
 
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
+import * as store from './db.js';
 
-export const sb = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+// The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
+//
+// It used to be imported from jsdelivr, and that was a permanent failure point: with the CDN
+// unreachable the browser discarded this entire module graph in silence and every screen was a
+// blank grey rectangle, and even when it worked it cost 3.1s of blank on a cold cache. A godown is
+// where both of those happen. There is no CDN in this app now — nothing here needs the public
+// internet except Supabase itself.
+if (!window.supabase?.createClient) {
+  throw new Error('vendor/supabase.js did not load — boot.js reports this to the operator.');
+}
+export const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true },
+});
+export { store };
 
 // ---------------------------------------------------------------------------
 // Tiny DOM helpers. No framework, on purpose: the operator has to be able to
@@ -335,6 +348,9 @@ function renderSignIn(gate) {
 export function chrome(active) {
   const tabs = [
     ['index.html', 'Home'],
+    ['orders.html', 'Orders'],
+    ['dispatch.html', 'Dispatch'],
+    ['return.html', 'Return'],
     ['products.html', 'Products'],
     ['units.html', 'Pieces'],
   ];
@@ -348,8 +364,69 @@ export function chrome(active) {
         `<a class="topbar__tab${href === active ? ' is-active' : ''}" href="${href}"${
           href === active ? ' aria-current="page"' : ''}>${label}</a>`).join('')}
     </nav>
+    <span class="conn" id="conn" hidden></span>
     <span class="topbar__who" id="who"></span>
     <button class="btn btn--ghost" id="signout" hidden>Sign out</button>
   </header>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>`;
+}
+
+// The tab strip scrolls sideways on a phone, so the tab you are on can start off screen.
+// Called by every screen right after chrome() is written into the DOM.
+export function revealActiveTab() {
+  const el = $('.topbar__tab.is-active');
+  el?.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+
+// ---------------------------------------------------------------------------
+// Connection and the write queue.
+//
+// The indicator is never decoration. Two facts have to be visible at all times on a screen used
+// where the signal dies: whether this phone can currently reach the database, and how many writes
+// it is still holding. An operator who cannot see the second one will close the tab on the way out
+// of the godown with six dispatches in it.
+// ---------------------------------------------------------------------------
+
+let queueHandlers = {};
+export function registerQueueHandlers(h) { queueHandlers = { ...queueHandlers, ...h }; }
+
+export function paintConn(pending) {
+  const el = $('#conn');
+  if (!el) return;
+  const online = navigator.onLine;
+  if (online && !pending) { el.hidden = true; return; }
+  el.hidden = false;
+  el.className = 'conn ' + (online ? 'conn--sync' : 'conn--off');
+  el.textContent = online
+    ? `${pending} to send`
+    : (pending ? `Offline · ${pending} waiting` : 'Offline');
+  el.title = online
+    ? 'Connected. Queued writes are being sent.'
+    : 'No connection. Anything you record is kept on this phone and sent when the signal returns.';
+}
+
+/** Replay the queue. Safe to call often; does nothing when there is nothing to send. */
+export async function syncNow(quiet = true) {
+  if (!navigator.onLine) return;
+  const n = await store.pendingCount();
+  if (!n) { paintConn(0); return; }
+  const res = await store.flush(queueHandlers);
+  paintConn(await store.pendingCount());
+  if (res.failed) {
+    toast(`${res.done} of ${res.total} sent. Stopped at “${res.failed.label ?? res.failed.kind}”: `
+        + `${res.failed.last_error}`, 'error');
+  } else if (res.done && !quiet) {
+    toast(`${res.done} queued ${res.done === 1 ? 'change' : 'changes'} sent.`);
+  }
+}
+
+export async function initOffline() {
+  store.onQueueChange(paintConn);
+  paintConn(await store.pendingCount());
+  window.addEventListener('online', () => { paintConn(0); syncNow(false); });
+  window.addEventListener('offline', async () => paintConn(await store.pendingCount()));
+  if ('serviceWorker' in navigator) {
+    try { await navigator.serviceWorker.register('sw.js'); } catch { /* shell stays online-only */ }
+  }
+  await syncNow(true);
 }

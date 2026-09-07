@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pieces — DJ Network's</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-2">
-<script src="boot.js?v=2026-09-07-2" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-4">
+<!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
+     below that needs window.supabase. -->
+<script src="vendor/supabase.js?v=2026-09-07-4" defer></script>
+<script src="boot.js?v=2026-09-07-4" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -23,10 +26,12 @@
 
 <script type="module">
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
-         openSheet, focusField, fmtDate, todayLocal, networkMessage }
-  from './app.js?v=2026-09-07-2';
+         openSheet, focusField, fmtDate, todayLocal, networkMessage, initOffline,
+         revealActiveTab }
+  from './app.js?v=2026-09-07-4';
 
 $('#chrome').innerHTML = chrome('units.html');
+revealActiveTab();
 
 // Every screen is product-first (rule 8). Chachu's stickers carry a bare piece number with no
 // product code, so a sticker alone identifies nothing — you pick the product, then the number.
@@ -39,6 +44,8 @@ const COSTS = new Map();
 // rows come back, and A's pieces render under B's heading. On a godown link that is not a
 // theoretical ordering problem, and the wrong answer is "these boxes are available".
 let bodyToken = 0;
+
+initOffline();
 
 requireSession(async () => { await boot(); });
 

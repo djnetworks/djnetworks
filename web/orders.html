@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orders — DJ Network's</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=2026-09-07-4">
+<script src="vendor/supabase.js?v=2026-09-07-4" defer></script>
+<script src="boot.js?v=2026-09-07-4" defer></script>
+</head>
+<body>
+<div id="chrome"></div>
+<main id="gate">
+  <div class="signin" data-djn-boot>
+    <h1 class="signin__title">DJ Network's</h1>
+    <p class="signin__sub">Starting up…</p>
+  </div>
+</main>
+<main id="app" class="wrap" hidden></main>
+<div id="sheet-host"></div>
+
+<script type="module">
+import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
+         openSheet, focusField, initOffline, revealActiveTab }
+  from './app.js?v=2026-09-07-4';
+
+$('#chrome').innerHTML = chrome('orders.html');
+revealActiveTab();
+initOffline();
+
+let ORDERS = [], CUSTOMERS = [], PRODUCTS = [], FULFIL = new Map(), TIERS = [], SETTINGS = {};
+let POSTED = new Map();   // order_id -> net posted charge
+
+requireSession(async () => { await boot(); });
+
+async function boot() {
+  $('#app').innerHTML = `
+    <div class="row row--between">
+      <div><h1>Orders</h1><p class="sub" id="count-line">Jobs agreed, out, and finished.</p></div>
+      <button class="btn btn--primary" id="new-order">New order</button>
+    </div>
+    <div class="row" id="filters" hidden>
+      <input class="field__input grow" id="q" type="search" placeholder="Search order number, customer or venue…"
+             autocapitalize="none" spellcheck="false">
+      <select class="field__select" id="f-state" style="max-width:220px">
+        <option value="">All</option>
+        <option value="live">Live (not closed or cancelled)</option>
+        <option value="nothing_dispatched">Nothing dispatched</option>
+        <option value="part_dispatched">Partly dispatched</option>
+        <option value="fully_out">Fully out</option>
+        <option value="part_returned">Partly returned</option>
+        <option value="all_returned">All returned</option>
+      </select>
+    </div>
+    <div id="list" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
+  $('#new-order').addEventListener('click', () => openOrder(null));
+  $('#q').addEventListener('input', renderList);
+  $('#f-state').addEventListener('change', renderList);
+  await load();
+}
+
+async function load() {
+  try {
+    const [ords, custs, prods, ful, tiers, settings, ledger] = await Promise.all([
+      sb.from('rental_order').select('*').order('out_date', { ascending: false }),
+      sb.from('customer').select('id,name,business_name,whatsapp,type').eq('active', true).order('name'),
+      sb.from('product').select('id,short_code,brand,model_name,tracking_mode,base_rate_per_day,rentable,active')
+        .eq('active', true).order('short_code'),
+      sb.from('v_order_fulfilment').select('*'),
+      sb.from('discount_tier').select('*').order('min_days'),
+      sb.from('app_setting').select('key,value'),
+      sb.from('ledger_entry').select('order_id,type,amount'),
+    ]);
+    for (const r of [ords, custs, prods, ful, tiers, settings, ledger]) if (r.error) throw r.error;
+    ORDERS = ords.data ?? []; CUSTOMERS = custs.data ?? []; PRODUCTS = prods.data ?? [];
+    TIERS = tiers.data ?? [];
+    FULFIL = new Map((ful.data ?? []).map(f => [f.order_id, f]));
+    SETTINGS = Object.fromEntries((settings.data ?? []).map(s => [s.key, s.value]));
+
+    // Net posted charge per order, computed the same way fn_order_net_posted_charge does, so the
+    // screen can warn BEFORE a save that 0009 will refuse rather than after.
+    POSTED = new Map();
+    const BILLED = ['rental', 'transport', 'labour', 'misc', 'damage'];
+    for (const e of (ledger.data ?? [])) {
+      if (!e.order_id) continue;
+      const delta = BILLED.includes(e.type) ? Number(e.amount)
+                  : e.type === 'reversal' ? -Number(e.amount) : 0;
+      POSTED.set(e.order_id, (POSTED.get(e.order_id) ?? 0) + delta);
+    }
+    renderList();
+  } catch (err) {
+    $('#list').className = '';
+    $('#list').innerHTML = errorBlock(err, 'retry');
+    $('#retry')?.addEventListener('click', load);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Day counting. The convention lives in app_setting, never in this file — it changes the price of
+// every job, and docs/decisions.md records that it is still UNCONFIRMED with the owner.
+// ---------------------------------------------------------------------------
+function dayCount(outDate, retDate) {
+  if (!outDate || !retDate) return null;
+  const a = new Date(outDate + 'T00:00:00'), b = new Date(retDate + 'T00:00:00');
+  if (b < a) return null;
+  const span = Math.round((b - a) / 86400000);
+  return SETTINGS.day_count_mode === 'inclusive_both_ends' ? span + 1 : Math.max(span, 1);
+}
+const dayCountLabel = () => SETTINGS.day_count_mode === 'inclusive_both_ends'
+  ? 'Both ends count: out on the 2nd, back on the 4th is 3 days.'
+  : `Day count mode: ${SETTINGS.day_count_mode ?? 'unset'}.`;
+
+function suggestDiscount(days) {
+  const t = TIERS.find(x => days >= x.min_days && (x.max_days === null || days <= x.max_days));
+  return t ? Number(t.discount_pct) : 0;
+}
+// Every tier is currently 0.00 — placeholders from an earlier planning document, not from the
+// owner (docs/open-questions.md item 5). Saying "0% suggested" as though it were a decision would
+// be inventing one, so the screen says the ladder is unset instead.
+const ladderIsPlaceholder = () => TIERS.length > 0 && TIERS.every(t => Number(t.discount_pct) === 0);
+
+function renderList() {
+  const list = $('#list');
+  if (!ORDERS.length) {
+    $('#filters').hidden = true;
+    $('#count-line').textContent = 'No orders yet.';
+    list.className = '';
+    list.innerHTML = stateBlock({
+      icon: '📋',
+      title: 'No orders yet',
+      body: CUSTOMERS.length
+        ? 'An order exists once a job is agreed — there is no quote stage. Create one and the pieces get allocated later, when the van is loaded.'
+        : 'There are no customers yet either, and an order needs one. Add a customer first.',
+      actionLabel: CUSTOMERS.length ? 'Create the first order' : '', actionId: 'empty-new',
+    });
+    $('#empty-new')?.addEventListener('click', () => openOrder(null));
+    return;
+  }
+  $('#filters').hidden = false;
+  const q = ($('#q').value || '').trim().toLowerCase();
+  const st = $('#f-state').value;
+  const rows = ORDERS.filter(o => {
+    const f = FULFIL.get(o.id);
+    if (st === 'live' && ['closed', 'cancelled'].includes(o.status)) return false;
+    if (st && st !== 'live' && f?.fulfilment_state !== st) return false;
+    if (!q) return true;
+    const cust = CUSTOMERS.find(c => c.id === o.customer_id);
+    return [o.order_no, o.venue_name, cust?.name, cust?.business_name]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+  $('#count-line').textContent = `${rows.length} of ${ORDERS.length} order${ORDERS.length === 1 ? '' : 's'}. ${dayCountLabel()}`;
+
+  if (!rows.length) {
+    list.className = '';
+    list.innerHTML = stateBlock({
+      icon: '🔍', title: 'No order matches that',
+      body: `Nothing matches this filter. There are ${ORDERS.length} orders in total.`,
+      actionLabel: 'Clear the filters', actionId: 'clear',
+    });
+    $('#clear').addEventListener('click', () => { $('#q').value = ''; $('#f-state').value = ''; renderList(); });
+    return;
+  }
+
+  list.className = 'list';
+  list.innerHTML = rows.map(o => {
+    const f = FULFIL.get(o.id);
+    const cust = CUSTOMERS.find(c => c.id === o.customer_id);
+    const late = f && f.qty_outstanding > 0 && new Date(o.expected_return_date) < new Date(new Date().toDateString());
+    return `<button class="item" data-id="${esc(o.id)}">
+      <span class="item__main">
+        <span class="item__title">${esc(o.order_no)} — ${esc(cust?.business_name || cust?.name || 'unknown customer')}</span>
+        <span class="item__meta">
+          ${esc(fmtDate(o.out_date))} → ${esc(fmtDate(o.expected_return_date))} · ${esc(o.days)} day${o.days === 1 ? '' : 's'}
+          ${o.venue_name ? '· ' + esc(o.venue_name) : ''}
+        </span>
+        <span class="item__meta">
+          <span class="badge badge--${esc(o.status)}">${esc(o.status)}</span>
+          ${f ? `<span class="badge">${esc(String(f.fulfilment_state).replace(/_/g, ' '))}</span>` : ''}
+          ${late ? '<span class="badge badge--out">overdue</span>' : ''}
+          ${POSTED.get(o.id) ? '<span class="badge badge--muted">charge posted</span>' : ''}
+        </span>
+      </span>
+      <span class="item__right">${f ? `${f.qty_dispatched}/${f.qty_ordered} out` : ''}</span>
+    </button>`;
+  }).join('');
+  $$('.item', list).forEach(b =>
+    b.addEventListener('click', () => openOrder(ORDERS.find(o => o.id === b.dataset.id))));
+}
+
+// ---------------------------------------------------------------------------
+// Order editor
+// ---------------------------------------------------------------------------
+
+let LINES = [], CHARGES = [], CURRENT = null;
+
+async function openOrder(o) {
+  const isNew = !o;
+  CURRENT = o;
+  LINES = []; CHARGES = [];
+  const posted = o ? (POSTED.get(o.id) ?? 0) : 0;
+  const frozen = posted !== 0;
+
+  if (o) {
+    const [l, c] = await Promise.all([
+      sb.from('order_line').select('*').eq('order_id', o.id),
+      sb.from('order_charge').select('*').eq('order_id', o.id).order('created_at'),
+    ]);
+    if (l.error || c.error) { toast((l.error || c.error).message, 'error'); return; }
+    LINES = (l.data ?? []).map(x => ({ ...x }));
+    CHARGES = (c.data ?? []).map(x => ({ ...x }));
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  o = o ?? {
+    order_no: '', customer_id: '', status: 'confirmed', event_type: '', venue_name: '',
+    venue_address: '', venue_contact_name: '', venue_contact_phone: '',
+    out_date: today, expected_return_date: today, days: dayCount(today, today) ?? 1,
+    deposit_amount: '', availability_override: false, availability_override_reason: '', notes: '',
+  };
+
+  const panel = `
+    <div class="sheet__head">
+      <h2 class="sheet__title">${isNew ? 'New order' : esc(o.order_no)}</h2>
+      <button class="btn btn--ghost" id="close-sheet" aria-label="Close">✕</button>
+    </div>
+
+    ${frozen ? `<div class="note note--warn">
+      ${money(posted)} of charges are posted to this customer's ledger against this order. Line money is
+      frozen — quantity, rate and product cannot change while a charge stands, or the receivable would
+      overstate what is owed. Record a <strong>reversal</strong> for the amount, edit, then post again.
+    </div><div style="height:12px"></div>` : ''}
+
+    <div class="grid2">
+      <label class="field"><span class="field__label">Order number *</span>
+        <input class="field__input" id="f-no" value="${esc(o.order_no)}" ${isNew ? '' : 'readonly'}>
+        ${isNew ? '<span class="field__hint" id="no-hint"></span>' : ''}</label>
+      <label class="field"><span class="field__label">Customer *</span>
+        <select class="field__select" id="f-cust" ${isNew ? '' : 'disabled'}>
+          <option value="">Choose…</option>
+          ${CUSTOMERS.map(c => `<option value="${esc(c.id)}" ${c.id === o.customer_id ? 'selected' : ''}>
+            ${esc(c.business_name || c.name)}${c.business_name ? ' (' + esc(c.name) + ')' : ''}</option>`).join('')}
+        </select></label>
+      <label class="field"><span class="field__label">Out date *</span>
+        <input class="field__input" id="f-out" type="date" value="${esc(o.out_date)}"></label>
+      <label class="field"><span class="field__label">Expected back *</span>
+        <input class="field__input" id="f-ret" type="date" value="${esc(o.expected_return_date)}"></label>
+      <label class="field"><span class="field__label">Chargeable days *</span>
+        <input class="field__input" id="f-days" type="number" min="1" step="1" inputmode="numeric" value="${esc(o.days)}">
+        <span class="field__hint" id="days-hint"></span></label>
+      <label class="field"><span class="field__label">Deposit held (₹)</span>
+        <input class="field__input" id="f-dep" type="number" min="0" step="0.01" inputmode="decimal"
+               value="${esc(o.deposit_amount)}">
+        <span class="field__hint">The customer's own money, held. Never counted as revenue.</span></label>
+    </div>
+
+    <div class="grid2">
+      <label class="field"><span class="field__label">Event type</span>
+        <input class="field__input" id="f-event" value="${esc(o.event_type)}" list="event-types">
+        <datalist id="event-types">
+          ${['wedding', 'garba', 'corporate', 'dj_night', 'birthday', 'concert', 'religious']
+            .map(x => `<option value="${x}">`).join('')}
+        </datalist></label>
+      <label class="field"><span class="field__label">Venue</span>
+        <input class="field__input" id="f-venue" value="${esc(o.venue_name)}"></label>
+    </div>
+    <label class="field"><span class="field__label">Venue address</span>
+      <input class="field__input" id="f-vaddr" value="${esc(o.venue_address)}"></label>
+    <div class="grid2">
+      <label class="field"><span class="field__label">Who is at the venue</span>
+        <input class="field__input" id="f-vcname" value="${esc(o.venue_contact_name)}">
+        <span class="field__hint">Rarely the person who booked. This is who the van actually meets.</span></label>
+      <label class="field"><span class="field__label">Their phone</span>
+        <input class="field__input" id="f-vcphone" type="tel" inputmode="tel" value="${esc(o.venue_contact_phone)}"></label>
+    </div>
+
+    <div class="card" style="background:#fbfcfd">
+      <div class="row row--between" style="margin-bottom:8px">
+        <strong>Lines</strong>
+        <button class="btn btn--sm" id="add-line" type="button" ${frozen ? 'disabled' : ''}>Add a line</button>
+      </div>
+      <p class="field__hint" style="margin-top:0">
+        Lines reserve at PRODUCT level — "2 × 15-inch top", never piece 3 and piece 5. Physical boxes
+        attach when the van is loaded, on the dispatch screen.
+      </p>
+      <div id="lines"></div>
+      <div id="avail" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" style="background:#fbfcfd">
+      <div class="row row--between" style="margin-bottom:8px">
+        <strong>Charges</strong>
+        <button class="btn btn--sm" id="add-charge" type="button" ${frozen ? 'disabled' : ''}>Add a charge</button>
+      </div>
+      <p class="field__hint" style="margin-top:0">Transport, labour and the rest. Job-level, so they are
+        deliberately kept out of per-product ROI — they would flatter heavy gear, which travels most.</p>
+      <div id="charges"></div>
+    </div>
+
+    <div class="card" id="totals"></div>
+
+    <label class="field"><span class="field__label">Notes</span>
+      <textarea class="field__area" id="f-notes">${esc(o.notes)}</textarea></label>
+
+    <div class="sheet__foot">
+      ${o.id && o.status === 'confirmed' ? `<button class="btn btn--danger" id="cancel-order">Cancel order</button>` : ''}
+      ${o.id ? `<a class="btn" href="dispatch.html?order=${esc(o.id)}">Dispatch</a>
+                <a class="btn" href="return.html?order=${esc(o.id)}">Return</a>` : ''}
+      <button class="btn" id="cancel">Close</button>
+      <button class="btn btn--primary" id="save">${isNew ? 'Create order' : 'Save changes'}</button>
+    </div>`;
+
+  openSheet(panel, isNew ? 'New order' : `Order ${o.order_no}`);
+  $('#cancel').addEventListener('click', () => $('#sheet-host').innerHTML = '');
+
+  if (isNew) {
+    const d = new Date();
+    const yymm = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0');
+    const prefix = (SETTINGS.order_no_prefix ?? 'DJN');
+    const seq = String(ORDERS.filter(x => (x.order_no || '').includes(`-${yymm}-`)).length + 1).padStart(4, '0');
+    $('#f-no').value = `${prefix}-${yymm}-${seq}`;
+    $('#no-hint').textContent = 'Suggested. Appears in every WhatsApp message about this job — edit if you prefer.';
+  }
+
+  const syncDays = () => {
+    const n = dayCount($('#f-out').value, $('#f-ret').value);
+    $('#days-hint').textContent = n === null
+      ? 'Back date is before the out date.'
+      : `${dayCountLabel()} That gives ${n}.`;
+    if (n !== null && !$('#f-days').dataset.touched) $('#f-days').value = n;
+    renderLines();
+  };
+  $('#f-out').addEventListener('change', syncDays);
+  $('#f-ret').addEventListener('change', syncDays);
+  $('#f-days').addEventListener('input', () => { $('#f-days').dataset.touched = '1'; renderLines(); });
+  syncDays();
+
+  $('#add-line').addEventListener('click', () => {
+    LINES.push({ product_id: '', qty: 1, days: Number($('#f-days').value) || 1,
+                 base_rate: 0, discount_pct: 0, agreed_rate: 0, line_total: 0, is_subhired: false });
+    renderLines();
+  });
+  $('#add-charge').addEventListener('click', () => {
+    CHARGES.push({ type: 'transport', description: '', amount: 0 });
+    renderCharges();
+  });
+  renderLines(); renderCharges();
+
+  $('#cancel-order')?.addEventListener('click', async () => {
+    if (!confirm(`Cancel order ${o.order_no}? It is kept, never deleted — cancelled orders reserve nothing, `
+               + `but anything already dispatched stays out until it is returned.`)) return;
+    const { error } = await sb.from('rental_order').update({ status: 'cancelled' }).eq('id', o.id);
+    if (error) { toast(error.message, 'error'); return; }
+    toast('Order cancelled.'); $('#sheet-host').innerHTML = ''; await load();
+  });
+
+  $('#save').addEventListener('click', () => save(o, isNew, frozen));
+  if (isNew) focusField('#f-cust');
+}
+
+function renderLines() {
+  const frozen = CURRENT ? (POSTED.get(CURRENT.id) ?? 0) !== 0 : false;
+  const host = $('#lines');
+  if (!LINES.length) {
+    host.innerHTML = `<p class="field__hint">No lines yet. An order with no lines reserves nothing.</p>`;
+    renderTotals(); return;
+  }
+  host.innerHTML = LINES.map((l, i) => {
+    const p = PRODUCTS.find(x => x.id === l.product_id);
+    return `<div class="line" data-i="${i}">
+      <div class="grid2">
+        <label class="field"><span class="field__label">Product</span>
+          <select class="field__select l-prod" ${frozen ? 'disabled' : ''}>
+            <option value="">Choose…</option>
+            ${PRODUCTS.filter(x => x.rentable || x.id === l.product_id).map(x =>
+              `<option value="${esc(x.id)}" ${x.id === l.product_id ? 'selected' : ''}>
+                ${esc(x.short_code)} — ${esc(x.model_name)}${x.rentable ? '' : ' (not rentable)'}</option>`).join('')}
+          </select></label>
+        <div class="grid2">
+          <label class="field"><span class="field__label">Qty</span>
+            <input class="field__input l-qty" type="number" min="1" step="1" inputmode="numeric"
+                   value="${esc(l.qty)}" ${frozen ? 'disabled' : ''}></label>
+          <label class="field"><span class="field__label">Days</span>
+            <input class="field__input l-days" type="number" min="1" step="1" inputmode="numeric"
+                   value="${esc(l.days)}" ${frozen ? 'disabled' : ''}></label>
+        </div>
+      </div>
+      <div class="grid2">
+        <label class="field"><span class="field__label">Base rate/day</span>
+          <input class="field__input l-base" type="number" step="0.01" min="0" inputmode="decimal"
+                 value="${esc(l.base_rate)}" ${frozen ? 'disabled' : ''}>
+          <span class="field__hint">${p ? 'Product default ' + money(p.base_rate_per_day) : 'Pick a product'}</span></label>
+        <label class="field"><span class="field__label">Discount %</span>
+          <input class="field__input l-disc" type="number" step="0.01" min="0" max="100" inputmode="decimal"
+                 value="${esc(l.discount_pct)}" ${frozen ? 'disabled' : ''}>
+          <span class="field__hint l-disc-hint"></span></label>
+        <label class="field"><span class="field__label">Agreed rate/day *</span>
+          <input class="field__input l-agreed" type="number" step="0.01" min="0" inputmode="decimal"
+                 value="${esc(l.agreed_rate)}" ${frozen ? 'disabled' : ''}>
+          <span class="field__hint">What was actually agreed. Stored, and never recalculated later.</span></label>
+        <label class="field"><span class="field__label">Line total *</span>
+          <input class="field__input l-total" type="number" step="0.01" min="0" inputmode="decimal"
+                 value="${esc(l.line_total)}" ${frozen ? 'disabled' : ''}>
+          <span class="field__hint l-total-hint"></span></label>
+      </div>
+      <div class="row row--between">
+        <label class="field field--inline" style="margin:0">
+          <input type="checkbox" class="l-sub" ${l.is_subhired ? 'checked' : ''} ${frozen ? 'disabled' : ''}>
+          <span>Sub-hired from a vendor</span></label>
+        <button class="btn btn--sm l-del" type="button" ${frozen ? 'disabled' : ''}>Remove line</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:12px 0">
+    </div>`;
+  }).join('');
+
+  $$('.line', host).forEach(el => {
+    const i = Number(el.dataset.i);
+    const read = () => {
+      const l = LINES[i];
+      l.product_id = $('.l-prod', el).value;
+      l.qty = Number($('.l-qty', el).value) || 1;
+      l.days = Number($('.l-days', el).value) || 1;
+      l.base_rate = Number($('.l-base', el).value) || 0;
+      l.discount_pct = Number($('.l-disc', el).value) || 0;
+      l.agreed_rate = Number($('.l-agreed', el).value) || 0;
+      l.line_total = Number($('.l-total', el).value) || 0;
+      l.is_subhired = $('.l-sub', el).checked;
+    };
+    $('.l-prod', el).addEventListener('change', () => {
+      read();
+      const p = PRODUCTS.find(x => x.id === LINES[i].product_id);
+      // The product rate SEEDS the line. From here the two are independent for ever: raising the
+      // rate next March must not rewrite what was charged last March (rule 5).
+      if (p) {
+        LINES[i].base_rate = Number(p.base_rate_per_day ?? 0);
+        LINES[i].discount_pct = suggestDiscount(LINES[i].days);
+        recalcSuggestion(LINES[i]);
+      }
+      renderLines(); checkAvailability();
+    });
+    ['.l-qty', '.l-days', '.l-base', '.l-disc'].forEach(sel =>
+      $(sel, el).addEventListener('input', () => {
+        read(); recalcSuggestion(LINES[i]);
+        $('.l-agreed', el).value = LINES[i].agreed_rate;
+        $('.l-total', el).value = LINES[i].line_total;
+        renderTotals(); hints(el, i);
+      }));
+    // Editing agreed_rate or line_total by hand wins and is never overwritten afterwards.
+    $('.l-agreed', el).addEventListener('input', () => {
+      read(); LINES[i].line_total = round2(LINES[i].agreed_rate * LINES[i].qty * LINES[i].days);
+      $('.l-total', el).value = LINES[i].line_total; renderTotals(); hints(el, i);
+    });
+    $('.l-total', el).addEventListener('input', () => { read(); renderTotals(); hints(el, i); });
+    $('.l-sub', el).addEventListener('change', () => { read(); checkAvailability(); });
+    $('.l-del', el).addEventListener('click', () => { LINES.splice(i, 1); renderLines(); checkAvailability(); });
+    hints(el, i);
+  });
+  renderTotals();
+  checkAvailability();
+}
+
+const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+function recalcSuggestion(l) {
+  l.agreed_rate = round2(l.base_rate * (1 - (l.discount_pct / 100)));
+  l.line_total = round2(l.agreed_rate * l.qty * l.days);
+}
+function hints(el, i) {
+  const l = LINES[i];
+  const suggested = round2(l.agreed_rate * l.qty * l.days);
+  $('.l-total-hint', el).textContent = l.line_total === suggested
+    ? `${l.qty} × ${l.days} day(s) × ${money(l.agreed_rate)}`
+    : `Overridden. Rate × qty × days would be ${money(suggested)}.`;
+  $('.l-disc-hint', el).textContent = ladderIsPlaceholder()
+    ? 'The discount ladder is still all zeros — placeholders, not the owner\'s numbers.'
+    : `Ladder suggests ${suggestDiscount(l.days)}% for ${l.days} day(s).`;
+}
+
+function renderCharges() {
+  const frozen = CURRENT ? (POSTED.get(CURRENT.id) ?? 0) !== 0 : false;
+  const host = $('#charges');
+  if (!CHARGES.length) { host.innerHTML = `<p class="field__hint">No charges.</p>`; renderTotals(); return; }
+  host.innerHTML = CHARGES.map((c, i) => `
+    <div class="spec-row" data-i="${i}">
+      <select class="field__select c-type" ${frozen ? 'disabled' : ''}>
+        ${['transport', 'labour', 'misc', 'damage'].map(t =>
+          `<option value="${t}" ${t === c.type ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+      <input class="field__input c-desc" placeholder="description" value="${esc(c.description)}" ${frozen ? 'disabled' : ''}>
+      <input class="field__input c-amt" type="number" step="0.01" min="0" inputmode="decimal"
+             value="${esc(c.amount)}" style="max-width:120px" ${frozen ? 'disabled' : ''}>
+      <button class="btn btn--sm c-del" type="button" ${frozen ? 'disabled' : ''}>✕</button>
+    </div>`).join('');
+  $$('.spec-row', host).forEach(el => {
+    const i = Number(el.dataset.i);
+    const read = () => {
+      CHARGES[i].type = $('.c-type', el).value;
+      CHARGES[i].description = $('.c-desc', el).value;
+      CHARGES[i].amount = Number($('.c-amt', el).value) || 0;
+    };
+    ['.c-type', '.c-desc', '.c-amt'].forEach(s => $(s, el).addEventListener('input', () => { read(); renderTotals(); }));
+    $('.c-del', el).addEventListener('click', () => { CHARGES.splice(i, 1); renderCharges(); });
+  });
+  renderTotals();
+}
+
+function renderTotals() {
+  const rental = LINES.reduce((n, l) => n + Number(l.line_total || 0), 0);
+  const charges = CHARGES.reduce((n, c) => n + Number(c.amount || 0), 0);
+  const dep = Number($('#f-dep')?.value || 0);
+  // Rule 6: the deposit is the customer's money being held. It is a liability, never revenue, and
+  // it is never added into the job total — two numbers, side by side, on every screen.
+  $('#totals').innerHTML = `
+    <div class="grid2">
+      <dl class="kv">
+        <dt>Rental</dt><dd>${money(rental)}</dd>
+        <dt>Charges</dt><dd>${money(charges)}</dd>
+        <dt><strong>Job total</strong></dt><dd><strong>${money(rental + charges)}</strong></dd>
+      </dl>
+      <dl class="kv">
+        <dt>Deposit held</dt><dd>${money(dep)}</dd>
+        <dt colspan="2"><span class="field__hint">The deposit is the customer's own money and is never
+          part of the job total. It is returned, or set against damage, when everything is back.</span></dt>
+      </dl>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Availability. The database decides; this screen only asks and reports.
+// ---------------------------------------------------------------------------
+let availToken = 0;
+async function checkAvailability() {
+  const box = $('#avail');
+  if (!box) return;
+  const from = $('#f-out')?.value, to = $('#f-ret')?.value;
+  const lines = LINES.filter(l => l.product_id && !l.is_subhired);
+  if (!from || !to || !lines.length) { box.innerHTML = ''; return; }
+
+  const my = ++availToken;
+  box.innerHTML = `<p class="field__hint">Checking availability…</p>`;
+  const results = [];
+  for (const l of lines) {
+    const { data, error } = await sb.rpc('fn_availability', {
+      p_product_id: l.product_id, p_from: from, p_to: to,
+      p_exclude_order_id: CURRENT?.id ?? null,
+    });
+    if (my !== availToken) return;                       // a newer check has started
+    if (error) { box.innerHTML = `<p class="signin__err">${esc(error.message)}</p>`; return; }
+    const row = Array.isArray(data) ? data[0] : data;
+    results.push({ line: l, ...row });
+  }
+  if (my !== availToken) return;
+
+  const short = results.filter(r => (r.available ?? 0) < r.line.qty);
+  box.dataset.short = short.length ? '1' : '';
+  if (!short.length) {
+    box.innerHTML = `<p class="field__hint" style="color:var(--ok)">Everything on this order is available for
+      ${esc(fmtDate(from))} → ${esc(fmtDate(to))}.</p>`;
+    return;
+  }
+  box.innerHTML = `<div class="note note--warn">
+    <strong>Not enough available.</strong>
+    <ul style="margin:8px 0 0;padding-left:20px">
+      ${short.map(r => {
+        const p = PRODUCTS.find(x => x.id === r.line.product_id);
+        return `<li>${esc(p?.short_code ?? '?')}: asked for ${esc(r.line.qty)}, ${esc(r.available)} available
+          (${esc(r.units_on_hand)} on hand, ${esc(r.committed)} already committed)</li>`;
+      }).join('')}
+    </ul>
+    <label class="field field--inline" style="margin:12px 0 0">
+      <input type="checkbox" id="f-override" ${CURRENT?.availability_override ? 'checked' : ''}>
+      <span>Override — I know, and I am doing it anyway</span></label>
+    <label class="field" style="margin:8px 0 0"><span class="field__label">Why</span>
+      <input class="field__input" id="f-override-reason"
+             value="${esc(CURRENT?.availability_override_reason ?? '')}"
+             placeholder="e.g. the 4th job returns by 9am, collecting on the way">
+      <span class="field__hint">Recorded on the order. Same-day turnaround is possible; it is just never silent.</span>
+    </label>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Save
+// ---------------------------------------------------------------------------
+
+async function save(o, isNew, frozen) {
+  const btn = $('#save');
+  const order = {
+    order_no: $('#f-no').value.trim(),
+    customer_id: $('#f-cust').value || null,
+    out_date: $('#f-out').value || null,
+    expected_return_date: $('#f-ret').value || null,
+    days: Number($('#f-days').value) || 1,
+    deposit_amount: Number($('#f-dep').value) || 0,
+    event_type: $('#f-event').value.trim() || null,
+    venue_name: $('#f-venue').value.trim() || null,
+    venue_address: $('#f-vaddr').value.trim() || null,
+    venue_contact_name: $('#f-vcname').value.trim() || null,
+    venue_contact_phone: $('#f-vcphone').value.trim() || null,
+    notes: $('#f-notes').value.trim() || null,
+    availability_override: !!$('#f-override')?.checked,
+    availability_override_reason: $('#f-override-reason')?.value.trim() || null,
+  };
+  if (!order.order_no || !order.customer_id || !order.out_date || !order.expected_return_date) {
+    toast('Order number, customer and both dates are needed.', 'error'); return;
+  }
+  if (new Date(order.expected_return_date) < new Date(order.out_date)) {
+    toast('The back date is before the out date.', 'error'); focusField('#f-ret'); return;
+  }
+  if (LINES.some(l => !l.product_id)) { toast('Every line needs a product.', 'error'); return; }
+
+  // fn_availability gates the save. The override is the documented escape hatch, and it is only an
+  // escape hatch if it is recorded — a silent one is just a bug with a checkbox.
+  if ($('#avail')?.dataset.short === '1') {
+    if (!order.availability_override) {
+      toast('Not enough available. Tick the override and say why, or change the dates or quantities.', 'error');
+      $('#f-override')?.focus(); return;
+    }
+    if (!order.availability_override_reason) {
+      toast('An override has to say why. It is recorded on the order.', 'error');
+      focusField('#f-override-reason'); return;
+    }
+  }
+
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    let orderId = o.id;
+    if (isNew) {
+      // 0013: an order is born `confirmed`. Never posted as closed from a form.
+      const res = await sb.from('rental_order').insert({ ...order, status: 'confirmed' }).select().single();
+      if (res.error) throw res.error;
+      orderId = res.data.id;
+    } else {
+      const res = await sb.from('rental_order').update(order).eq('id', o.id);
+      if (res.error) throw res.error;
+    }
+
+    if (!frozen) {
+      // Lines are replaced wholesale only while nothing is posted and nothing has moved; 0009
+      // refuses the delete otherwise and the error explains itself.
+      const existing = await sb.from('order_line').select('id').eq('order_id', orderId);
+      if (existing.error) throw existing.error;
+      const keep = new Set(LINES.filter(l => l.id).map(l => l.id));
+      for (const row of (existing.data ?? [])) {
+        if (!keep.has(row.id)) {
+          const del = await sb.from('order_line').delete().eq('id', row.id);
+          if (del.error) throw del.error;
+        }
+      }
+      for (const l of LINES) {
+        const payload = {
+          order_id: orderId, product_id: l.product_id, qty: l.qty, days: l.days,
+          base_rate: l.base_rate, discount_pct: l.discount_pct,
+          agreed_rate: l.agreed_rate, line_total: l.line_total,
+          is_subhired: l.is_subhired,
+          subhire_vendor_id: l.is_subhired ? (l.subhire_vendor_id ?? null) : null,
+        };
+        const r = l.id
+          ? await sb.from('order_line').update(payload).eq('id', l.id)
+          : await sb.from('order_line').insert(payload);
+        if (r.error) throw r.error;
+      }
+      const exC = await sb.from('order_charge').select('id').eq('order_id', orderId);
+      if (exC.error) throw exC.error;
+      const keepC = new Set(CHARGES.filter(c => c.id).map(c => c.id));
+      for (const row of (exC.data ?? [])) {
+        if (!keepC.has(row.id)) {
+          const del = await sb.from('order_charge').delete().eq('id', row.id);
+          if (del.error) throw del.error;
+        }
+      }
+      for (const c of CHARGES) {
+        const payload = { order_id: orderId, type: c.type, description: c.description || null, amount: c.amount };
+        const r = c.id
+          ? await sb.from('order_charge').update(payload).eq('id', c.id)
+          : await sb.from('order_charge').insert(payload);
+        if (r.error) throw r.error;
+      }
+    }
+
+    // Revenue posts on confirmation, as `upcoming` — so the receivable is a forward book without
+    // telling a wedding customer he owes money three weeks early (docs/decisions.md). Posted once:
+    // if a charge already stands against this order, nothing is posted again.
+    const already = (POSTED.get(orderId) ?? 0) !== 0;
+    if (!already) {
+      const rental = LINES.reduce((n, l) => n + Number(l.line_total || 0), 0);
+      const entries = [];
+      if (rental > 0) entries.push({
+        customer_id: order.customer_id, order_id: orderId, type: 'rental',
+        amount: rental, state: 'upcoming', notes: `Rental agreed on ${order.order_no}`,
+      });
+      for (const c of CHARGES) {
+        if (Number(c.amount) > 0) entries.push({
+          customer_id: order.customer_id, order_id: orderId, type: c.type,
+          amount: Number(c.amount), state: 'upcoming', notes: c.description || null,
+        });
+      }
+      if (entries.length) {
+        const r = await sb.from('ledger_entry').insert(entries);
+        if (r.error) throw r.error;
+      }
+    }
+
+    toast(isNew ? `${order.order_no} created and posted as upcoming.` : 'Order saved.');
+    $('#sheet-host').innerHTML = '';
+    await load();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = isNew ? 'Create order' : 'Save changes';
+    toast(friendly(err), 'error');
+  }
+}
+
+function friendly(e) {
+  const m = e.message || String(e);
+  if (m.includes('rental_order_order_no_key')) return 'That order number is already used.';
+  if (m.includes('cannot be created already closed')) return m;
+  if (m.includes('cannot be repriced or resized') || m.includes('already posted'))
+    return 'A charge is posted against this order, so line money is frozen. Record a reversal first.';
+  if (m.includes('order_dates_sane')) return 'The back date cannot be before the out date.';
+  if (e.code === '42501' || m.includes('row-level security'))
+    return 'You are not signed in, or the session expired. Sign in again.';
+  return m;
+}
+
+window.__djn = { showEmpty() { ORDERS = []; renderList(); }, reload: load };
+</script>
+</body>
+</html>

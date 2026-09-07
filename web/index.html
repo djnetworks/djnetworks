@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DJ Network's — Rental System</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=2026-09-07-2">
-<script src="boot.js?v=2026-09-07-2" defer></script>
+<link rel="stylesheet" href="style.css?v=2026-09-07-4">
+<!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
+     below that needs window.supabase. -->
+<script src="vendor/supabase.js?v=2026-09-07-4" defer></script>
+<script src="boot.js?v=2026-09-07-4" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -22,10 +25,14 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, $, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate }
-  from './app.js?v=2026-09-07-2';
+import { sb, $, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, initOffline,
+         revealActiveTab }
+  from './app.js?v=2026-09-07-4';
 
 $('#chrome').innerHTML = chrome('index.html');
+revealActiveTab();
+
+initOffline();
 
 requireSession(async () => {
   const app = $('#app');
