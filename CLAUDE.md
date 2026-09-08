@@ -196,6 +196,12 @@ the status logic at all — this has already wasted real time.
 
 ## Current state
 
-The catalogue is **empty**. Hundreds of items exist physically; nothing is listed. Bulk import
+The catalogue is **empty — again, as of 8 September 2026, and this time on purpose.** It was not
+empty before that: `supabase/seed/dev_seed.sql` had been run against the production database,
+repeatedly, to reset the fixture between tests, and its nine invented products and forty-nine
+invented movements sat inside every figure on the reports screen with nothing marking them as
+fiction. It was torn down with `supabase/seed/dev_teardown.sql`, which refuses to run unless every
+row it would remove carries the seed's reserved id prefix. **There is one database. Do not run the
+seed against it.** Hundreds of items exist physically; nothing is listed. Bulk import
 through the Google Sheet is the intended path. Do not build features that assume a populated
 catalogue without seeding realistic test data first.

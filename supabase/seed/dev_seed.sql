@@ -8,6 +8,17 @@
 --  It opens by truncating every transactional and catalogue table. It is not
 --  numbered, it is not in supabase/migrations/, and `supabase db push` will
 --  never pick it up. Run it by hand, against a development database, only.
+--
+--  IT WAS RUN AGAINST PRODUCTION ANYWAY. Between 6 and 8 September 2026 this file
+--  was used repeatedly to reset the fixture in hjidocpqcrfbjucvqggu — the one and
+--  only database — because there was no other. The header above was true in
+--  letter and useless in practice. Two things changed as a result: every row this
+--  file writes now carries a reserved id prefix (see seed_id() below), and
+--  dev_teardown.sql exists to remove exactly those rows. Its refusal is the real
+--  protection; this header is a reminder.
+--
+--  ALSO: the TRUNCATE below is CASCADE, and since 0029 that reaches portal_attempt.
+--  Every run of this file wipes the portal sign-in log.
 -- ===========================================================================
 --
 -- WHY A TRUNCATE AND NOT A DELETE. Migrations 0004 and 0007-0009 block DELETE on
@@ -66,8 +77,25 @@ cascade;
 -- and not a location (rule 7).
 -- ---------------------------------------------------------------------------
 
-insert into vendor (name, type, phone, address) values
-  ('Shreeji Electronics', 'repair', '9825011223', 'Ratanpole, Ahmedabad');
+-- ---------------------------------------------------------------------------
+-- EVERY ROW THIS FILE WRITES CARRIES A SEED ID, and that is what makes it removable later.
+--
+-- The ids come from a temp sequence in a reserved namespace: 00000000-0000-4000-8000-000000000NNN.
+-- Nothing gen_random_uuid() ever produces will land there, so a seed row is recognisable by its
+-- prefix for as long as it exists — which is what supabase/seed/dev_teardown.sql matches on.
+-- Temp objects vanish with the session: no DDL is left behind on the database.
+--
+-- Added 8 September, after this file was found loaded into the production database with no way
+-- to tell its rows from real ones. An untagged seed cannot be safely removed later.
+-- ---------------------------------------------------------------------------
+create temporary sequence seed_seq;
+create or replace function pg_temp.seed_id() returns uuid language sql volatile as $$
+  select ('00000000-0000-4000-8000-' || lpad(nextval('seed_seq')::text, 12, '0'))::uuid
+$$;
+
+insert into vendor (id, name, type, phone, address)
+select pg_temp.seed_id(), * from (values
+  ('Shreeji Electronics', 'repair', '1000000003', 'Ratanpole, Ahmedabad')) v;
 
 -- ---------------------------------------------------------------------------
 -- Customers. Two, because the two behave nothing alike: the trade regular pays on
@@ -75,9 +103,10 @@ insert into vendor (name, type, phone, address) values
 -- again. The portal has to serve both.
 -- ---------------------------------------------------------------------------
 
-insert into customer (name, business_name, type, whatsapp, alt_phone, city, pincode) values
-  ('Rakesh Patel', 'RP Sound & Lights', 'dj', '9825044556', '9714455667', 'Ahmedabad', '380015'),
-  ('Priya Shah', null, 'individual', '9898112233', null, 'Ahmedabad', '380054');
+insert into customer (id, name, business_name, type, whatsapp, alt_phone, city, pincode)
+select pg_temp.seed_id(), * from (values
+  ('Rakesh Patel', 'RP Sound & Lights', 'dj', '1000000001', '1000000011', 'Ahmedabad', '380015'),
+  ('Priya Shah', null, 'individual', '1000000002', null, 'Ahmedabad', '380054')) v;
 
 -- ---------------------------------------------------------------------------
 -- Products. Nine, spanning all three tracking modes (rule 13).
@@ -88,9 +117,9 @@ insert into customer (name, business_name, type, whatsapp, alt_phone, city, pinc
 -- "we cannot compute ROI for this" path never gets exercised.
 -- ---------------------------------------------------------------------------
 
-insert into product (short_code, category_id, subcategory_id, brand, model_name,
+insert into product (id, short_code, category_id, subcategory_id, brand, model_name,
                      tracking_mode, rentable, base_rate_per_day, default_purchase_cost, pool_qty, specs, inclusions)
-select v.short_code, c.id, s.id, v.brand, v.model_name,
+select pg_temp.seed_id(), v.short_code, c.id, s.id, v.brand, v.model_name,
        v.tracking_mode, v.rentable, v.base_rate, v.default_cost, v.pool_qty, v.specs, v.inclusions
 from (values
   -- short_code, category,            subcategory,                    brand,     model,                 mode,         rentable, rate,   default_cost, pool_qty
@@ -126,8 +155,8 @@ left join subcategory s on s.category_id = c.id and s.name = v.subcat;
 -- v_product_roi.units_missing_cost something real to report.
 -- ---------------------------------------------------------------------------
 
-insert into unit (product_id, piece_no, serial_number, purchase_date, purchase_cost, condition, lifecycle, notes)
-select p.id, v.piece_no, v.serial, current_date - v.bought_days_ago, v.cost, v.condition, v.lifecycle, v.notes
+insert into unit (id, product_id, piece_no, serial_number, purchase_date, purchase_cost, condition, lifecycle, notes)
+select pg_temp.seed_id(), p.id, v.piece_no, v.serial, current_date - v.bought_days_ago, v.cost, v.condition, v.lifecycle, v.notes
 from (values
   ('SPK-15',  1, 'SRX815P-0091', 900, 58000.00, 'good',            'active',  null),
   ('SPK-15',  2, 'SRX815P-0092', 900, 58000.00, 'good',            'active',  null),
@@ -170,8 +199,8 @@ join product p on p.short_code = v.short_code;
 -- replacement. Nothing else happens to any piece on this date.
 -- ---------------------------------------------------------------------------
 
-insert into movement (movement_type, unit_id, product_id, qty, to_kind, to_id, moved_on, notes)
-select 'intake', u.id, u.product_id, 1, 'location', l.id,
+insert into movement (id, movement_type, unit_id, product_id, qty, to_kind, to_id, moved_on, notes)
+select pg_temp.seed_id(), 'intake', u.id, u.product_id, 1, 'location', l.id,
        case when p.short_code = 'MIC-BLX' and u.piece_no = 5
             then current_date - 40
             else current_date - 60 end,
@@ -185,8 +214,8 @@ where l.name = 'Godown';
 -- numbered pieces, and 0007's tracking-mode trigger refuses a unit_id here (rule 13).
 -- pool_qty on the product is the opening balance; 0008 nets the ledger on top of it.
 
-insert into movement (movement_type, product_id, qty, to_kind, to_id, moved_on, notes)
-select 'intake', p.id, 40, 'location', l.id, current_date - 45, 'top-up purchase, 40 more XLRs'
+insert into movement (id, movement_type, product_id, qty, to_kind, to_id, moved_on, notes)
+select pg_temp.seed_id(), 'intake', p.id, 40, 'location', l.id, current_date - 45, 'top-up purchase, 40 more XLRs'
 from product p cross join location l
 where p.short_code = 'CBL-XLR' and l.name = 'Godown';
 
@@ -197,17 +226,17 @@ where p.short_code = 'CBL-XLR' and l.name = 'Godown';
 -- rather than a location_id (rule 7).
 -- ---------------------------------------------------------------------------
 
-insert into repair_job (unit_id, vendor_id, date_sent, fault, estimated_cost, notes)
-select u.id, v.id, current_date - 8, 'Lamp flickers at full output, suspect ballast', 4500.00,
+insert into repair_job (id, unit_id, vendor_id, date_sent, fault, estimated_cost, notes)
+select pg_temp.seed_id(), u.id, v.id, current_date - 8, 'Lamp flickers at full output, suspect ballast', 4500.00,
        'quoted verbally, no date promised'
 from unit u
 join product p on p.id = u.product_id and p.short_code = 'MH-BEAM'
 cross join vendor v
 where u.piece_no = 4 and v.name = 'Shreeji Electronics';
 
-insert into movement (movement_type, unit_id, product_id, qty, from_kind, from_id, to_kind, to_id,
+insert into movement (id, movement_type, unit_id, product_id, qty, from_kind, from_id, to_kind, to_id,
                       repair_job_id, moved_on, condition_at_move, notes)
-select 'repair_out', u.id, u.product_id, 1, 'location', l.id, 'vendor', v.id,
+select pg_temp.seed_id(), 'repair_out', u.id, u.product_id, 1, 'location', l.id, 'vendor', v.id,
        rj.id, current_date - 8, 'needs_attention', 'flickering lamp'
 from unit u
 join product p on p.id = u.product_id and p.short_code = 'MH-BEAM'
@@ -229,26 +258,26 @@ where u.piece_no = 4 and l.name = 'Godown' and v.name = 'Shreeji Electronics';
 -- YYMM computed rather than written.
 -- ---------------------------------------------------------------------------
 
-insert into rental_order (order_no, customer_id, status, event_type, venue_name, venue_address,
+insert into rental_order (id, order_no, customer_id, status, event_type, venue_name, venue_address,
                           venue_contact_name, venue_contact_phone,
                           out_date, expected_return_date, days, deposit_amount, notes)
-select 'DJN-' || to_char(current_date, 'YYMM') || '-' || v.seq,
+select pg_temp.seed_id(), 'DJN-' || to_char(current_date, 'YYMM') || '-' || v.seq,
        c.id, v.status, v.event_type, v.venue_name, v.venue_address,
        v.contact_name, v.contact_phone,
        current_date + v.out_offset, current_date + v.ret_offset, v.days, v.deposit, v.notes
 from (values
   -- seq,   customer,        status,      event,        venue,                    address,                       contact,          phone,        out, ret, days, deposit, notes
-  ('0001', 'Rakesh Patel', 'confirmed', 'corporate',  'Karnavati Club',         'S G Highway, Ahmedabad',      'Mr Desai',       '9825077889',   7,   9,  3,  5000.00, 'nothing loaded yet - van goes out on the morning'),
-  ('0002', 'Priya Shah',   'confirmed', 'wedding',    'Rajpath Club Lawn',      'Bodakdev, Ahmedabad',         'Nilesh (decor)', '9924011223',   0,   2,  3, 10000.00, 'two tops loaded, two still in the godown'),
-  ('0003', 'Rakesh Patel', 'confirmed', 'dj_night',   'Ahmedabad One Atrium',   'Vastrapur, Ahmedabad',        'Event desk',     '9825033445',  -1,   3,  5,  8000.00, 'everything is at the venue right now'),
-  ('0004', 'Rakesh Patel', 'confirmed', 'garba',      'Sardar Patel Stadium',   'Navrangpura, Ahmedabad',      'Bhavesh bhai',   '9714488990', -10,  -3,  8, 15000.00, 'OVERDUE - one sub and ten cables never came back'),
+  ('0001', 'Rakesh Patel', 'confirmed', 'corporate',  'Karnavati Club',         'S G Highway, Ahmedabad',      'Mr Desai',       '1000000021',   7,   9,  3,  5000.00, 'nothing loaded yet - van goes out on the morning'),
+  ('0002', 'Priya Shah',   'confirmed', 'wedding',    'Rajpath Club Lawn',      'Bodakdev, Ahmedabad',         'Nilesh (decor)', '1000000005',   0,   2,  3, 10000.00, 'two tops loaded, two still in the godown'),
+  ('0003', 'Rakesh Patel', 'confirmed', 'dj_night',   'Ahmedabad One Atrium',   'Vastrapur, Ahmedabad',        'Event desk',     '1000000022',  -1,   3,  5,  8000.00, 'everything is at the venue right now'),
+  ('0004', 'Rakesh Patel', 'confirmed', 'garba',      'Sardar Patel Stadium',   'Navrangpura, Ahmedabad',      'Bhavesh bhai',   '1000000023', -10,  -3,  8, 15000.00, 'OVERDUE - one sub and ten cables never came back'),
   -- 0005 is inserted `confirmed` and moved to `closed` further down, AFTER its returns
   -- are written. Inserting it as `closed` outright would sail straight past rule 9 —
   -- 0009's guard is a BEFORE UPDATE trigger, so an order can still be born closed
   -- (logged in docs/backlog.md). This fixture goes through the front door on purpose,
   -- so the guard is exercised rather than dodged.
-  ('0005', 'Rakesh Patel', 'confirmed', 'wedding',    'The Grand Bhagwati',     'S G Highway, Ahmedabad',      'Reception desk', '9825099001', -30, -27,  4, 10000.00, 'clean job, everything back, settled'),
-  ('0006', 'Priya Shah',   'cancelled', 'birthday',   'Private residence',      'Satellite, Ahmedabad',        'Priya',          '9898112233',   3,   5,  3,  3000.00, 'cancelled two days after booking - venue changed')
+  ('0005', 'Rakesh Patel', 'confirmed', 'wedding',    'The Grand Bhagwati',     'S G Highway, Ahmedabad',      'Reception desk', '1000000024', -30, -27,  4, 10000.00, 'clean job, everything back, settled'),
+  ('0006', 'Priya Shah',   'cancelled', 'birthday',   'Private residence',      'Satellite, Ahmedabad',        'Priya',          '1000000002',   3,   5,  3,  3000.00, 'cancelled two days after booking - venue changed')
 ) as v(seq, cust, status, event_type, venue_name, venue_address, contact_name, contact_phone,
        out_offset, ret_offset, days, deposit, notes)
 join customer c on c.name = v.cust;
@@ -261,8 +290,8 @@ join customer c on c.name = v.cust;
 -- reads product.base_rate_per_day back to reconstruct these.
 -- ---------------------------------------------------------------------------
 
-insert into order_line (order_id, product_id, qty, days, base_rate, discount_pct, agreed_rate, line_total)
-select o.id, p.id, v.qty, v.days, v.base_rate, v.discount_pct, v.agreed_rate, v.line_total
+insert into order_line (id, order_id, product_id, qty, days, base_rate, discount_pct, agreed_rate, line_total)
+select pg_temp.seed_id(), o.id, p.id, v.qty, v.days, v.base_rate, v.discount_pct, v.agreed_rate, v.line_total
 from (values
   ('0001', 'SPK-18',   2, 3, 1500.00,  0.00, 1500.00,  9000.00),
   ('0001', 'MIX-16',   1, 3,  800.00,  0.00,  800.00,  2400.00),
@@ -288,8 +317,8 @@ from (values
 join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '-' || v.seq
 join product p on p.short_code = v.short_code;
 
-insert into order_charge (order_id, type, description, amount)
-select o.id, v.type, v.description, v.amount
+insert into order_charge (id, order_id, type, description, amount)
+select pg_temp.seed_id(), o.id, v.type, v.description, v.amount
 from (values
   ('0004', 'transport', 'Tempo both ways, Navrangpura',   2500.00),
   ('0004', 'labour',    'Two extra hands for the garba',  1800.00),
@@ -308,13 +337,13 @@ join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '
 -- removed the idea; v_order_fulfilment derives it.
 -- ---------------------------------------------------------------------------
 
-insert into movement (movement_type, unit_id, product_id, qty, order_id,
+insert into movement (id, movement_type, unit_id, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on,
                       dispatch_method, carrier_name, carrier_phone, receiver_name, receiver_phone,
                       condition_at_move, inclusions_checked, notes)
-select 'dispatch', u.id, u.product_id, 1, o.id,
+select pg_temp.seed_id(), 'dispatch', u.id, u.product_id, 1, o.id,
        'location', l.id, 'customer', o.customer_id, current_date,
-       'delivered_by_chachu', 'Chachu', '9824083533', 'Nilesh (decor)', '9924011223',
+       'delivered_by_chachu', 'Chachu', '9824083533', 'Nilesh (decor)', '1000000005',
        u.condition, '["power cable", "speaker cover"]'::jsonb, 'first two tops, rest to follow'
 from unit u
 join product p on p.id = u.product_id and p.short_code = 'SPK-15'
@@ -326,21 +355,21 @@ where u.piece_no in (1, 2) and l.name = 'Godown';
 -- yesterday, and nine litres of fog fluid went with them. The fluid is a consumable:
 -- it is charged and never comes back, so there is nothing to pair a return with.
 
-insert into movement (movement_type, unit_id, product_id, qty, order_id,
+insert into movement (id, movement_type, unit_id, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on,
                       dispatch_method, carrier_name, carrier_phone, condition_at_move, notes)
-select 'dispatch', u.id, u.product_id, 1, o.id,
+select pg_temp.seed_id(), 'dispatch', u.id, u.product_id, 1, o.id,
        'location', l.id, 'customer', o.customer_id, current_date - 1,
-       'porter', 'Iqbal porter', '9033112244', u.condition, null
+       'porter', 'Iqbal porter', '1000000004', u.condition, null
 from unit u
 join product p on p.id = u.product_id and p.short_code = 'MIX-16'
 join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '-0003'
 cross join location l
 where l.name = 'Godown';
 
-insert into movement (movement_type, product_id, qty, order_id,
+insert into movement (id, movement_type, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on, notes)
-select 'dispatch', p.id, 9, o.id,
+select pg_temp.seed_id(), 'dispatch', p.id, 9, o.id,
        'location', l.id, 'customer', o.customer_id, current_date - 1,
        'nine litres issued - consumable, not expected back'
 from product p
@@ -362,10 +391,10 @@ where p.short_code = 'FOG-5L' and l.name = 'Godown';
 -- 0008 the cables were invisible to every report; the write-off is what stops those
 -- five reading as "at the customer" forever (shrinkage, 0008 section 4).
 
-insert into movement (movement_type, unit_id, product_id, qty, order_id,
+insert into movement (id, movement_type, unit_id, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on,
                       dispatch_method, carrier_name, carrier_phone, condition_at_move, notes)
-select 'dispatch', u.id, u.product_id, 1, o.id,
+select pg_temp.seed_id(), 'dispatch', u.id, u.product_id, 1, o.id,
        'location', l.id, 'customer', o.customer_id, current_date - 10,
        'delivered_by_chachu', 'Chachu', '9824083533', u.condition, null
 from unit u
@@ -374,10 +403,10 @@ join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '
 cross join location l
 where u.piece_no in (1, 2, 3) and l.name = 'Godown';
 
-insert into movement (movement_type, unit_id, product_id, qty, order_id,
+insert into movement (id, movement_type, unit_id, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on,
                       condition_at_move, inclusions_checked, notes)
-select 'return', u.id, u.product_id, 1, o.id,
+select pg_temp.seed_id(), 'return', u.id, u.product_id, 1, o.id,
        'customer', o.customer_id, 'location', l.id, current_date - 6,
        'good', '["power cable"]'::jsonb, 'two subs back, third still at the ground'
 from unit u
@@ -386,18 +415,18 @@ join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '
 cross join location l
 where u.piece_no in (1, 2) and l.name = 'Godown';
 
-insert into movement (movement_type, product_id, qty, order_id,
+insert into movement (id, movement_type, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on, notes)
-select 'dispatch', p.id, 40, o.id, 'location', l.id, 'customer', o.customer_id,
+select pg_temp.seed_id(), 'dispatch', p.id, 40, o.id, 'location', l.id, 'customer', o.customer_id,
        current_date - 10, 'forty XLRs for the garba ground'
 from product p
 join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '-0004'
 cross join location l
 where p.short_code = 'CBL-XLR' and l.name = 'Godown';
 
-insert into movement (movement_type, product_id, qty, order_id,
+insert into movement (id, movement_type, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on, notes)
-select 'return', p.id, 25, o.id, 'customer', o.customer_id, 'location', l.id,
+select pg_temp.seed_id(), 'return', p.id, 25, o.id, 'customer', o.customer_id, 'location', l.id,
        current_date - 6, 'twenty-five cables back with the subs'
 from product p
 join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '-0004'
@@ -406,9 +435,9 @@ where p.short_code = 'CBL-XLR' and l.name = 'Godown';
 
 -- The write-off closes the loop. Without it these five sit at the customer forever and
 -- the order could never be closed under rule 9.
-insert into movement (movement_type, product_id, qty, order_id,
+insert into movement (id, movement_type, product_id, qty, order_id,
                       from_kind, from_id, to_kind, moved_on, notes)
-select 'write_off', p.id, 5, o.id, 'customer', o.customer_id, 'none',
+select pg_temp.seed_id(), 'write_off', p.id, 5, o.id, 'customer', o.customer_id, 'none',
        current_date - 5, 'run over by a truck at the ground - written off, not coming back'
 from product p
 join rental_order o on o.order_no = 'DJN-' || to_char(current_date, 'YYMM') || '-0004'
@@ -419,10 +448,10 @@ where p.short_code = 'CBL-XLR';
 -- 0009 blocks the move to `closed` while v_order_outstanding returns any row, so the
 -- returns must be written before the status is set (rule 9).
 
-insert into movement (movement_type, unit_id, product_id, qty, order_id,
+insert into movement (id, movement_type, unit_id, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on,
                       dispatch_method, carrier_name, condition_at_move)
-select 'dispatch', u.id, u.product_id, 1, o.id,
+select pg_temp.seed_id(), 'dispatch', u.id, u.product_id, 1, o.id,
        'location', l.id, 'customer', o.customer_id, current_date - 30,
        'self_collection', 'Customer''s own tempo', u.condition
 from unit u
@@ -433,10 +462,10 @@ where l.name = 'Godown'
   and ((p.short_code = 'STG-DECK' and u.piece_no in (1, 2))
     or (p.short_code = 'MIC-BLX'  and u.piece_no in (1, 2)));
 
-insert into movement (movement_type, unit_id, product_id, qty, order_id,
+insert into movement (id, movement_type, unit_id, product_id, qty, order_id,
                       from_kind, from_id, to_kind, to_id, moved_on,
                       condition_at_move, inclusions_checked, notes)
-select 'return', u.id, u.product_id, 1, o.id,
+select pg_temp.seed_id(), 'return', u.id, u.product_id, 1, o.id,
        'customer', o.customer_id, 'location', l.id, current_date - 27,
        'good', '["body pack", "receiver", "headon mic", "power adaptor"]'::jsonb, 'all back, nothing missing'
 from unit u
@@ -467,8 +496,8 @@ update rental_order
 --     deposit_held = 10000 in - 7000 returned                 = 3000.00
 -- ---------------------------------------------------------------------------
 
-insert into ledger_entry (customer_id, order_id, entry_date, type, amount, state, payment_mode, reference, notes)
-select o.customer_id, o.id, current_date + v.day_offset, v.type, v.amount, v.state, v.payment_mode, v.reference, v.notes
+insert into ledger_entry (id, customer_id, order_id, entry_date, type, amount, state, payment_mode, reference, notes)
+select pg_temp.seed_id(), o.customer_id, o.id, current_date + v.day_offset, v.type, v.amount, v.state, v.payment_mode, v.reference, v.notes
 from (values
   (-30, 'deposit_in',  10000.00, 'due', 'cash', null,          'security deposit taken when the gear left'),
   (-30, 'rental',       8800.00, 'due', null,   null,          'two stage decks and two headworn sets, four days'),

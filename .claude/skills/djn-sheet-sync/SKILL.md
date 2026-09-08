@@ -30,7 +30,7 @@ Mirror these:
 
 ## In — bulk catalogue import
 
-This is the important lane. The catalogue is empty, the fleet runs to hundreds of items, and typing
+This is the important lane. The catalogue is empty — genuinely, since the fixture teardown on 8 Sep 2026 — the fleet runs to hundreds of items, and typing
 them through a web form one at a time will stall. The Sheet is the realistic path.
 
 A staging tab, validated before anything is written:

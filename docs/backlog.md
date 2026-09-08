@@ -260,7 +260,7 @@ finding it in the list and reopening it.
 
 **The Sheet's IN lane does not exist yet.** `sheet/DataSync.gs` and the `sheet-mirror` function are
 the read-only mirror OUT. The bulk catalogue importer — the lane that actually matters, because the
-catalogue is empty and the fleet runs to hundreds of items — is still to build, with validation
+catalogue is empty (torn down to empty on 8 Sep 2026 after the fixture was found in production) and the fleet runs to hundreds of items — is still to build, with validation
 before import and per-row rejection reasons. See the `djn-sheet-sync` skill.
 
 

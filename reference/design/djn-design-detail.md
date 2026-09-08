@@ -62,7 +62,9 @@ prices and counts 1.0 at weight 800–850.
 
 ## 2 · Elevation and radius
 
-**Elevation law.** Shadow means floating: bottom nav, sheets, sticky bars, toasts. All page content
+**Elevation law.** Shadow means floating *over* the page — sheets and toasts, and nothing else in
+this app. Chrome is attached, not floating: the top bar and bottom nav are solid and hairline-
+separated, and cast no shadow. All page content
 is flat — solid fill plus a hairline border or divider, never a shadow. This is why the reports
 screen has exactly one raised card.
 

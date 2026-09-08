@@ -92,9 +92,9 @@ What exists:
 | Screens | 13 static pages under `web/`, no build step. Twelve behind an operator sign-in, plus the customer portal. Eleven of the twelve forms have a screen — repair is the one that does not. Bottom navigation, re-flowed at login to the modules each person holds. |
 | Offline | Vendored Supabase client, service worker for the app shell, IndexedDB for queued writes, explicit per-job prefetch. |
 | Sheet | Read-only mirror OUT, deployed as the `sheet-mirror` Edge Function with `sheet/DataSync.gs`. The bulk import lane is NOT built. |
-| Fixture | `supabase/seed/dev_seed.sql` — development data, not the catalogue. |
+| Fixture | `supabase/seed/dev_seed.sql` — development data, not the catalogue. Every row it writes carries a reserved id prefix; `dev_teardown.sql` removes exactly those rows and refuses if anything else is present. **It was run against the one production database until 8 Sep 2026; it must not be again.** |
 
-**The catalogue is still empty** — hundreds of items exist physically, none are listed. Bulk import
+**The catalogue is empty — torn down to empty on 8 Sep 2026** after the dev fixture was found loaded in production. Hundreds of items exist physically, none are listed. Bulk import
 through the Google Sheet is the intended path and it matters more than any screen. The seed fixture
 is test data and is not the catalogue.
 

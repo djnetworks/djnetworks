@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reports — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-33" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-33" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-33">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
-<link rel="stylesheet" href="style.css?v=2026-09-08-32">
-<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
-<script src="boot.js?v=2026-09-08-32" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-33">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-33">
+<link rel="stylesheet" href="style.css?v=2026-09-08-33">
+<script src="vendor/supabase.js?v=2026-09-08-33" defer></script>
+<script src="boot.js?v=2026-09-08-33" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
          initOffline, revealActiveTab, loadPermissions, can, initNav }
-  from './app.js?v=2026-09-08-32';
+  from './app.js?v=2026-09-08-33';
 
 $('#chrome').innerHTML = chrome('reports.html');
 revealActiveTab();
@@ -165,8 +165,14 @@ function money_() {
   const receivedN = LEDGER.filter(e => e.type === 'payment').length;
 
   // Current, not period: what is owed and what is held are states of today, not of a date range.
-  // BAL is the gated wrapper, so a null means "not visible", never "nothing" (rule 14).
-  const anyMoney = BAL.length > 0;
+  //
+  // BAL is the gated wrapper: it returns zero ROWS without ledger.view (rule 14). But zero rows is
+  // ALSO what an empty database returns, and the two must not be confused in either direction —
+  // "not visible" on an empty catalogue claims a gate that is not there, which is rule 14's own
+  // mistake inverted. CUSTOMERS (v_customer_figures) returns a row per customer regardless of the
+  // money key, so: no customers at all → genuinely nothing owed and nothing held, say so as ₹0.00;
+  // customers but no balance rows → gated, say that instead.
+  const anyMoney = BAL.length > 0 || CUSTOMERS.length === 0;
   const owed = BAL.reduce((n, b) => n + Number(b.receivable ?? 0), 0);
   const held = BAL.reduce((n, b) => n + Number(b.deposit_held ?? 0), 0);
   const oldest = CUSTOMERS.filter(c => (c.longest_unpaid_days ?? 0) > 30).length;
@@ -182,7 +188,8 @@ function money_() {
     <div class="money__split">
       ${anyMoney
         ? fig('Still to collect', `<span class="fig__v--sm">${money(owed)}</span>`,
-            oldest ? `<span class="dot"></span>${oldest} customer${oldest === 1 ? '' : 's'} over 30 days` : 'nothing over 30 days')
+            oldest ? `<span class="dot"></span>${oldest} customer${oldest === 1 ? '' : 's'} over 30 days`
+                   : (CUSTOMERS.length ? 'nothing over 30 days' : 'no customers yet'))
         : fig('Still to collect', `<span class="fig__v--sm fig__v--none">Not visible</span>`, 'needs the money permission')}
       ${anyMoney
         ? fig('Deposits held', `<span class="fig__v--sm">${money(held)}</span>`, 'customers’ money, not ours')

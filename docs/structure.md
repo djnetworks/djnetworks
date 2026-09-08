@@ -207,7 +207,7 @@ end in a browser on 2026-09-07, and the offline dispatch path was exercised with
 Access is enforced by membership of the `operator` table (`0017`), not by whether a Supabase signup
 toggle happens to be off: a stranger who self-registers gets a valid session and reads zero rows.
 
-The development fixture in `supabase/seed/dev_seed.sql` is the reset button. It truncates the tables
+The development fixture in `supabase/seed/dev_seed.sql` is the reset button — for a development database. Its partner `dev_teardown.sql` removes it, matching on the reserved id prefix every seed row carries, and refuses to touch a database holding anything else. There is currently one database, and the seed was run against it until 8 September 2026; `docs/build-setup.md` records that and the rule that follows. It truncates the tables
 it owns and re-seeds them, which is the only way to clear test data — `DELETE` is blocked on
 `movement`, `unit`, `rental_order`, `ledger_entry` and `repair_job` by design, and the append-only
 guard should never be disabled to tidy up. `0009` kept `TRUNCATE` for `postgres` and `service_role`
