@@ -20,8 +20,8 @@
 // INVISIBLE UNTIL IT WAS SERVED FROM A REAL ORIGIN. Locally both spellings come off the same dev
 // server in a millisecond and nothing looks wrong. It showed up as two lines in the live network
 // log. See the djn-deploy skill.
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-20';
-import * as store from './db.js?v=2026-09-08-20';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-22';
+import * as store from './db.js?v=2026-09-08-22';
 
 // The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
 //
@@ -737,10 +737,20 @@ export function stateBlock({ icon = '', title, body = '', actionLabel = '', acti
  */
 export function errorBlock(err, retryId = 'retry') {
   const raw = err?.message || String(err);
+  // RULE 15: only claim a cause you have evidence for.
+  //
+  // 42501 is insufficient_privilege. It is what 0021's gated views raise BY DESIGN when this
+  // account lacks the key, and what a missing GRANT raises — neither of which is an expired
+  // session, and signing in again fixes neither. Calling every refusal an expiry sent the operator
+  // to the sign-in screen to solve a permission problem, and hid the missing-grant case entirely.
+  //
+  // An expired token does not arrive as 42501 anyway: PostgREST answers 401 with a JWT message.
+  const expired = /jwt|token is expired|invalid claim/i.test(raw) || err?.status === 401;
+  const refused = err?.code === '42501' || raw.includes('row-level security');
   const msg = networkMessage(err)
-    ?? (err?.code === '42501' || raw.includes('row-level security')
-        ? 'The session has expired. Sign in again and this will load.'
-        : raw);
+    ?? (expired ? 'The session has expired. Sign in again and this will load.'
+      : refused ? 'This account is not allowed to see this. Ask whoever manages the team.'
+      : raw);
   return `<div class="state state--error">
     <div class="state__icon" aria-hidden="true">!</div>
     <h2 class="state__title">Could not load</h2>
@@ -1136,8 +1146,12 @@ export function chrome(active) {
   </header>
   <div class="account" id="account-menu" hidden>
     <div class="account__panel">
+      <!-- Team is deliberately NOT a department, so the bottom bar marks nothing while you are on
+           it. The menu it lives in has to say where you are instead, or the screen you are looking
+           at is highlighted nowhere at all. -->
       <a class="item" href="team.html" id="acct-team" hidden>
-        <span class="item__main"><span class="item__title">Team</span></span></a>
+        <span class="item__main"><span class="item__title">Team</span></span>
+        <span class="item__right" id="acct-team-here" hidden>you are here</span></a>
       <button class="item" id="signout" type="button">
         <span class="item__main"><span class="item__title">Sign out</span></span></button>
     </div>
@@ -1153,8 +1167,16 @@ export function paintNav() {
   const nav = $('#nav-host'); if (nav) nav.innerHTML = navMarkup();
   document.body.classList.toggle('no-nav', isVanOnly());
   const dept = $('#dept-host'); if (dept) dept.innerHTML = deptStripMarkup();
-  const team = $('#acct-team'); if (team) team.hidden = !can('admin.team');
+  const team = $('#acct-team');
+  if (team) {
+    team.hidden = !can('admin.team');
+    const here = NAV_ACTIVE === 'team.html';
+    team.classList.toggle('is-active', here);
+    if (here) team.setAttribute('aria-current', 'page'); else team.removeAttribute('aria-current');
+    const flag = $('#acct-team-here'); if (flag) flag.hidden = !here;
+  }
   initNav();
+  revealActiveTab();
 }
 
 // False until loadPermissions() has answered. Until then this file does not know which screens this
@@ -1177,10 +1199,15 @@ function deptStripMarkup() {
   if (!d) return '';
   const mine = deptScreens(d);
   if (mine.length < 2) return '';
-  return `<div class="deptbar" role="tablist" aria-label="${esc(d.label)}">
+  // <nav>, NOT role="tablist". These are real navigations to separate pages, and a tablist promises
+  // a screen reader arrow-key movement between panels in one document that does not exist here —
+  // announced as "Jobs, tab list" followed by four unindexed links, with aria-current ignored in
+  // that context. aria-current="page" on an <a> inside <nav> is the honest markup and is what
+  // actually gets read out.
+  return `<nav class="deptbar" aria-label="${esc(d.label)}">
     ${mine.map(x => `<a class="deptbar__tab${x.href === NAV_ACTIVE ? ' is-active' : ''}"
         href="${x.href}"${x.href === NAV_ACTIVE ? ' aria-current="page"' : ''}>${esc(x.label)}</a>`).join('')}
-  </div>`;
+  </nav>`;
 }
 
 function navMarkup() {
@@ -1226,9 +1253,23 @@ export function initNav() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 }
 
-// The scrolling tab strip is gone, so nothing has to be scrolled into view any more. Kept as a
-// no-op for one release because every screen calls it; remove when they have all been touched.
-export function revealActiveTab() {}
+/**
+ * Bring the ACTIVE department chip into view.
+ *
+ * This was emptied out when the old scrolling tab strip was removed — and the same commit brought a
+ * scrolling strip back. Measured at 320px on Return: the strip is 378 wide in a 320 box, scrollLeft
+ * 0, and the active chip sits at x 292.9-366.5, so 46.5px of a 73.6px chip is off screen. Nothing
+ * indicates it scrolls (scrollbar-width: none), so the screen you are on is simply invisible.
+ *
+ * `inline: 'nearest'` rather than 'center': a chip already fully visible must not be dragged into
+ * the middle, because the strip moving under a thumb is the harm the fixed bottom bar exists to
+ * avoid. Called by every screen after chrome(), and again by paintNav() once the strip is real.
+ */
+export function revealActiveTab() {
+  const chip = document.querySelector('.deptbar__tab.is-active');
+  if (!chip) return;
+  chip.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+}
 
 // ---------------------------------------------------------------------------
 // Connection and the write queue.

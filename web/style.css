@@ -33,9 +33,20 @@ a { color: var(--accent); }
   display: flex; align-items: center; gap: 8px;
   padding: 4px 12px; min-height: 40px;
   background: var(--surface); border-bottom: 1px solid var(--line);
-  position: sticky; top: 0; z-index: 20;
+  /* NOT sticky, and this is why. #dept-host is a sibling of .topbar inside #chrome, so #chrome
+     became the topbar's containing block and gave it exactly the strip's height as travel: measured
+     at 375px, scrollY 10 put the pinned bar 10px over the chips, and by scrollY 49 the whole strip
+     was behind it — sliced, then a sliver, then gone, then the header detached and scrolled off.
+     Sticky bought nothing anyway: before the strip existed #chrome was the topbar alone, travel was
+     0, and it already behaved exactly like this. The navigation that matters is fixed at the bottom
+     where the thumb is. */
+  position: relative; z-index: 20;
 }
-.topbar__brand { --wm: 16px; text-decoration: none; }
+/* 46px, because for a van-only staff member this is the ONLY way back to the two big buttons —
+   there is no navigation bar on his screens at all. It measured 134.5x20: under half the floor, at
+   the top of the screen, which is the hardest one-handed reach there is. */
+.topbar__brand { --wm: 16px; text-decoration: none; display: inline-flex; align-items: center;
+                 min-height: var(--tap); }
 .topbar__who { margin-left: auto; color: var(--ink-faint); font-size: 12px; }
 .topbar .btn { white-space: nowrap; }
 /* The operator's name is what pushed Sign out to the right edge, and it is hidden on a phone — so
@@ -105,6 +116,11 @@ h2 { font-size: 15px; margin: 0 0 6px; }
 
 /* ---------- buttons ---------- */
 .btn {
+  /* inline-flex, and it is load-bearing: min-height DOES NOT APPLY to display:inline, and several
+     of these are anchors. Measured before this line — "Open the ledger" 134.5x31 (the only route
+     from a customer to their money), "Ask them about the N still out" 277.2x36, "Pieces screen"
+     81.6x15. They only ever reached 46px where they happened to be flex items. */
+  display: inline-flex; align-items: center; justify-content: center;
   min-height: var(--tap); padding: 8px 14px; border-radius: var(--radius-btn);
   /* --edge, not --line: a button is a thing you aim at, and --line is 1.11:1 against the page. */
   border: 1px solid var(--edge); background: var(--surface); color: var(--ink);

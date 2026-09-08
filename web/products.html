@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Products — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-22" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-22" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-22">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-22">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
-<link rel="stylesheet" href="style.css?v=2026-09-08-20">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-22">
+<link rel="stylesheet" href="style.css?v=2026-09-08-22">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
-<script src="boot.js?v=2026-09-08-20" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-22" defer></script>
+<script src="boot.js?v=2026-09-08-22" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -35,7 +35,7 @@
 import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, networkMessage, initOffline, revealActiveTab,
          trackLabel, trackBadge, publicUrl, cardList, loadPermissions, can, fmtDate }
-  from './app.js?v=2026-09-08-20';
+  from './app.js?v=2026-09-08-22';
 
 $('#chrome').innerHTML = chrome('products.html');
 revealActiveTab();
@@ -452,7 +452,7 @@ function openEditor(p) {
   // product.rentable has existed since 0001 and defaults to TRUE, which is right for a person
   // looking at one product and wrong for a category where hiring out is the unusual case. In a
   // row of two plain checkboxes it reads as boilerplate and gets left alone — and left alone means
-  // a stepladder appears in "Can I say yes" and on the order picker, where nothing looks wrong.
+  // a stepladder appears in Availability and on the order picker, where nothing looks wrong.
   //
   // So for Tool & spare it stops being boilerplate: a NEW product starts unticked, and either
   // answer says on screen what it means. Never for an existing product — silently unticking a box
@@ -478,7 +478,7 @@ function openEditor(p) {
 
     note.innerHTML = box.checked
       ? `<div class="note note--warn" style="margin-bottom:14px">Ticked, so this tool <strong>will be
-           offered for hire</strong> — it shows up in Can I say yes and on the order picker. That is
+           offered for hire</strong> — it shows up in Availability and on the order picker. That is
            allowed; most things in ${esc(TOOLS_CATEGORY)} are not hired out, so it is worth being sure.</div>`
       : `<div class="note" style="margin-bottom:14px">Not for hire. It still moves between the godown,
            the shop and the van, and it still has pieces and a history — it just never appears on a
@@ -652,7 +652,10 @@ async function loadImages(productId) {
     return;
   }
   if (!data?.length) {
-    box.innerHTML = ``;
+    // NOT an empty string. "Loading photos…" is written first, so an empty result made that text
+    // appear and then vanish into a 0px gap, with nothing to distinguish "no photo yet" from
+    // "that section broke".
+    box.innerHTML = `<p class="field__hint" style="margin:0">No photo yet.</p>`;
     return;
   }
   box.innerHTML = `<div class="thumbs">${data.map(i => `

@@ -9,4 +9,3 @@ supabase/.temp/
 
 # Local dev session token, never committed.
 web/.dev-session.json
-web/_devsession.html
