@@ -44,7 +44,11 @@ a { color: var(--accent); }
    aiming at home and landing on Sign out costs a re-login standing at the van. */
 @media (max-width: 620px) {
   .topbar__who { display: none; }
-  .topbar #signout { margin-left: auto; }
+  /* #topbar-menu, not #signout: Sign out moved into the account sheet, which closes AFTER </header>
+     and is a sibling of .topbar — so `.topbar #signout` matched nothing and the ⋯ button came to
+     rest against the wordmark again, with the same 8px gap and the same consequence, except that ⋯
+     is now the button that opens Sign out. */
+  .topbar #topbar-menu { margin-left: auto; }
 }
 
 /* ---------- bottom navigation ----------
@@ -85,16 +89,13 @@ a { color: var(--accent); }
 .nav__item:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 
 /* Everything past the fifth destination. One tap, and the daily five never move. */
-.nav-more { position: fixed; inset: 0; background: var(--scrim); z-index: 29; display: grid; place-items: end stretch; }
-.nav-more__panel {
-  background: var(--surface); border-top: 1px solid var(--line);
-  padding: 10px 10px calc(62px + env(safe-area-inset-bottom, 0px));
-  display: grid; gap: 6px; max-height: 70vh; overflow: auto;
-}
+.account { position: fixed; inset: 0; background: var(--scrim); z-index: 40; display: grid; place-items: start end; }
 
 /* ---------- layout ---------- */
 /* padding-bottom clears the fixed nav; without it the last row of every list is unreachable. */
 .wrap { max-width: 1100px; margin: 0 auto; padding: 10px 12px calc(72px + env(safe-area-inset-bottom, 0px)); }
+/* No navigation bar (the van view) means no space to reserve for one. Set by app.js when it knows. */
+body.no-nav .wrap { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .row--between { justify-content: space-between; }
 .grow { flex: 1 1 220px; }
@@ -387,7 +388,7 @@ a.btn, a.item { text-decoration: none; }
 /* The "Make primary" button used to be overlaid on the image at 84x26 — a quarter of the height
    a thumb needs. Stacked below the photo instead, at full target height. */
 .thumb { display: grid; gap: 4px; width: 96px; }
-.thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--edge); background: var(--tint-neutral); }
+.thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--line); background: var(--tint-neutral); }
 .thumb.is-primary img { border: 2px solid var(--accent); }
 .thumb__btn { width: 100%; font-size: 12px; padding: 4px 6px; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -607,9 +608,18 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
        key stops it counting when it happens anyway — and the offline queue makes it likelier,
        because a replayed write is a second arrival by construction. */
 
+/* .tappable SAYS "THIS RESPONDS TO A TAP". IT DOES NOT DRAW A BOX.
+   It used to: `border: 1px solid var(--edge)`, four sides, #828282. cardList() puts
+   `card-row tappable` on every list row, so when the flat-row conversion took the radius and the
+   shadow off .card-row and gave it a single --line bottom hairline, it left this shorthand behind —
+   and a shorthand sets all four sides. Measured: every row rendered top/left/right at
+   rgb(130,130,130) with a bottom at rgb(231,232,230). With gap:0 the left and right edges of
+   adjacent rows stacked and each row's dark top landed under the previous row's pale bottom, so the
+   list read as a wireframe grid drawn in near-black. That is the "borders are black" report.
+   --edge is a CONTROL edge — an input, a select, a secondary button outline, a tile you aim at.
+   It never divides a list. A row gets one bottom hairline in --line and nothing else. */
 .tappable {
   cursor: pointer;
-  border: 1px solid var(--edge);
   transition: transform .06s ease, background-color .06s ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -689,30 +699,16 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    band of whitespace under every card. The TAP AREA is 44px instead, extended past the text with a
    pseudo-element. The thing you see and the thing you hit are allowed to differ; the thing you hit
    is the one that has to be 44. */
+/* ORDER ID IS SUBTEXT, not a control. It was a button you tapped to copy, with a 46px invisible hit
+   area extended by a ::before — the SECOND action in a row that already had one, and a tappable
+   thing sitting under the customer's name where a tap was meant to open the job.
+   The copy action is GONE, not relocated: nothing copies an order number any more. If it is missed,
+   the place for it is the order sheet, next to the WhatsApp draft that is the reason anybody was
+   copying it. */
 .card-row__ref {
-  position: relative;
-  /* justify-self, because this is a GRID ITEM inside .card-row__main and a grid item stretches.
-     inline-flex is blockified to flex there, so the button's box ran the full width of the card
-     even though its text did not: measured on Orders at 390px, the invisible hit area owned
-     x 18-308 of a 12-378 card and 44px of its 77px height — 46% of every card copied the order
-     number instead of opening the order, and the only feedback was the word COPY changing. The
-     box now hugs its own text, and the ::before below is what makes that text a 44px target. */
   justify-self: start;
-  display: inline-flex; align-items: center; gap: 4px;
-  /* 12px: the order number is deliberately DEMOTED (Pass G) but it is still a control you tap
-     to copy, and a control is decision-bearing whatever its rank. Demotion is weight and
-     colour here, not size — v6 Law 3 puts the floor under anything interactive. */
   font-size: 12px; color: var(--ink-faint); font-variant-numeric: tabular-nums;
-  background: none; border: 0; padding: 2px 0; font-family: inherit; cursor: pointer;
-  min-height: auto;
 }
-.card-row__ref::before {
-  content: ""; position: absolute; left: -6px; right: -6px;
-  top: 50%; height: var(--tap); transform: translateY(-50%);
-}
-/* "copy" is a control, not decoration. Was 9px. */
-.card-row__ref::after { content: "copy"; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
-.card-row__ref.is-copied::after { content: "copied"; color: var(--ok); opacity: 1; }
 .card-row__right { flex: none; display: grid; gap: 4px; justify-items: end; text-align: right; }
 
 /* Empty and loading, at card density. */
@@ -720,8 +716,6 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 
 /* The current screen, when it lives under More. The bar itself never re-arranges, so this is the
    only place the operator can be told where they are. */
-.nav-more__panel .item.is-active { border-color: var(--accent); background: var(--accent-soft); }
-.nav-more__panel .item.is-active .item__right { color: var(--accent); font-weight: 700; }
 
 /* The connection pill is a control now, not a label: it opens the queue. It has to look like one,
    or nothing tells the operator there is a way in to a blockage. */
@@ -751,7 +745,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    image reads as "the photo was lost" and would send somebody back to the venue. */
 .thumb__missing {
   width: 84px; height: 84px; display: grid; place-items: center;
-  border: 1px dashed var(--edge); border-radius: var(--radius);
+  border: 1px dashed var(--line); border-radius: var(--radius);
   background: var(--tint-neutral); color: var(--ink-faint); font-size: 12px;
 }
 
@@ -813,3 +807,74 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 .done__body strong { color: var(--ok); font-size: 15px; }
 .done__detail { font-size: 13px; color: var(--ink); }
 .done__when { font-size: 12px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------------------
+   DEPARTMENT STRIP (v6 E5 — segmented = scope).
+
+   Moving from Orders to Send out is a change of scope inside Jobs, not a change
+   of status, so it is a segmented control and not tabs. It only renders when the
+   department holds more than one screen this person can reach.
+
+   Scrolls horizontally rather than wrapping: a wrapped strip changes the page
+   height between screens, and everything below it moves.
+   --------------------------------------------------------------------------- */
+.deptbar {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  /* NO negative margins. The strip is rendered by chrome() into #dept-host, which is a sibling of
+     <main class="wrap"> and therefore has no side padding to cancel — the -12px each side made the
+     strip 24px wider than the viewport and put a horizontal scrollbar on every screen at 320px.
+     .card-row's identical negative margins ARE correct, because those rows sit inside .wrap. */
+  padding: 8px 12px; margin: 0 0 10px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  /* NOT sticky. #dept-host is a wrapper exactly as tall as this strip, and a sticky element cannot
+     leave its containing block — so there was zero travel and it scrolled away like static content
+     while the CSS claimed otherwise. If it ever should pin, #dept-host has to be the sticky one and
+     it has to clear .topbar, which is already sticky at top:0. Static is honest. */
+}
+.deptbar::-webkit-scrollbar { display: none; }
+.deptbar__tab {
+  flex: none; min-height: var(--tap-chip); display: inline-flex; align-items: center;
+  padding: 0 14px; border-radius: var(--radius-pill);
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--ink-soft); font-size: 13px; font-weight: 700; text-decoration: none;
+  white-space: nowrap;
+}
+.deptbar__tab.is-active {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--teal-dark);
+}
+
+/* ---------------------------------------------------------------------------
+   ACCOUNT MENU. Team, settings and Sign out are not departments — they are not
+   places the work goes, and a five-slot bar has no room for something opened
+   twice a month.
+   --------------------------------------------------------------------------- */
+.account__panel {
+  margin: 52px 8px 0; min-width: 200px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-card); box-shadow: var(--shadow);
+}
+.account__panel .item { width: 100%; text-align: left; background: none; }
+
+/* ---------------------------------------------------------------------------
+   THE VAN SCREEN. Two buttons, full width, filling the height that the missing
+   navigation bar frees up.
+
+   Sized so the target is unmissable with one hand and gloves on, and so the two
+   read as opposite directions before either word is read — the arrows and the
+   colours carry the meaning, because this must work for somebody who does not
+   read English easily.
+   --------------------------------------------------------------------------- */
+.vanhome {
+  display: grid; gap: 14px; align-content: center;
+  min-height: calc(100dvh - 120px);
+}
+.vanhome__btn {
+  display: grid; gap: 10px; place-items: center; text-align: center;
+  min-height: 168px; padding: 24px 16px;
+  border-radius: var(--radius-card); text-decoration: none;
+  background: var(--accent); color: var(--accent-ink);
+}
+.vanhome__btn--in { background: var(--ok); }
+.vanhome__btn:active { transform: scale(.99); filter: brightness(.95); }
+.vanhome__icon { font-size: 52px; line-height: 1; font-weight: 700; }
+.vanhome__label { font-size: 22px; font-weight: 800; letter-spacing: -.01em; }

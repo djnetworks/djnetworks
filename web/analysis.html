@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Numbers — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
+<title>Reports — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
-<link rel="stylesheet" href="style.css?v=2026-09-08-17">
-<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
-<script src="boot.js?v=2026-09-08-17" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
+<link rel="stylesheet" href="style.css?v=2026-09-08-20">
+<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
+<script src="boot.js?v=2026-09-08-20" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -26,7 +26,7 @@
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
          loadPermissions, can,
          initOffline, revealActiveTab, trackBadge }
-  from './app.js?v=2026-09-08-17';
+  from './app.js?v=2026-09-08-20';
 
 $('#chrome').innerHTML = chrome('analysis.html');
 revealActiveTab();
@@ -43,7 +43,7 @@ async function boot() {
   // Same shape as the ledger. The report views return zero rows without numbers.view, and an empty
   // table with no explanation reads as "the business earned nothing".
   if (!can('numbers.view')) {
-    $('#app').innerHTML = `<h1>Numbers</h1>` + stateBlock({
+    $('#app').innerHTML = `<h1>Reports</h1>` + stateBlock({
       icon: '🔒', title: 'The reports are not visible to this account',
         body: 'This account cannot see what things earn. Ask whoever manages the team. These '
             + 'reports are empty because they cannot be read from here, not because there is '
@@ -52,8 +52,7 @@ async function boot() {
     return;
   }
   $('#app').innerHTML = `
-    <h1>Numbers</h1>
-    <p class="sub">What earns, what sits, and what keeps breaking.</p>
+    <h1>Reports</h1>
     <div class="pill-row" id="tabs">
       ${[['roi', 'What it earned'], ['util', 'How hard it works'], ['freq', 'How often it goes out'],
          ['dead', 'Not moving'], ['dmg', 'Breakages']]
@@ -128,7 +127,7 @@ function showRoi(panel) {
   const rows = [...ROI].sort((a, b) => (b.roi_pct ?? -1e9) - (a.roi_pct ?? -1e9));
   const unknown = rows.filter(r => r.roi_pct === null);
   panel.innerHTML = `
-    <p class="field__hint">Rental revenue less repairs, over what every piece ever cost.</p>
+    
     ${unknown.length ? `<div class="note note--warn">
       ${unknown.length} product${unknown.length === 1 ? '' : 's'} cannot be scored because no purchase
       cost has been recorded. They are listed at the bottom as <strong>cost not recorded</strong>, not
@@ -161,10 +160,7 @@ function showRoi(panel) {
                     ? `<div class="item__meta">${esc(r.units_missing_cost)} piece(s) with no cost</div>` : ''}`
               : `<strong>${esc(r.roi_pct)}%</strong>`}</td>
         </tr>`).join('')}</tbody></table></div>
-    <p class="field__hint">Lifetime return, over what every piece ever bought cost — including
-      pieces since retired or lost. A box that earned for four years and was then scrapped still
-      cost money and still earned it. Transport and labour are excluded: they are job-level and
-      including them would flatter heavy gear.</p>`;
+    `;
 }
 
 function showUtil(panel) {
@@ -196,9 +192,8 @@ function showUtil(panel) {
   // ---------------------------------------------------------------------------
   const suspect = rows.filter(r => r.noDate > 0);
   panel.innerHTML = `
-    <p class="field__hint">Days out over days owned, counted from what actually went out and came back
-      movements — never from the dates on an order. Needs no cost data, which is why it is the
-      number that works first. Numbered pieces only — counted stock has no per-piece history.</p>
+    <p class="field__hint" style="margin:0 0 8px">Numbered pieces only. Counted stock has no per-piece history.</p>
+    
     ${suspect.length ? `<div class="note note--warn">
       ${suspect.length} product${suspect.length === 1 ? '' : 's'} below ${suspect.length === 1 ? 'has' : 'have'}
       pieces with no purchase date. Days owned counts as 1 for those, so the percentage is far too
@@ -241,9 +236,7 @@ function showFreq(panel) {
   }).filter(r => r.jobs > 0).sort((a, b) => b.qty - a.qty);
 
   panel.innerHTML = `
-    <p class="field__hint">How often each product goes out. For numbered pieces this counts boxes;
-      for counted stock it counts quantity, because one job taking 40 cables is not the same event
-      as one job taking one.</p>
+    
     ${rows.length ? `<div class="card scroll-x"><table class="data">
       <thead><tr><th>Product</th><th>Tracked as</th><th style="text-align:right">Times sent out</th>
         <th style="text-align:right">Total sent</th><th>Last out</th></tr></thead>
@@ -281,8 +274,7 @@ function showDead(panel) {
     .sort((a, b) => (a.last ?? '').localeCompare(b.last ?? ''));
 
   panel.innerHTML = `
-    <p class="field__hint">Owned, and not hired out in ${DAYS} days. Counted from movements, so a
-      product that has never gone out at all is included — that is usually the more interesting case.</p>
+    
     ${rows.length ? `<div class="card scroll-x"><table class="data">
       <thead><tr><th>Product</th><th>Tracked as</th><th>Last hired</th></tr></thead>
       <tbody>${rows.map(r => `
@@ -316,9 +308,8 @@ function showDamage(panel) {
     .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
 
   panel.innerHTML = `
-    <p class="field__hint">Repair jobs per hire, for numbered pieces. Counted stock is excluded
-      because a repair must name a piece, and cables have none — that gap is logged, not hidden by
-      showing them a zero they did not earn.</p>
+    <p class="field__hint" style="margin:0 0 8px">Numbered pieces only. A repair names a piece, and counted stock has none.</p>
+    
     ${rows.length ? `<div class="card scroll-x"><table class="data">
       <thead><tr><th>Product</th><th style="text-align:right">Hires</th>
         <th style="text-align:right">Repairs</th><th style="text-align:right">Repair cost</th>

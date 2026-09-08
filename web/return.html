@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Return — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
-<link rel="stylesheet" href="style.css?v=2026-09-08-17">
-<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
-<script src="boot.js?v=2026-09-08-17" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
+<link rel="stylesheet" href="style.css?v=2026-09-08-20">
+<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
+<script src="boot.js?v=2026-09-08-20" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -31,7 +31,7 @@ import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSessi
          errorBlock, toast, initOffline, revealActiveTab, waLink, waMessage,
          newRequestId, guardedWrite, cardList, loadPermissions, can, networkMessage,
          uploadReturnPhoto, signedPhotoUrl, confirmBlock }
-  from './app.js?v=2026-09-08-17';
+  from './app.js?v=2026-09-08-20';
 
 $('#chrome').innerHTML = chrome('return.html');
 revealActiveTab();
@@ -63,7 +63,7 @@ async function chooser() {
   // screen showed the heading and then nothing at all — measured at 6s of blank warm page. Every
   // other list screen already had this; Return, which is the screen used standing at the van, did
   // not. The class is dropped again the moment real rows or a state block replace it.
-  app.innerHTML = `<h1>Return</h1><p class="sub">Open the job that is coming back.</p>
+  app.innerHTML = `<h1>Return</h1>
     <div id="jobs" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
   // The counts come from the view; the customer and the due date come from the order. Both are
   // needed on the row: chachu knows this job as "the Patel job at the stadium", not as
@@ -192,8 +192,7 @@ function render() {
           <select class="field__select" id="f-loc">
             ${LOCS.map(l => `<option value="${esc(l.id)}">${esc(l.name)} (${esc(l.type)})</option>`).join('')}
           </select>
-          <span class="field__hint">Need not be where it left from — gear often comes back to a
-            different godown, and the ledger records where it actually went.</span></label>
+          </label>
         <label class="field"><span class="field__label">Date back</span>
           <input class="field__input" id="f-date" type="date" value="${esc(todayLocal())}"
                  max="${esc(todayLocal())}"></label>
@@ -273,14 +272,13 @@ function render() {
                 </select></label>
               <label class="field"><span class="field__label">Damage deduction (₹)</span>
                 <input class="field__input r-damage" type="number" min="0" step="0.01" inputmode="decimal" value="0">
-                <span class="field__hint">Comes out of the deposit first. Anything over it is billed
-                  as a charge on the job.</span></label>
+                </label>
             </div>
             ${incl.length ? `<div class="pill-row">${incl.map(x => `
               <label class="field field--inline" style="margin:0">
                 <input type="checkbox" class="r-incl" data-item="${esc(x)}" checked>
                 <span>${esc(x)}</span></label>`).join('')}</div>
-              <span class="field__hint">Untick anything that did not come back with it.</span>` : ''}
+              ` : ''}
             <label class="field field--inline" style="margin-top:10px">
               <input type="checkbox" class="r-lost">
               <span>Not coming back — mark this piece lost</span></label>
@@ -288,9 +286,7 @@ function render() {
               <label class="field"><span class="field__label">Charge for the loss (₹)</span>
                 <input class="field__input r-lostamt" type="number" min="0" step="0.01" inputmode="decimal"
                        value="${esc(UNIT_COST.get(r.unit_id) ?? p?.default_purchase_cost ?? 0)}">
-                <span class="field__hint">Proposed from this piece's own purchase cost. Edit it — an old
-                  box costs more to replace than it cost to buy, and this is the moment that conversation
-                  happens. The piece is marked lost, never deleted, and its number is never reissued.</span></label>
+                </label>
             </div>`
           : `<label class="field"><span class="field__label">How many came back?</span>
                <input class="field__input r-qty" type="number" min="0" max="${esc(r.qty_outstanding)}"
@@ -300,8 +296,7 @@ function render() {
              <label class="field"><span class="field__label">Written off (lost or destroyed)</span>
                <input class="field__input r-writeoff" type="number" min="0" max="${esc(r.qty_outstanding)}"
                       step="1" inputmode="numeric" value="0">
-               <span class="field__hint">Closes the loop: without this, cables lost at a venue read as
-                 sitting with the customer for ever and the job can never close.</span></label>`}
+               </label>`}
           ${isUnit ? photoBlock(key) : ''}
         </div>
       </div>
@@ -364,8 +359,7 @@ function renderShortShare() {
   const msg = waMessage('came_back_short', { order: { ...ORDER, customer: CUSTOMER }, missing });
   host.innerHTML = `<a class="btn btn--wa" target="_blank" rel="noopener"
       href="${esc(waLink(CUSTOMER?.whatsapp, msg))}">Ask them about the ${esc(missing.length)} still out</a>
-    <span class="field__hint" style="margin-top:6px">Opens a draft listing exactly what has not come
-      back. Nothing is charged for by sending it — it does not send, and it charges nothing either way.</span>`;
+    `;
 }
 
 function renderUndo(host) {
@@ -375,9 +369,7 @@ function renderUndo(host) {
   if (!TODAY_BACK.length) { box.innerHTML = ''; return; }
   box.innerHTML = `<div class="card">
     <h2 style="font-size:16px;margin:0 0 4px">Recorded back today</h2>
-    <p class="field__hint" style="margin-top:0">If one of these did not actually come back, say so
-      now — it goes straight back to being out. Nothing is deleted: the return stays in the piece's
-      history marked corrected, so the record still says what happened.</p>
+    
     <div class="list">${TODAY_BACK.map(m => {
       const p = PRODUCTS.get(m.product_id);
       const what = m.unit_id
@@ -458,8 +450,7 @@ function photoBlock(key) {
         <input type="file" class="photo-input" accept="image/*" capture="environment"
                data-key="${esc(key)}">
       </label>
-      <span class="field__hint">Only staff see these — never the customer's portal. Worth one
-        whenever money comes off the deposit: the argument happens next week, on the telephone.</span>
+      
       <div class="thumbs photo-strip"></div>
     </div>`;
 }
@@ -578,8 +569,7 @@ function paint() {
     </dl>
     ${excess > 0 ? `<p class="field__hint">More damage than deposit. The excess is added to the job as a
       damage charge — the deposit is not allowed to go negative.</p>` : ''}
-    ${damage > 0 ? `<p class="field__hint">Nothing is deducted from the deposit ledger automatically here;
-      the deduction is recorded when the deposit is actually settled, on the payments screen.</p>` : ''}
+    ${damage > 0 ? `` : ''}
     ${(() => {
       // Evidence, counted where the deduction is decided. Money coming off a deposit with no
       // photograph behind it is the version of this conversation that goes badly next week.

@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Team — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
-<link rel="stylesheet" href="style.css?v=2026-09-08-17">
-<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
-<script src="boot.js?v=2026-09-08-17" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
+<link rel="stylesheet" href="style.css?v=2026-09-08-20">
+<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
+<script src="boot.js?v=2026-09-08-20" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,8 +27,8 @@
 <script type="module">
 import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, toast, openSheet,
          initOffline, revealActiveTab, loadPermissions, can, cardList, guardedWrite }
-  from './app.js?v=2026-09-08-17';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-17';
+  from './app.js?v=2026-09-08-20';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-20';
 
 $('#chrome').innerHTML = chrome('team.html');
 revealActiveTab();
@@ -99,15 +99,12 @@ requireSession(async () => {
 async function boot() {
   $('#app').innerHTML = `
     <div class="row row--between">
-      <div><h1>Team</h1><p class="sub">Who has an account, and what each person can do.</p></div>
+      <div><h1>Team</h1></div>
       <button class="btn btn--primary" id="add" type="button">Add someone</button>
     </div>
     <div id="warn"></div>
     <div id="list" class="card-list"><div class="skeleton__row"></div></div>
-    <p class="field__hint" style="margin-top:10px">
-      A change takes effect the next time that person signs in or reloads — their screens are built
-      once, when they sign in, from what they can do. Ask them to reload if they are already in.
-    </p>`;
+    `;
   $('#add').addEventListener('click', () => openMember(null));
   checkSignupIsClosed();
   await load();
@@ -161,11 +158,13 @@ function render() {
     };
   }, m => openMember(m));
 
-  if (admins === 1) {
-    $('#list').insertAdjacentHTML('afterend',
-      `<p class="field__hint" id="last-admin">One person manages the team. Give "Manage the team" to
-       somebody else before taking it away from them — the system refuses to leave nobody able to
-       grant anything.</p>`);
+    // A conditional WARNING, not a heading blurb — the text cut took it out with the prose and
+    // left an insertAdjacentHTML of an empty string. It is the only thing standing between the
+    // last admin and locking everybody out of the Team screen.
+    if (admins === 1) {
+      $('#list').insertAdjacentHTML('afterend',
+        `<p class="field__hint" style="margin-top:10px">Only one person can manage the team. Give
+         it to somebody else before taking it away from them.</p>`);
   }
 }
 

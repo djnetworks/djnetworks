@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DJ Network's — Rental System</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
-<link rel="stylesheet" href="style.css?v=2026-09-08-17">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
+<link rel="stylesheet" href="style.css?v=2026-09-08-20">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
-<script src="boot.js?v=2026-09-08-17" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
+<script src="boot.js?v=2026-09-08-20" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -32,10 +32,10 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, fmtDate, todayLocal,
+import { sb, $, $$, esc, isVanOnly, chrome, requireSession, stateBlock, errorBlock, fmtDate, todayLocal,
          initOffline, revealActiveTab, jobLine, waLink, waMessage, loadPermissions, can }
-  from './app.js?v=2026-09-08-17';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-17';
+  from './app.js?v=2026-09-08-20';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-20';
 
 $('#chrome').innerHTML = chrome('index.html');
 revealActiveTab();
@@ -74,6 +74,30 @@ async function checkSignupIsClosed() {
   } catch { /* offline, or the settings endpoint is unreachable: not worth an error */ }
 }
 
+/**
+ * Two buttons, filling the screen, in the words chachu uses. No nav bar, no counts, no reports —
+ * the four departments behind them hold nothing this person may open.
+ *
+ * The words are the labels he says out loud, not the screen names: gear goes OUT and gear COMES
+ * BACK. The icon is doing as much work as the text, because this has to be usable by somebody who
+ * does not read English easily.
+ */
+function renderVanScreen() {
+  document.querySelector('#nav-host')?.replaceChildren();
+  document.querySelector('#dept-host')?.replaceChildren();
+  $('#app').innerHTML = `
+    <div class="vanhome">
+      <a class="vanhome__btn" href="dispatch.html">
+        <span class="vanhome__icon" aria-hidden="true">\u2191</span>
+        <span class="vanhome__label">Load gear out</span>
+      </a>
+      <a class="vanhome__btn vanhome__btn--in" href="return.html">
+        <span class="vanhome__icon" aria-hidden="true">\u2193</span>
+        <span class="vanhome__label">Gear came back</span>
+      </a>
+    </div>`;
+}
+
 // ---------------------------------------------------------------------------
 // TODAY.
 //
@@ -91,8 +115,14 @@ async function checkSignupIsClosed() {
 
 requireSession(async () => {
   await loadPermissions();
+
+  // THE VAN SCREEN. Somebody whose whole job is sending gear out and taking it back gets two
+  // buttons and no navigation — four of the five departments are empty for him, and a bar of empty
+  // rooms is worse than no bar. Same eleven permissions every policy tests; see isVanOnly().
+  if (isVanOnly()) { renderVanScreen(); return; }
+
   const app = $('#app');
-  app.innerHTML = `<h1>Today</h1>
+  app.innerHTML = `<h1>Home</h1>
     <p class="sub" id="sub">${esc(fmtDate(todayLocal()))}</p>
     <div id="day">
       <div class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>
@@ -174,8 +204,7 @@ requireSession(async () => {
           <span class="card-row__title">${esc(who)}${o.venue_name ? ' · ' + esc(o.venue_name) : ''}</span>
           <span class="card-row__sub">${esc(fmtDate(o.out_date))} → ${esc(fmtDate(o.expected_return_date))}
             · ${esc(o.days)} day${o.days === 1 ? '' : 's'}</span>
-          <button class="card-row__ref card-action" data-copy="${esc(o.order_no)}" type="button"
-                  title="Copy ${esc(o.order_no)}">${esc(o.order_no)}</button>
+          <span class="card-row__ref">${esc(o.order_no)}</span>
         </span>
         <span class="card-row__right">${right}</span></div>`;
     };
@@ -212,8 +241,7 @@ requireSession(async () => {
             <span class="card-row__main">
               <span class="card-row__title">${esc(who)}${o.venue_name ? ' · ' + esc(o.venue_name) : ''}</span>
               <span class="card-row__sub">${esc(what)}${all.length > 3 ? ' …' : ''} · due ${esc(fmtDate(o.expected_return_date))}</span>
-              <button class="card-row__ref card-action" data-copy="${esc(o.order_no)}" type="button"
-                      title="Copy ${esc(o.order_no)}">${esc(o.order_no)}</button>
+              <span class="card-row__ref">${esc(o.order_no)}</span>
             </span>
             <span class="card-row__right">
               <!-- Never a bare number beside "late": one screen meant days and the other meant
@@ -264,14 +292,17 @@ requireSession(async () => {
         <div class="stat__n${tone === 'bad' ? ' stat__n--bad' : ''}">${n}</div>
       </a>`).join('');
 
-    let html = `<p class="field__hint" style="margin:-6px 0 14px">Numbered pieces only.`;
+    // RULE 13. The four tiles above sum unitRows ONLY — v_product_stock keeps one set of column
+    // names across all three modes, and adding them buried 40 speakers under 200 XLR cables. So the
+    // tiles are numbered pieces, and this line is the counted stock they exclude. The text cut
+    // deleted it and left poolRows/consRows computed and referenced nowhere: the cables vanished
+    // off Home without the screen admitting it.
+    let html = `<p class="field__hint" style="margin:-6px 0 14px">Numbered pieces.`;
     if (poolRows.length || consRows.length) {
       const poolOn = sum(poolRows, 'units_on_hand');
-      const poolOut = sum(poolRows, 'units_at_repair') + sum(poolRows, 'units_out');
       const consOn = sum(consRows, 'units_on_hand');
       html += ` Counted stock is separate: ${poolOn} on the shelf`
-        + (poolOut ? `, ${poolOut} away` : '')
-        + (consRows.length ? ` · ${consOn} used-up items in stock` : '') + '.';
+            + (consRows.length ? ` · ${consOn} used-up items in stock` : '') + '.';
     }
     html += `</p>`;
 
@@ -292,14 +323,10 @@ requireSession(async () => {
     // screen instead.
     $('#day').addEventListener('click', async (e) => {
       // An inline control handles itself and the card does not also fire.
-      const b = e.target.closest('.card-row__ref');
-      if (b) {
-        e.preventDefault(); e.stopPropagation();
-        try { await navigator.clipboard.writeText(b.dataset.copy); } catch { /* insecure context */ }
-        b.classList.add('is-copied');
-        setTimeout(() => b.classList.remove('is-copied'), 1400);
-        return;
-      }
+      // The order number is SUBTEXT now, not a control, so a tap on it must open the job like a
+      // tap anywhere else in the row. The copy handler that used to sit here called
+      // preventDefault() and swallowed that tap — with data-copy gone it would have swallowed it
+      // and copied nothing.
       if (e.target.closest('.card-action')) return;      // Remind: let the link do its own thing
       const card = e.target.closest('.card-row[data-go]');
       if (card) location.href = card.dataset.go;

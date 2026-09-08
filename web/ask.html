@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Can I say yes — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
+<title>Availability — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
-<link rel="stylesheet" href="style.css?v=2026-09-08-17">
-<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
-<script src="boot.js?v=2026-09-08-17" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
+<link rel="stylesheet" href="style.css?v=2026-09-08-20">
+<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
+<script src="boot.js?v=2026-09-08-20" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, revealActiveTab, trackBadge, publicUrl }
-  from './app.js?v=2026-09-08-17';
+  from './app.js?v=2026-09-08-20';
 
 $('#chrome').innerHTML = chrome('ask.html');
 revealActiveTab();
@@ -62,8 +62,8 @@ requireSession(async () => { await boot(); });
 async function boot() {
   const d = todayLocal();
   $('#app').innerHTML = `
-    <h1>Can I say yes</h1>
-    <p class="sub">Dates and gear. No order is created until you say so.</p>
+    <h1>Availability</h1>
+    <p class="sub">Nothing is booked here.</p>
 
     <div class="card">
       <div class="grid2">
@@ -284,7 +284,7 @@ function renderAnswer() {
       </p>
       <table class="data" style="margin-top:10px">
         <thead><tr><th>Product</th><th style="text-align:right">Asked</th>
-          <th style="text-align:right">Owned</th><th style="text-align:right">Booked</th>
+          <th style="text-align:right">On shelf</th><th style="text-align:right">Booked</th>
           <th style="text-align:right">Free</th></tr></thead>
         <tbody>${wanted.map(([id, want]) => {
           const a = ANSWERS.get(id) ?? {};
@@ -294,16 +294,14 @@ function renderAnswer() {
           return `<tr>
             <td data-label="Product">${esc(p?.short_code ?? '?')} — ${esc(p?.model_name ?? '')}</td>
             <td data-label="Asked" style="text-align:right">${esc(want)}</td>
-            <td data-label="Owned" style="text-align:right">${esc(a.units_on_hand ?? 0)}</td>
+            <td data-label="On shelf" style="text-align:right">${esc(a.units_on_hand ?? 0)}</td>
             <td data-label="Booked" style="text-align:right">${esc(a.committed ?? 0)}</td>
             <td data-label="Free" style="text-align:right">
               <strong style="color:var(--${ok ? 'ok' : 'bad'})">${esc(free)}</strong></td>
           </tr>`;
         }).join('')}</tbody>
       </table>
-      <p class="field__hint">Owned counts what is on the shelf right now — a piece with no return
-        recorded is out whatever the date says. Booked is what other live jobs have already
-        committed across these dates.</p>
+      
     </div>
 
     ${short.length ? `<div class="card">
@@ -326,8 +324,7 @@ function renderAnswer() {
           : '<div class="field__hint">No live job holds it across these dates — the shortfall is what he owns, not what is booked.</div>'}
         </div>`;
       }).join('')}
-      <p class="field__hint" style="margin-top:12px">You can still book it. The order screen will
-        warn and make you say why — sub-hiring one in is a normal answer.</p>
+      
     </div>` : ''}`;
 
   const bar = $('#bar');

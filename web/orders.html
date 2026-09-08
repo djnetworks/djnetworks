@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orders — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
-<link rel="stylesheet" href="style.css?v=2026-09-08-17">
-<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
-<script src="boot.js?v=2026-09-08-17" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
+<link rel="stylesheet" href="style.css?v=2026-09-08-20">
+<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
+<script src="boot.js?v=2026-09-08-20" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -32,7 +32,7 @@ import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, sta
          openSheet, focusField, initOffline, revealActiveTab, fulfilLabel, orderState, rememberFilters,
          waLink, waMessage,
          customerPicker, cardList, loadPermissions, guardedWrite }
-  from './app.js?v=2026-09-08-17';
+  from './app.js?v=2026-09-08-20';
 
 $('#chrome').innerHTML = chrome('orders.html');
 revealActiveTab();
@@ -415,7 +415,7 @@ async function openOrder(o, prefill = null) {
       <label class="field"><span class="field__label">Deposit held (₹)</span>
         <input class="field__input" id="f-dep" type="number" min="0" step="0.01" inputmode="decimal"
                value="${esc(o.deposit_amount)}">
-        <span class="field__hint">The customer's own money, held. Never counted as revenue.</span></label>
+        </label>
     </div>
 
     <div class="grid2">
@@ -433,7 +433,7 @@ async function openOrder(o, prefill = null) {
     <div class="grid2">
       <label class="field"><span class="field__label">Who is at the venue</span>
         <input class="field__input" id="f-vcname" value="${esc(o.venue_contact_name)}">
-        <span class="field__hint">Rarely the person who booked. This is who the van actually meets.</span></label>
+        </label>
       <label class="field"><span class="field__label">Their phone</span>
         <input class="field__input" id="f-vcphone" type="tel" inputmode="tel" value="${esc(o.venue_contact_phone)}"></label>
     </div>
@@ -443,10 +443,7 @@ async function openOrder(o, prefill = null) {
         <strong>Lines</strong>
         <button class="btn btn--sm" id="add-line" type="button" ${frozen ? 'disabled' : ''}>Add a line</button>
       </div>
-      <p class="field__hint" style="margin-top:0">
-        Lines reserve at PRODUCT level — "2 × 15-inch top", never piece 3 and piece 5. Physical boxes
-        attach when the van is loaded, on the Send out screen.
-      </p>
+      
       <div id="repeat-note"></div>
       <div id="lines"></div>
       <div id="avail" style="margin-top:10px"></div>
@@ -457,8 +454,7 @@ async function openOrder(o, prefill = null) {
         <strong>Charges</strong>
         <button class="btn btn--sm" id="add-charge" type="button" ${frozen ? 'disabled' : ''}>Add a charge</button>
       </div>
-      <p class="field__hint" style="margin-top:0">Transport, labour and the rest. Job-level, so they are
-        deliberately kept out of per-product ROI — they would flatter heavy gear, which travels most.</p>
+      
       <div id="charges"></div>
     </div>
 
@@ -595,8 +591,7 @@ async function openOrder(o, prefill = null) {
     $('#cust-pick').innerHTML = `<div class="field" style="margin-bottom:0">
       <span class="field__label">Customer</span>
       <div>${esc(c ? (c.business_name ? `${c.business_name} — ${c.name}` : c.name) : '—')}</div>
-      <span class="field__hint">A job cannot be moved to a different customer — the money on it has
-        already been posted to this one.</span></div>`;
+      </div>`;
   }
   if (isNew) focusField('#oc-q');
 }
@@ -640,7 +635,7 @@ function renderLines() {
         <label class="field"><span class="field__label">Agreed rate/day *</span>
           <input class="field__input l-agreed" type="number" step="0.01" min="0" inputmode="decimal"
                  value="${esc(l.agreed_rate)}" ${frozen ? 'disabled' : ''}>
-          <span class="field__hint">What was actually agreed. Stored, and never recalculated later.</span></label>
+          </label>
         <label class="field"><span class="field__label">Line total *</span>
           <input class="field__input l-total" type="number" step="0.01" min="0" inputmode="decimal"
                  value="${esc(l.line_total)}" ${frozen ? 'disabled' : ''}>
@@ -785,8 +780,6 @@ function renderTotals() {
       </dl>
       <dl class="kv">
         <dt>Deposit held</dt><dd>${money(dep)}</dd>
-        <dt colspan="2"><span class="field__hint">The deposit is the customer's own money and is never
-          part of the job total. It is returned, or set against damage, when everything is back.</span></dt>
       </dl>
     </div>`;
   paintUnpostedNote(rental + charges);
@@ -893,7 +886,7 @@ async function checkAvailability() {
       <input class="field__input" id="f-override-reason"
              value="${esc(keptReason)}"
              placeholder="e.g. the 4th job returns by 9am, collecting on the way">
-      <span class="field__hint">Recorded on the order. Same-day turnaround is possible; it is just never silent.</span>
+      
     </label>
   </div>`;
 }

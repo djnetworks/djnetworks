@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-20" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-20" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-20">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-20">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
-<link rel="stylesheet" href="style.css?v=2026-09-08-17">
-<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
-<script src="boot.js?v=2026-09-08-17" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-20">
+<link rel="stylesheet" href="style.css?v=2026-09-08-20">
+<script src="vendor/supabase.js?v=2026-09-08-20" defer></script>
+<script src="boot.js?v=2026-09-08-20" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, openSheet, focusField, initOffline, revealActiveTab, entryLabel,
          waLink, waMessage, canChasePayment, customerPicker, loadPermissions, can }
-  from './app.js?v=2026-09-08-17';
+  from './app.js?v=2026-09-08-20';
 
 $('#chrome').innerHTML = chrome('ledger.html');
 revealActiveTab();
@@ -41,18 +41,17 @@ async function boot() {
   // Blank rather than zero, and it says which. Without ledger.view the gated view returns NO ROWS
   // — deliberately, so nothing can render a customer at ₹0.00 who in fact owes ₹2,800 (0021).
   if (!can('ledger.view')) {
-    $('#app').innerHTML = `<h1>Ledger &amp; payments</h1>` + stateBlock({
+    $('#app').innerHTML = `<h1>Ledger</h1>` + stateBlock({
       icon: '🔒', title: 'Money is not visible to this account',
-      body: 'This account cannot see money. Ask whoever manages the team. '
-          + 'have. Nothing here is being shown as zero — the figures exist and cannot be read from '
-          + 'this login. Ask whoever manages the team.',
+        body: 'This account cannot see money. Nothing is being shown as zero — the figures exist '
+            + 'and cannot be read from this login. Ask whoever manages the team.',
     });
     return;
   }
   $('#app').innerHTML = `
     <div class="row row--between">
-      <div><h1>Ledger &amp; payments</h1>
-        <p class="sub">One ledger per customer. Money owed and money held are different things.</p></div>
+      <div><h1>Ledger</h1>
+        <p class="sub">Owed and held are different numbers.</p></div>
       <button class="btn btn--primary" id="add-entry" hidden>Record something</button>
     </div>
     <div id="picker"></div>
@@ -173,12 +172,10 @@ async function renderBody() {
         <div class="stat__n">${money(b.deposit_held)}</div>
         <div class="field__hint">The customer's money, held. Never revenue.</div></div>
     </div>
-    <p class="field__hint" style="margin-top:-6px">These three are never added together. Owed and held
-      are opposite directions, and upcoming has not happened yet.</p>
+    
     ${chase ? `<div class="row" style="margin:-4px 0 14px">
       <a class="btn btn--wa" target="_blank" rel="noopener" href="${esc(chase)}">Ask for the ${esc(money(b.receivable))}</a>
-      <span class="field__hint" style="margin:0">Opens a draft. It does not send${
-        Number(b.deposit_held) > 0 ? ', and it names the deposit separately so it is never mistaken for what is owed' : ''}.</span>
+      
     </div>` : (Number(b.receivable) < 0 ? `<p class="field__hint" style="margin:-4px 0 14px">
       Nothing to chase — they are in credit. That is money owed back to them.</p>` : '')}
     <div class="card scroll-x">
@@ -263,17 +260,14 @@ function openEntry() {
            other. The stored value is still reversal; it is just not what anybody is shown. -->
       <label class="field__label" for="f-reverses">Which charge are you cancelling? *</label>
       <select class="field__select" id="f-reverses"></select>
-      <span class="field__hint">Cancelling undoes one specific charge, and cannot exceed what is left
-        of it. It takes that charge's own state, so cancelling an upcoming booking reduces the forward
-        book and cancelling a due charge reduces what is owed — never the wrong one.</span>
+      
     </div>
     <label class="field"><span class="field__label">Against which job?</span>
       <select class="field__select" id="f-order">
         <option value="">Not against a job — on account</option>
         ${custOrders.map(o => `<option value="${esc(o.id)}">${esc(o.order_no)} · ${esc(fmtDate(o.out_date))}</option>`).join('')}
       </select>
-      <span class="field__hint">Payments need not attach to an order. Trade regulars pay against the
-        balance, and forcing a job onto the payment would be inventing a fact.</span></label>
+      </label>
     <label class="field"><span class="field__label">Note</span>
       <input class="field__input" id="f-notes"></label>
     <div class="sheet__foot">

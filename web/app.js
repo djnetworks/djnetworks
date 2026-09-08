@@ -20,8 +20,8 @@
 // INVISIBLE UNTIL IT WAS SERVED FROM A REAL ORIGIN. Locally both spellings come off the same dev
 // server in a millisecond and nothing looks wrong. It showed up as two lines in the live network
 // log. See the djn-deploy skill.
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-17';
-import * as store from './db.js?v=2026-09-08-17';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-20';
+import * as store from './db.js?v=2026-09-08-20';
 
 // The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
 //
@@ -171,8 +171,7 @@ export function cardList(host, rows, render, onOpen) {
       <span class="card-row__main">
         <span class="card-row__title">${c.title}</span>
         ${c.sub ? `<span class="card-row__sub">${c.sub}</span>` : ''}
-        ${c.ref ? `<button class="card-row__ref card-action" data-copy="${esc(c.ref)}"
-                     type="button" title="Copy ${esc(c.ref)}">${esc(c.ref)}</button>` : ''}
+        ${c.ref ? `<span class="card-row__ref">${esc(c.ref)}</span>` : ''}
       </span>
       ${c.right ? `<span class="card-row__right">${c.right}</span>` : ''}
     </div>`;
@@ -184,7 +183,6 @@ export function cardList(host, rows, render, onOpen) {
     const action = e.target.closest('.card-action');
     if (action) {
       e.stopPropagation();
-      if (action.dataset.copy) copyRef(action);
       return;
     }
     const row = e.target.closest('.card-row');
@@ -202,12 +200,6 @@ export function cardList(host, rows, render, onOpen) {
 }
 
 /** The order number's real job is being pasted into a WhatsApp message. */
-async function copyRef(btn) {
-  try { await navigator.clipboard.writeText(btn.dataset.copy); }
-  catch { /* insecure context or refused: the number is still on screen to read */ }
-  btn.classList.add('is-copied');
-  setTimeout(() => btn.classList.remove('is-copied'), 1400);
-}
 
 // ---------------------------------------------------------------------------
 // TAP RULE 3, the half that is not CSS.
@@ -257,8 +249,22 @@ let PERMS = null;
 
 export async function loadPermissions() {
   if (PERMS) return PERMS;
+  // MY OWN ROW, BY ID. This used to be an unfiltered .maybeSingle(), which worked only for as long
+  // as exactly one operator existed.
+  //
+  // 0023's SELECT policy lets an admin.team holder read EVERY operator row — it has to, or the Team
+  // screen cannot list anybody. So the second person hired makes this query return two rows,
+  // PostgREST answers 406 PGRST116 "cannot coerce the result to a single JSON object", the catch
+  // below reads that as failure, and PERMS becomes {} — the OWNER loses every permission in the UI
+  // and the navigation collapses to the two entries that need none. Measured exactly that way:
+  // rowsVisibleToOwner 2, maybeSingleStatus 406, nav down to Home and Jobs.
+  //
+  // Denying on failure is still right (see below). The bug was calling something a failure that
+  // was really "you can see your colleagues too".
+  const { data: { session } } = await sb.auth.getSession();
+  const uid = session?.user?.id;
   const { data, error } = await sb.from('operator')
-    .select('permissions,display_name,active').maybeSingle();
+    .select('permissions,display_name,active').eq('user_id', uid).maybeSingle();
   // A failure here must not read as "you may do everything". An empty object denies every key,
   // which is the safe direction and matches what the database would do anyway.
   PERMS = (error || !data || data.active === false) ? {} : (data.permissions ?? {});
@@ -870,7 +876,8 @@ export async function requireSession(onReady) {
       gate.hidden = true;
       gate.innerHTML = '';
       app.hidden = false;
-      $('#signout').hidden = false;
+      // The account button carries Team and Sign out; it appears only once signed in.
+      { const acct = $('#topbar-menu'); if (acct) acct.hidden = false; }
       try {
         await onReady(session);
       } catch (err) {
@@ -883,6 +890,16 @@ export async function requireSession(onReady) {
     } else {
       // Signed out: the screens show nothing rather than erroring or showing a
       // misleading empty catalogue.
+        //
+        // AND THE PERMISSION CACHE IS DROPPED. loadPermissions() memoises into PERMS and nothing
+        // cleared it, so on one shared godown phone the next person to sign in inherited the last
+        // person's keys until a real page load. That was always wrong; this pass made it worse:
+        // with isVanOnly() driving the whole shell, an owner signing in after a van staffer got
+        // the stale two-key answer and was handed the two-button staff screen with NO navigation
+        // at all — the app looking like it had lost everything. Never an access boundary (the
+        // database refuses regardless), but too plain a lie on screen to leave.
+        PERMS = null;
+        operatorName = '';
       app.hidden = true;
       app.innerHTML = '';
       // A session can expire while a sheet is open. Left alone the sheet floats over the
@@ -892,7 +909,8 @@ export async function requireSession(onReady) {
       if (host) host.innerHTML = '';
       dismissToast();
       $('#who').textContent = '';
-      $('#signout').hidden = true;
+      { const acct = $('#topbar-menu'); if (acct) acct.hidden = true;
+        const menu = $('#account-menu'); if (menu) menu.hidden = true; }
       gate.hidden = false;
       renderSignIn(gate);
     }
@@ -1019,36 +1037,90 @@ export function wordmark({ large = false, invert = false, href = null } = {}) {
 //
 // `key: null` means every active operator sees it: Today and the enquiry screen answer questions
 // rather than change anything.
-const MODULES = [
-  { href: 'index.html',     label: 'Today',     icon: '\u25C9', key: null },
-  { href: 'ask.html',       label: 'Can I?',    icon: '\u2713', key: null },
-  { href: 'orders.html',    label: 'Orders',    icon: '\u2637', key: 'orders.write' },
-  { href: 'dispatch.html',  label: 'Send out',  icon: '\u2191',  key: 'sendout.write' },
-  { href: 'return.html',    label: 'Return',    icon: '\u2193',  key: 'returns.write' },
-  { href: 'products.html',  label: 'Products',  icon: '\u25A6', key: 'products.write' },
-  { href: 'units.html',     label: 'Equipment', icon: '\u25A3', key: 'equipment.write' },
-  { href: 'transfer.html',  label: 'Van',       icon: '\u2B1A', key: 'equipment.write' },
-  { href: 'customers.html', label: 'Customers', icon: '\u263A', key: 'customers.write' },
-  { href: 'ledger.html',    label: 'Ledger',    icon: '\u20B9',  key: 'ledger.view' },
-  { href: 'analysis.html',  label: 'Numbers',   icon: '\u2211', key: 'numbers.view' },
-  { href: 'team.html',      label: 'Team',      icon: '\u2687', key: 'admin.team' },
+/**
+ * FIVE DEPARTMENTS, not twelve screens.
+ *
+ * The bar carried ten destinations, five on it and five under "More", and every master screen —
+ * Products, Equipment, Customers — competed for a slot with the things done every day. The
+ * operator's own words: "the navigation bar is not up to the mark."
+ *
+ * So the bar is departments now, in the shape the work actually has: Home, then the three things a
+ * rental business does — take a job, move the gear, handle the money — and the reports, which are
+ * read and never edited. MASTERS LIVE INSIDE THEIR DEPARTMENT. Products is a Gear screen, not a
+ * peer of Home.
+ *
+ * FIVE FIXED SLOTS, and they still never move. A department is hidden only if the person cannot
+ * reach a single screen inside it, and hiding one does not shuffle the rest — the same reason as
+ * before: a bottom bar exists so the thumb stops reading.
+ *
+ * Team, settings and the account are NOT departments. They are in the top bar.
+ */
+const DEPARTMENTS = [
+  { id: 'home',    label: 'Home',    icon: '\u2302',
+    screens: [ { href: 'index.html', label: 'Home', key: null } ] },
+
+  { id: 'jobs',    label: 'Jobs',    icon: '\u2637',
+    screens: [
+      { href: 'orders.html',   label: 'Orders',       key: 'orders.write'  },
+      { href: 'ask.html',      label: 'Availability', key: null            },
+      { href: 'dispatch.html', label: 'Send out',     key: 'sendout.write' },
+      { href: 'return.html',   label: 'Return',       key: 'returns.write' },
+    ] },
+
+  { id: 'gear',    label: 'Gear',    icon: '\u25A3',
+    screens: [
+      { href: 'units.html',    label: 'Equipment',    key: 'equipment.write' },
+      { href: 'products.html', label: 'Products',     key: 'products.write'  },
+      { href: 'transfer.html', label: 'Load the van', key: 'equipment.write' },
+    ] },
+
+  { id: 'money',   label: 'Money',   icon: '\u20B9',
+    screens: [
+      { href: 'customers.html', label: 'Customers',   key: 'customers.write' },
+      { href: 'ledger.html',    label: 'Ledger',      key: 'ledger.view'     },
+    ] },
+
+  { id: 'reports', label: 'Reports', icon: '\u2211',
+    screens: [ { href: 'analysis.html', label: 'Reports', key: 'numbers.view' } ] },
 ];
 
-// How many fit across the bottom before it stops being thumb-sized. Beyond this the rest go under
-// "More", which is one tap for the things done weekly and keeps the daily ones at a fixed position.
-const NAV_SLOTS = 5;
+/**
+ * THE STAFF VIEW.
+ *
+ * Somebody whose whole job is the van — sendout.write and returns.write, nothing else — does not
+ * need a navigation bar with five departments in it, because four of them are empty for him. He
+ * needs two buttons the size of his hand.
+ *
+ * DRIVEN OFF THE EXISTING PERMISSIONS, deliberately. No role column, no second sign-in path, no
+ * flag anybody has to remember to set: it is a question asked of the same eleven keys every RLS
+ * policy tests, so a staff account cannot end up with a staff SCREEN and an owner's ACCESS, or the
+ * reverse. Give him orders.write tomorrow and he gets the full app on his next reload, with nothing
+ * to migrate.
+ *
+ * The test is deliberately "can do the van job AND nothing else" rather than "lacks admin": a
+ * missing permission is not the same as a narrow role, and somebody who simply has not been set up
+ * yet must not be handed the van screen.
+ */
+export function isVanOnly() {
+  const van = can('sendout.write') || can('returns.write');
+  const other = ['orders.write', 'products.write', 'equipment.write', 'customers.write',
+                 'ledger.view', 'ledger.write', 'numbers.view', 'admin.team', 'movement.correct']
+                .some(k => can(k));
+  return van && !other;
+}
+
+/** Screens reachable by this person inside one department. */
+const deptScreens = d => d.screens.filter(x => !x.key || can(x.key));
+/** Which department a href belongs to. */
+const deptOf = href => DEPARTMENTS.find(d => d.screens.some(x => x.href === href));
 
 /**
- * Page chrome. A slim top bar carrying identity and the connection state, and the navigation at
+ * Page chrome: a slim top bar with identity, the account controls and the connection state; a
+ * DEPARTMENT STRIP naming the screens inside the department you are in; and the department bar at
  * the BOTTOM where a thumb is.
  *
- * The top tab strip this replaces put ten destinations in a horizontally scrolling row: at 375px
- * five of them were off screen with no affordance saying so, and all of them were at the far end
- * of a one-handed reach. That problem is retired here rather than patched.
- *
  * WHAT IS SHOWN IS DECIDED AT LOGIN, from permissions already in memory. Granting somebody a
- * module therefore needs a page reload before it appears — documented in docs/structure.md, and
- * the Team screen says so where the toggle is.
+ * screen therefore needs a page reload before it appears — the Team screen says so at the toggle.
  */
 let NAV_ACTIVE = 'index.html';
 
@@ -1059,74 +1131,92 @@ export function chrome(active) {
     <span class="topbar__brand">${wordmark({ href: 'index.html' })}</span>
     <span class="conn" id="conn" hidden></span>
     <span class="topbar__who" id="who"></span>
-    <button class="btn btn--ghost btn--sm" id="signout" hidden>Sign out</button>
+    <button class="btn btn--ghost btn--sm" id="topbar-menu" type="button" hidden
+            aria-haspopup="true" aria-expanded="false" aria-label="Account">\u22EF</button>
   </header>
+  <div class="account" id="account-menu" hidden>
+    <div class="account__panel">
+      <a class="item" href="team.html" id="acct-team" hidden>
+        <span class="item__main"><span class="item__title">Team</span></span></a>
+      <button class="item" id="signout" type="button">
+        <span class="item__main"><span class="item__title">Sign out</span></span></button>
+    </div>
+  </div>
+  <div id="dept-host">${deptStripMarkup()}</div>
   <div id="nav-host">${navMarkup()}</div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>`;
 }
 
-/** Re-render the nav in place once permissions are known. */
+/** Re-render nav and strip in place once permissions are known. */
 export function paintNav() {
   navReady();
-  const host = $('#nav-host');
-  if (host) host.innerHTML = navMarkup();
+  const nav = $('#nav-host'); if (nav) nav.innerHTML = navMarkup();
+  document.body.classList.toggle('no-nav', isVanOnly());
+  const dept = $('#dept-host'); if (dept) dept.innerHTML = deptStripMarkup();
+  const team = $('#acct-team'); if (team) team.hidden = !can('admin.team');
+  initNav();
 }
 
-// False until loadPermissions() has answered. Until then this file does not know which modules
-// this person holds, and GUESSING MOVES THE THUMB TARGET. chrome() runs at module top level, so
-// the bar used to paint Today + Can I? at 195px each and then re-flow to six items at 65px: with
-// a 1.2s permission read — an ordinary godown round trip — "Today" travelled 65px left and
-// "Can I?" landed exactly where "Today" had been, so a tap made during the wait opened the wrong
-// screen. An empty bar of the right height reserves the space without offering a target that is
-// about to move. Nothing shifts when the answer arrives.
+// False until loadPermissions() has answered. Until then this file does not know which screens this
+// person holds, and GUESSING MOVES THE THUMB TARGET — chrome() runs at module top level, so a bar
+// painted early re-flows when the answer arrives and a tap made during the wait opens the wrong
+// screen. An empty bar of the right height reserves the space without offering a target.
 let NAV_KNOWN = false;
 export function navReady() { NAV_KNOWN = true; }
 
-function navMarkup() {
-  const active = NAV_ACTIVE;
-  if (!NAV_KNOWN) return `<nav class="nav nav--pending" aria-hidden="true"></nav>`;
-  const mine = MODULES.filter(m => !m.key || can(m.key));
-  const bar = mine.slice(0, NAV_SLOTS);
-  const more = mine.slice(NAV_SLOTS);
-  // The active destination is always ON the bar, even if it lives under More — otherwise the
-  // screen you are looking at is not highlighted anywhere.
-  //
-  // THE FIVE SLOTS NEVER CHANGE. A bottom bar exists so the thumb stops reading — you learn that
-  // Return is the fifth position and go there without looking. A slot that swaps identity depending
-  // on which screen you happen to be on destroys the only thing the bar is for.
-  //
-  // Two earlier versions were both wrong and the second was subtler: the first OVERWROTE slot five
-  // with the active module and dropped what was there, so "Return" vanished from the navigation
-  // entirely on six of twelve screens. The fix swapped instead of overwriting, which kept every
-  // module reachable — and still moved the target, which is the actual harm.
-  //
-  // So the bar is a pure function of the permissions, computed once. When the current screen lives
-  // under More, MORE is what lights up. Nothing moves, ever.
-  const activeIsUnderMore = more.some(m => m.href === active);
-  const item = (m) => `<a class="nav__item${m.href === active ? ' is-active' : ''}" href="${m.href}"${
-    m.href === active ? ' aria-current="page"' : ''}>
-      <span class="nav__icon" aria-hidden="true">${m.icon}</span>
-      <span class="nav__label">${esc(m.label)}</span></a>`;
-
-  return `
-  <nav class="nav" aria-label="Screens" style="--nav-slots:${bar.length + (more.length ? 1 : 0)}">
-    ${bar.map(item).join('')}
-    ${more.length ? `<button class="nav__item${activeIsUnderMore ? ' is-active' : ''}" id="nav-more"
-        type="button" aria-haspopup="true" aria-expanded="false"${activeIsUnderMore ? ' aria-current="page"' : ''}>
-        <span class="nav__icon" aria-hidden="true">\u22EF</span><span class="nav__label">More</span></button>` : ''}
-  </nav>
-  ${more.length ? `<div class="nav-more" id="nav-more-sheet" hidden>
-      <div class="nav-more__panel">${more.map(m => `<a class="item${m.href === active ? ' is-active' : ''}"
-        href="${m.href}"${m.href === active ? ' aria-current="page"' : ''}>
-        <span class="item__main"><span class="item__title">${esc(m.label)}</span></span>
-        ${m.href === active ? '<span class="item__right">you are here</span>' : ''}</a>`).join('')}
-      </div></div>` : ''}`;
+/**
+ * THE DEPARTMENT STRIP. v6 E5: segmented = scope, and moving between Orders and Send out is a
+ * change of scope inside one department, not a change of status.
+ *
+ * It only appears when the department holds more than one screen this person can reach — a strip
+ * with one chip in it is furniture.
+ */
+function deptStripMarkup() {
+  if (!NAV_KNOWN || isVanOnly()) return '';
+  const d = deptOf(NAV_ACTIVE);
+  if (!d) return '';
+  const mine = deptScreens(d);
+  if (mine.length < 2) return '';
+  return `<div class="deptbar" role="tablist" aria-label="${esc(d.label)}">
+    ${mine.map(x => `<a class="deptbar__tab${x.href === NAV_ACTIVE ? ' is-active' : ''}"
+        href="${x.href}"${x.href === NAV_ACTIVE ? ' aria-current="page"' : ''}>${esc(x.label)}</a>`).join('')}
+  </div>`;
 }
 
-/** Wires the More sheet. Called by every screen right after chrome() is written into the DOM. */
+function navMarkup() {
+  if (!NAV_KNOWN) return `<nav class="nav nav--pending" aria-hidden="true"></nav>`;
+  // The van view has no bar anywhere, not only on Home: this person also opens Send out and Return
+  // directly, and a bar carrying one department is a bar advertising four rooms he cannot enter.
+  // The wordmark in the top bar is his way back.
+  if (isVanOnly()) return '';
+  const activeDept = deptOf(NAV_ACTIVE);
+  // A department appears if this person can open anything inside it. Nothing is ever moved or
+  // swapped: an unreachable department is simply absent, and the others keep their positions.
+  const mine = DEPARTMENTS.map(d => ({ d, screens: deptScreens(d) })).filter(x => x.screens.length);
+  return `
+  <nav class="nav" aria-label="Sections" style="--nav-slots:${mine.length}">
+    ${mine.map(({ d, screens }) => {
+      const on = activeDept && activeDept.id === d.id;
+      return `<a class="nav__item${on ? ' is-active' : ''}" href="${screens[0].href}"${
+        on ? ' aria-current="page"' : ''}>
+        <span class="nav__icon" aria-hidden="true">${d.icon}</span>
+        <span class="nav__label">${esc(d.label)}</span></a>`;
+    }).join('')}
+  </nav>`;
+}
+
+/**
+ * Wires the ACCOUNT menu in the top bar. Called by every screen after chrome() is in the DOM, and
+ * again by paintNav() once permissions are known.
+ *
+ * Team, settings and Sign out live here rather than in the navigation: they are not places the work
+ * goes, and a bottom bar with five departments has no room for a sixth thing that is opened twice a
+ * month. Idempotent — re-wiring the same button twice must not double-fire it.
+ */
 export function initNav() {
-  const btn = $('#nav-more'), sheet = $('#nav-more-sheet');
-  if (!btn || !sheet) return;
+  const btn = $('#topbar-menu'), sheet = $('#account-menu');
+  if (!btn || !sheet || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
   const close = () => { sheet.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
   btn.addEventListener('click', () => {
     sheet.hidden = !sheet.hidden;
