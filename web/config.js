@@ -31,4 +31,4 @@ export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_HKJ31sfuEUv8bX6aHflL4w_U
 
 // Bumped on every deploy so staff do not sit on a cached old version.
 // See the djn-deploy skill: a fix that "isn't showing up" is this, nine times in ten.
-export const APP_VERSION = '2026-09-08-22';
+export const APP_VERSION = '2026-09-08-23';

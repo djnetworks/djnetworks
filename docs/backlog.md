@@ -541,3 +541,20 @@ selected location then the count is wrong, and if twelve were staged then the wr
 driving the v6 pass, not chased — it predates it, and it needs the availability numbers checked
 against the pick list at a known location rather than a guess.
 
+**Pooled ROI is computable and currently isn't.** `v_product_roi` sums `purchase_cost` over `unit`
+rows, and counted stock has no pieces — so for CBL-XLR it reports `purchase_cost` 0 and `roi_pct`
+null even though `product.default_purchase_cost` is ₹450 and chachu typed it. The reports screen
+therefore says *"not tracked for counted stock"*, which is honest about the view and understates the
+data: the number exists. Pooled ROI is `default_purchase_cost × quantity owned`, against the same
+rental revenue. It is a view change and therefore a migration, so it was not done in the reports
+pass — recorded here so it does not come to be believed impossible.
+
+**The flat "no measurement" bar has no token of its own.** The reports mockup uses `#CFCBC3` for it.
+This app's `--edge` is `#828282` — a control edge, and far too strong: a dark bar at full width
+reads as a full bar, i.e. a good result, which is the opposite of what the state means. `--shimmer`
+`#D8D5C6` is the nearest thing that exists and is used instead. Measured with the tokens-pass
+checker: 1.47:1 against `--surface`, 1.30:1 against its own trough — deliberately faint, and
+acceptable only because the words "Cost not recorded" carry the meaning, not the bar. If the flat
+bar should be legible in its own right it needs a token between `#D8D5C6` and `#828282`, which is a
+decision rather than a guess.
+

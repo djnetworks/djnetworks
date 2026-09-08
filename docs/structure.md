@@ -93,7 +93,9 @@ Plus four screens that are not forms:
   because an unexplained no is a no he overrides. One tap hands the dates and the basket to
   `orders.html`, which regenerates every rate from today's rate card (rule 5) rather than carrying
   a number across.
-- `analysis.html` — the reports below.
+- `reports.html` — **Reports**, one read-only dashboard: money (billed and received as two numbers,
+  never one), what earns, how each product is working, best customers, what breaks. It replaced
+  `analysis.html`, which was deleted rather than left beside it — two report screens drift.
 - `team.html` — **Team**. Who has an account and what each of them may do. Nine toggles over
   `0021`'s eleven keys: nobody should be asked eleven questions, and the two that bundle are the two
   that always travel together. Money is the one place the granularity survives, because seeing a

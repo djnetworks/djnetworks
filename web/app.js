@@ -20,8 +20,8 @@
 // INVISIBLE UNTIL IT WAS SERVED FROM A REAL ORIGIN. Locally both spellings come off the same dev
 // server in a millisecond and nothing looks wrong. It showed up as two lines in the live network
 // log. See the djn-deploy skill.
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-22';
-import * as store from './db.js?v=2026-09-08-22';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-23';
+import * as store from './db.js?v=2026-09-08-23';
 
 // The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
 //
@@ -1091,7 +1091,7 @@ const DEPARTMENTS = [
     ] },
 
   { id: 'reports', label: 'Reports', icon: '\u2211',
-    screens: [ { href: 'analysis.html', label: 'Reports', key: 'numbers.view' } ] },
+    screens: [ { href: 'reports.html', label: 'Reports', key: 'numbers.view' } ] },
 ];
 
 /**

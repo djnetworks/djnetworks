@@ -1,0 +1,344 @@
+<title>DJ Network's Reports</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    /* EKUM v6 tokens — fills and borders verbatim, ink darkened where v6's own
+       value fails AA (muted 3.47:1, danger 3.53:1 on warm paper). */
+    --ground:#F7F3EA;
+    --surface:#FFFFFF;
+    --ink:#33271B;
+    --muted:#6B665F;
+    --line:#E7E8E6;
+    --edge:#CFCBC3;
+    --teal:#2B7379;
+    --teal-deep:#1F5559;
+    --foam:#E8F2F1;
+    --tangerine:#FF9700;
+    --ok:#1B7F43;      --ok-bg:#E9F8EF;
+    --warn:#9B5C00;    --warn-bg:#FFF3D1;
+    --bad:#B42F33;     --bad-bg:#FBE9E9;
+    --neutral:#6B665F; --neutral-bg:#F1F1EE;
+    --r-card:16px; --r-btn:13px; --r-input:11px; --r-pill:999px;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#1A1614; --surface:#241F1C; --ink:#F2EDE6; --muted:#ABA298;
+      --line:#35302C; --edge:#4A443E;
+      --teal:#5FBFC4; --teal-deep:#8ED6DA; --foam:#1B3A3B;
+      --tangerine:#FFAB33;
+      --ok:#6FCB93;      --ok-bg:#14301F;
+      --warn:#E0A94F;    --warn-bg:#33260F;
+      --bad:#E58A8D;     --bad-bg:#361A1B;
+      --neutral:#ABA298; --neutral-bg:#2C2724;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#1A1614; --surface:#241F1C; --ink:#F2EDE6; --muted:#ABA298;
+    --line:#35302C; --edge:#4A443E;
+    --teal:#5FBFC4; --teal-deep:#8ED6DA; --foam:#1B3A3B;
+    --tangerine:#FFAB33;
+    --ok:#6FCB93;      --ok-bg:#14301F;
+    --warn:#E0A94F;    --warn-bg:#33260F;
+    --bad:#E58A8D;     --bad-bg:#361A1B;
+    --neutral:#ABA298; --neutral-bg:#2C2724;
+    color-scheme:dark;
+  }
+
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:14px; line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .phone{max-width:452px;margin:0 auto;padding:0 0 40px;}
+
+  /* ---------- top bar ---------- */
+  .top{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:20px 18px 12px;
+  }
+  .top h1{font-size:23px;font-weight:700;letter-spacing:-.02em;margin:0;}
+  .top .who{font-size:12px;color:var(--muted);font-weight:500;}
+
+  .periods{display:flex;gap:7px;padding:0 18px 16px;overflow-x:auto;}
+  .chip{
+    flex:none;font:600 12.5px/1 Inter,sans-serif;
+    padding:9px 13px;border-radius:var(--r-pill);
+    border:1px solid var(--line);background:var(--surface);color:var(--muted);
+    min-height:32px;display:inline-flex;align-items:center;
+  }
+  .chip[aria-pressed="true"]{background:var(--foam);border-color:var(--foam);color:var(--teal);}
+
+  /* ---------- money card ---------- */
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);
+    margin:0 18px 22px;padding:16px;
+  }
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .fig .k{
+    display:block;font-size:11.5px;font-weight:800;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:4px;
+  }
+  .fig .v{
+    font-size:24px;font-weight:800;letter-spacing:-.02em;color:var(--teal);
+    font-variant-numeric:tabular-nums;display:block;
+  }
+  .fig .n{font-size:11.5px;color:var(--muted);display:block;margin-top:2px;}
+  .split{border-top:1px solid var(--line);margin-top:14px;padding-top:13px;
+         display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .split .v{font-size:18px;color:var(--ink);}
+  .caveat{
+    margin-top:13px;padding-top:12px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--muted);
+  }
+
+  /* ---------- sections ---------- */
+  section{margin:0 0 26px;}
+  .head{padding:0 18px 9px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+  .head h2{
+    font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--muted);margin:0;
+  }
+  .head .sub{font-size:12px;color:var(--muted);}
+
+  /* flat full-width rows, hairline separated — v6 elevation law */
+  .rows{border-top:1px solid var(--line);}
+  .row{
+    display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;
+    padding:11px 18px;border-bottom:1px solid var(--line);background:var(--surface);
+  }
+  .row .name{font-size:15px;font-weight:700;letter-spacing:-.005em;}
+  .row .meta{grid-column:1;font-size:12px;color:var(--muted);}
+  .row .val{
+    grid-row:1/3;grid-column:2;text-align:right;
+    font-size:17px;font-weight:800;color:var(--teal);font-variant-numeric:tabular-nums;
+  }
+  .row .val small{display:block;font-size:11.5px;font-weight:600;color:var(--muted);}
+  .row .val.unknown{font-size:12.5px;font-weight:700;color:var(--muted);}
+
+  /* bar: thin, rounded end, anchored left, foam trough */
+  .bar{grid-column:1/3;height:6px;border-radius:4px;background:var(--foam);overflow:hidden;margin-top:3px;}
+  .bar i{display:block;height:100%;border-radius:4px;background:var(--teal);}
+  .bar.flat i{background:var(--edge);}
+
+  /* status chips */
+  .tag{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-pill);
+    vertical-align:1px;
+  }
+  .tag--warn{background:var(--warn-bg);color:var(--warn);}
+  .tag--bad{background:var(--bad-bg);color:var(--bad);}
+  .tag--ok{background:var(--ok-bg);color:var(--ok);}
+  .tag--none{background:var(--neutral-bg);color:var(--neutral);}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--tangerine);flex:none;}
+
+  .note{
+    margin:0 18px;padding:12px 14px;border-radius:var(--r-input);
+    background:var(--warn-bg);color:var(--warn);font-size:12.5px;font-weight:600;
+  }
+
+  footer{
+    padding:22px 18px 0;margin-top:6px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--muted);
+  }
+  footer b{color:var(--ink);font-weight:700;}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+
+<div class="phone">
+
+  <div class="top">
+    <h1>Reports</h1>
+    <span class="who">DJ Network&rsquo;s &middot; Ahmedabad</span>
+  </div>
+
+  <div class="periods">
+    <span class="chip" aria-pressed="false">This week</span>
+    <span class="chip" aria-pressed="true">This month</span>
+    <span class="chip" aria-pressed="false">Last month</span>
+    <span class="chip" aria-pressed="false">This year</span>
+  </div>
+
+  <!-- MONEY — the only place a raised card is used -->
+  <div class="card">
+    <div class="pair">
+      <div class="fig">
+        <span class="k">Billed</span>
+        <span class="v">&#8377;1,84,300</span>
+        <span class="n">28 jobs</span>
+      </div>
+      <div class="fig">
+        <span class="k">Received</span>
+        <span class="v">&#8377;1,46,500</span>
+        <span class="n">19 payments</span>
+      </div>
+    </div>
+    <div class="split">
+      <div class="fig">
+        <span class="k">Still to collect</span>
+        <span class="v">&#8377;37,800</span>
+        <span class="n"><span class="dot" style="display:inline-block"></span> 1 customer over 30 days</span>
+      </div>
+      <div class="fig">
+        <span class="k">Deposits held</span>
+        <span class="v">&#8377;21,000</span>
+        <span class="n">customers&rsquo; money, not ours</span>
+      </div>
+    </div>
+    <p class="caveat">Billed counts jobs the moment they are booked, so it includes gear that has not gone out yet. Received is money actually in hand.</p>
+  </div>
+
+  <!-- EARNING BEST -->
+  <section>
+    <div class="head">
+      <h2>Earning best</h2>
+      <span class="sub">Lifetime return</span>
+    </div>
+    <div class="rows">
+
+      <div class="row">
+        <span class="name">JBL SRX835P &mdash; 15&Prime; top</span>
+        <span class="val">218% <small>&#8377;5,23,000</small></span>
+        <span class="meta">SPK&#8209;15 &middot; 6 pieces &middot; hired 41 times</span>
+        <span class="bar"><i style="width:100%"></i></span>
+      </div>
+
+      <div class="row">
+        <span class="name">JBL SRX828SP &mdash; 18&Prime; sub</span>
+        <span class="val">164% <small>&#8377;3,88,500</small></span>
+        <span class="meta">SPK&#8209;18 &middot; 4 pieces &middot; hired 33 times</span>
+        <span class="bar"><i style="width:75%"></i></span>
+      </div>
+
+      <div class="row">
+        <span class="name">Moving head beam 230W</span>
+        <span class="val">96% <small>&#8377;1,94,000</small></span>
+        <span class="meta">MH&#8209;BEAM &middot; 4 pieces &middot; <span class="tag tag--warn">1 at repair</span></span>
+        <span class="bar"><i style="width:44%"></i></span>
+      </div>
+
+      <div class="row">
+        <span class="name">Stage deck 4&times;4</span>
+        <span class="val">61% <small>&#8377;88,400</small></span>
+        <span class="meta">STG&#8209;DECK &middot; 12 pieces &middot; hired 22 times</span>
+        <span class="bar"><i style="width:28%"></i></span>
+      </div>
+
+      <div class="row">
+        <span class="name">Shure BLXR-14 wireless set</span>
+        <span class="val">4% <small>&#8377;6,200</small></span>
+        <span class="meta">MIC&#8209;BLX &middot; 4 pieces &middot; 1 retired</span>
+        <span class="bar"><i style="width:2%"></i></span>
+      </div>
+
+      <div class="row">
+        <span class="name">Power amp 2000W</span>
+        <span class="val unknown">Cost not<br>recorded</span>
+        <span class="meta">AMP&#8209;2K &middot; 3 pieces &middot; earned &#8377;41,700</span>
+        <span class="bar flat"><i style="width:100%"></i></span>
+      </div>
+
+    </div>
+  </section>
+
+  <p class="note">3 pieces have no purchase price, so their return cannot be worked out. Add a price on the equipment page and they will appear here.</p>
+
+  <!-- NOT MOVING -->
+  <section style="margin-top:26px">
+    <div class="head">
+      <h2>Not moving</h2>
+      <span class="sub">Owned, not hired in 90 days</span>
+    </div>
+    <div class="rows">
+      <div class="row">
+        <span class="name">Analogue mixer 16ch</span>
+        <span class="val">137 <small>days idle</small></span>
+        <span class="meta">MIX&#8209;16 &middot; 2 pieces &middot; cost &#8377;64,000</span>
+      </div>
+      <div class="row">
+        <span class="name">Follow spot 1200W</span>
+        <span class="val">211 <small>days idle</small></span>
+        <span class="meta">FSPOT &middot; 1 piece &middot; cost &#8377;48,000</span>
+      </div>
+      <div class="row">
+        <span class="name">Confetti blaster</span>
+        <span class="val">Never <small>since bought</small></span>
+        <span class="meta">CONF&#8209;BL &middot; 2 pieces &middot; bought 14 Mar 2026</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CUSTOMERS -->
+  <section>
+    <div class="head">
+      <h2>Best customers</h2>
+      <span class="sub">By money, this year</span>
+    </div>
+    <div class="rows">
+      <div class="row">
+        <span class="name">RP Sound &amp; Lights</span>
+        <span class="val">&#8377;2,14,000 <small>17 jobs</small></span>
+        <span class="meta">Trade &middot; <span class="tag tag--ok">always pays</span></span>
+        <span class="bar"><i style="width:100%"></i></span>
+      </div>
+      <div class="row">
+        <span class="name">Rakesh Patel</span>
+        <span class="val">&#8377;96,400 <small>9 jobs</small></span>
+        <span class="meta">Decorator &middot; <span class="tag tag--bad">&#8377;2,800 owed 30 days</span></span>
+        <span class="bar"><i style="width:45%"></i></span>
+      </div>
+      <div class="row">
+        <span class="name">Priya Shah</span>
+        <span class="val">&#8377;58,900 <small>4 jobs</small></span>
+        <span class="meta">Wedding &middot; <span class="tag tag--none">settled</span></span>
+        <span class="bar"><i style="width:27%"></i></span>
+      </div>
+      <div class="row">
+        <span class="name">Karnavati Events</span>
+        <span class="val">&#8377;44,100 <small>6 jobs</small></span>
+        <span class="meta">Event company &middot; <span class="tag tag--warn">2 returned late</span></span>
+        <span class="bar"><i style="width:21%"></i></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- BREAKAGES -->
+  <section>
+    <div class="head">
+      <h2>What breaks</h2>
+      <span class="sub">Repairs per 10 jobs</span>
+    </div>
+    <div class="rows">
+      <div class="row">
+        <span class="name">Moving head beam 230W</span>
+        <span class="val">1.8 <small>&#8377;14,200 spent</small></span>
+        <span class="meta">MH&#8209;BEAM &middot; 5 repairs &middot; 28 jobs</span>
+        <span class="bar"><i style="width:100%"></i></span>
+      </div>
+      <div class="row">
+        <span class="name">XLR cable</span>
+        <span class="val">1.1 <small>235 owned</small></span>
+        <span class="meta">CBL&#8209;XLR &middot; counted stock &middot; 32 written off</span>
+        <span class="bar"><i style="width:61%"></i></span>
+      </div>
+      <div class="row">
+        <span class="name">Shure BLXR-14 wireless set</span>
+        <span class="val">0.7 <small>&#8377;3,400 spent</small></span>
+        <span class="meta">MIC&#8209;BLX &middot; 1 piece lost at a venue</span>
+        <span class="bar"><i style="width:39%"></i></span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <b>Example figures.</b> Products and customers are from the test fixture; the amounts are
+    illustrative. Every number here comes from views that already exist &mdash; v_product_roi,
+    v_unit_utilisation, v_customer_figures and the movement ledger &mdash; except repairs per 10 jobs,
+    which needs one new view.
+  </footer>
+
+</div>
