@@ -85,6 +85,7 @@ select 'before' as when, t, n from (
   union all select 'repair_job', count(*) from repair_job
   union all select 'product_image', count(*) from product_image
   union all select 'portal_attempt', count(*) from portal_attempt
+  union all select 'team_create_attempt', count(*) from team_create_attempt
 ) x order by t;
 
 -- ---------------------------------------------------------------------------
@@ -111,6 +112,7 @@ truncate table
   repair_job,
   product_image,
   portal_attempt,
+  team_create_attempt,
   unit,
   product,
   customer,
@@ -133,13 +135,15 @@ select 'after' as when, t, n from (
   union all select 'repair_job', count(*) from repair_job
   union all select 'product_image', count(*) from product_image
   union all select 'portal_attempt', count(*) from portal_attempt
+  union all select 'team_create_attempt', count(*) from team_create_attempt
 ) x order by t;
 
 do $verify$
 declare t text; n bigint; left_over text := '';
 begin
   foreach t in array array['product','unit','customer','vendor','rental_order','order_line',
-                           'order_charge','movement','ledger_entry','repair_job','product_image','portal_attempt'] loop
+                           'order_charge','movement','ledger_entry','repair_job','product_image','portal_attempt',
+                           'team_create_attempt'] loop
     execute format('select count(*) from %I', t) into n;
     if n > 0 then left_over := left_over || format('  %s: %s%s', t, n, E'\n'); end if;
   end loop;

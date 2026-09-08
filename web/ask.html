@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Availability — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-33" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-33" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-33">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-34" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-34" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-34">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-33">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-33">
-<link rel="stylesheet" href="style.css?v=2026-09-08-33">
-<script src="vendor/supabase.js?v=2026-09-08-33" defer></script>
-<script src="boot.js?v=2026-09-08-33" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-34">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-34">
+<link rel="stylesheet" href="style.css?v=2026-09-08-34">
+<script src="vendor/supabase.js?v=2026-09-08-34" defer></script>
+<script src="boot.js?v=2026-09-08-34" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, revealActiveTab, trackBadge, publicUrl }
-  from './app.js?v=2026-09-08-33';
+  from './app.js?v=2026-09-08-34';
 
 $('#chrome').innerHTML = chrome('ask.html');
 revealActiveTab();
@@ -89,7 +89,7 @@ async function boot() {
     <div id="answer"></div>
     <div class="dispatch-bar" id="bar" hidden>
       <div id="bar-note" class="field__hint"></div>
-      <button class="btn btn--primary btn--block" id="book" type="button">Book it — make this an order</button>
+      <button class="btn btn--primary btn--block" id="book" type="button">Book it</button>
     </div>`;
 
   $('#f-from').addEventListener('change', datesChanged);

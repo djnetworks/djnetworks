@@ -20,8 +20,8 @@
 // INVISIBLE UNTIL IT WAS SERVED FROM A REAL ORIGIN. Locally both spellings come off the same dev
 // server in a millisecond and nothing looks wrong. It showed up as two lines in the live network
 // log. See the djn-deploy skill.
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-33';
-import * as store from './db.js?v=2026-09-08-33';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-34';
+import * as store from './db.js?v=2026-09-08-34';
 
 // The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
 //
@@ -1165,15 +1165,15 @@ const DEPARTMENTS = [
     screens: [
       { href: 'orders.html',   label: 'Orders',       key: 'orders.write'  },
       { href: 'ask.html',      label: 'Availability', key: null            },
-      { href: 'dispatch.html', label: 'Send out',     key: 'sendout.write' },
-      { href: 'return.html',   label: 'Return',       key: 'returns.write' },
+      { href: 'dispatch.html', label: 'Dispatch',     key: 'sendout.write' },
+      { href: 'return.html',   label: 'Returns',      key: 'returns.write' },
     ] },
 
   { id: 'gear',    label: 'Gear',    icon: 'gear',
     screens: [
       { href: 'units.html',    label: 'Equipment',    key: 'equipment.write' },
       { href: 'products.html', label: 'Products',     key: 'products.write'  },
-      { href: 'transfer.html', label: 'Load the van', key: 'equipment.write' },
+      { href: 'transfer.html', label: 'Transfers',    key: 'equipment.write' },
     ] },
 
   { id: 'money',   label: 'Money',   icon: 'money',

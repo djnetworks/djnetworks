@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Send out — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-33" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-33" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-33">
+<title>Dispatch — DJ Network's</title>
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-34" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-34" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-34">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-33">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-34">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-33">
-<link rel="stylesheet" href="style.css?v=2026-09-08-33">
-<script src="vendor/supabase.js?v=2026-09-08-33" defer></script>
-<script src="boot.js?v=2026-09-08-33" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-34">
+<link rel="stylesheet" href="style.css?v=2026-09-08-34">
+<script src="vendor/supabase.js?v=2026-09-08-34" defer></script>
+<script src="boot.js?v=2026-09-08-34" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -31,7 +31,7 @@ import { icon, sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requir
          errorBlock, toast, initOffline, syncNow, revealActiveTab,
          trackBadge, publicUrl, waLink, waMessage, newRequestId, guardedWrite, networkMessage,
          confirmBlock }
-  from './app.js?v=2026-09-08-33';
+  from './app.js?v=2026-09-08-34';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
@@ -69,7 +69,7 @@ async function renderChooser() {
     // heading over an empty screen: at 900ms into a 2.5s read #app read exactly "Send out" with
     // zero skeleton rows, while every other list screen showed one. A finished-looking empty
     // screen is the worst loading state there is.
-    app.innerHTML = `<h1>Send out</h1>
+    app.innerHTML = `<h1>Dispatch</h1>
       <div id="jobs"><div class="skeleton"><div class="skeleton__row"></div>
         <div class="skeleton__row"></div></div></div>`;
   const cached = await store.cacheKeys('order:');
@@ -544,7 +544,7 @@ function renderLines() {
                ${esc(remaining)} still owed. Try another location, or send what you have and finish later —
                sending part of a job is normal.</div>`
           : `<div class="row" style="gap:8px;margin-bottom:6px">
-               <span class="field__hint" style="margin:0">Tap the pieces going out. ${esc(remaining)} still owed,
+               <span class="field__hint" style="margin:0">${esc(remaining)} still owed,
                  ${esc(sorted.length)} here.</span>
                <!-- The whole job in one tap when the shelf agrees with the order, which is the
                     ordinary case. Six taps become one; the pieces still light up individually so

@@ -247,3 +247,64 @@ long-name, empty, refused and offline state at 320px and 375px before calling a 
 12. Chrome above content ≤ 96px. Header does not repeat the nav slot's name.
 13. Every remaining sentence on the screen is a caveat, an empty state, a loading state or an
     error. If it is none of those, delete it.
+
+---
+
+## 9 · Glossary — one term per thing, fixed here so screens stop reinventing it
+
+The register across the app was wrong: it coached. "Take a booking, add gear to it, change the
+rate." "Tick each item as it physically comes back." That is an instruction manual talking to a
+beginner; chachu has run this business for twenty years. **The problem was register, not
+vocabulary.** Trade words stay — dispatch, return, piece, rate, job. What goes is the explaining:
+no coaching sentences, no reassurance. Labels are nouns and standard business terms.
+
+Three layers name related things and are allowed to differ, because they answer different questions:
+- **Navigation** groups screens into five fixed departments — Home · Jobs · Gear · Money · Reports.
+  These were fixed by an earlier decision and do not change here.
+- **Permissions** (the Team screen) name a capability a person is granted.
+- **Screens** name a place work happens.
+
+### Permissions (team.html `CAN_DO` — labels only; the eleven keys underneath are unchanged)
+
+| capability | keys it grants | was |
+|---|---|---|
+| Orders | `orders.write` | "Book jobs" |
+| Dispatch and returns | `sendout.write`, `returns.write` | "Send gear out and take it back" |
+| Corrections | `movement.correct` | "Undo a mistake" |
+| Inventory | `products.write`, `equipment.write` | "Add and change equipment" |
+| Customers | `customers.write` | "Add and change customers" |
+| Finance (view) | `ledger.view` | "See money" |
+| Finance (manage) | `ledger.write` | "Take payments" |
+| Reports | `numbers.view` | "See what things earn" |
+| Team administration | `admin.team` | "Manage the team" |
+
+No `hint` line under any of them. A department name does not need explaining.
+
+### Screens and their terms
+
+| term | is | was |
+|---|---|---|
+| Dispatch | dispatch.html — recording what leaves | "Send out" |
+| Returns | return.html — recording what comes back | "Return" / "Gear came back" |
+| Transfers | transfer.html — moving gear between our own places | "Load the van" |
+| Orders | orders.html | — |
+| Availability | ask.html | — |
+| Equipment | units.html — the physical pieces | — |
+| Products | products.html — the product master | — |
+| Customers | customers.html | — |
+| Ledger | ledger.html | — |
+| Reports | reports.html | — |
+
+"Transfers" overrides keeping chachu's phrase "Load the van" — consistency won. One word to revert
+if that reads wrong at the van.
+
+### Buttons and confirmations — the shapes, not a coaching sentence
+
+- A button names the act as a verb+object where it must, but never as an instruction with a reason
+  attached: **"Add"**, **"Save"**, **"Record returns"**, **"Send out"** — not "Take a booking and…".
+- A confirmation is the fact and the time: **"Saved · 6:40 pm"**, **"Added"**. Not "Their screens
+  change the next time they sign in."
+- An empty state is a noun statement of what is not there yet: **"No customers yet"**. Not a
+  paragraph coaching the next step.
+- Everything else that is a sentence must be a caveat, an empty state, a loading state or an error
+  (§2b). If it is none of those, it is coaching, and it goes.

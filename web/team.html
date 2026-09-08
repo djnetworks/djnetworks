@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Team — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-33" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-33" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-33">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-34" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-34" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-34">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-33">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-33">
-<link rel="stylesheet" href="style.css?v=2026-09-08-33">
-<script src="vendor/supabase.js?v=2026-09-08-33" defer></script>
-<script src="boot.js?v=2026-09-08-33" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-34">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-34">
+<link rel="stylesheet" href="style.css?v=2026-09-08-34">
+<script src="vendor/supabase.js?v=2026-09-08-34" defer></script>
+<script src="boot.js?v=2026-09-08-34" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,58 +27,41 @@
 <script type="module">
 import { savedLine, sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, toast, openSheet,
          initOffline, revealActiveTab, loadPermissions, can, cardList, guardedWrite }
-  from './app.js?v=2026-09-08-33';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-33';
+  from './app.js?v=2026-09-08-34';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-34';
 
 $('#chrome').innerHTML = chrome('team.html');
 revealActiveTab();
 initOffline();
 
 // ---------------------------------------------------------------------------
-// THE TEAM SCREEN — "what can this person do?"
+// THE TEAM SCREEN.
 //
-// v6 A1 BANS "module" AND "permissions" as words, and Law 14 says teach a new idea through the
-// closest familiar thing, never a settings matrix. This screen was built as exactly that matrix:
-// nine toggles labelled Jobs / Van / Catalogue, under a heading that said "eleven permissions
-// underneath". The grouping was right — the database's eleven keys are the right granularity for a
-// policy and the wrong number of questions to ask a person — but the FRAME was a config screen.
+// Departments, not a settings matrix (v6 A1 bans "module" and "permissions" as words; Law 14 says
+// teach through the closest familiar thing). Each row is a department a person is trusted with —
+// Orders, Inventory, Finance — a noun, not a coaching sentence. The nine rows map to the eleven
+// database keys underneath; nobody should be asked eleven questions.
 //
-// So the same nine groups now answer one question in trade words: what can Ramesh do? Each line
-// names a job somebody does at the van or at the desk — "Send gear out", "Record returns",
-// "See money" — not a capability he is granted.
+// The one split kept is money: Finance (view) and Finance (manage) are different keys because
+// reading a balance and taking a payment are different jobs.
 //
-// The one place the split survives is money, because seeing a balance and taking a payment are
-// genuinely different jobs: a person who reconciles and a person who bills are different people.
-//
-// What this screen CANNOT do, and why: it cannot create an account. That needs the auth admin API
-// and the service key, and a browser must never hold one — a key that can create an account can
-// create an admin. So an account is made once in the Supabase dashboard, and this screen decides
-// what that person can do. Said on the screen rather than discovered.
+// THIS SCREEN CREATES THE LOGIN (Pass 2). The owner types an email, a name and a password and ticks
+// departments — no dashboard, no pasted user id, which is why nobody had been added. The key that
+// creates an account never touches this page: the team-create Edge Function holds the service key in
+// its server-side secrets and does the work. A key that can create an account can create an admin,
+// so the browser holds none of it — the reason is unchanged, only the mechanism moved server-side.
 // ---------------------------------------------------------------------------
 
 const CAN_DO = [
-  { id: 'jobs',      label: 'Book jobs',          keys: ['orders.write'],
-    hint: 'Take a booking, add gear to it, change the rate.' },
-  { id: 'van',       label: 'Send gear out and take it back', keys: ['sendout.write', 'returns.write'],
-    hint: 'Record what leaves and what comes back. The everyday job at the van.' },
-  { id: 'undo',      label: 'Undo a mistake',     keys: ['movement.correct'],
-    hint: 'Take back a send-out or a return that was recorded wrongly. Nothing is ever deleted — '
-        + 'it writes a line saying what was undone and why — but it changes what every screen '
-        + 'believes is on the shelf. Give it to whoever answers for the count.' },
-  { id: 'catalogue', label: 'Add and change equipment', keys: ['products.write', 'equipment.write'],
-    hint: 'Products, photos, pieces, godowns, repair shops and repairs.' },
-  { id: 'customers', label: 'Add and change customers', keys: ['customers.write'],
-    hint: 'Customer details, and the code that opens their portal.' },
-  { id: 'seemoney',  label: 'See money',          keys: ['ledger.view'],
-    hint: 'What customers owe and what deposits we hold. Without this, money reads blank rather '
-        + 'than zero — so nobody is told a customer owes nothing when the truth is they cannot see.' },
-  { id: 'postmoney', label: 'Take payments',      keys: ['ledger.write'],
-    hint: 'Record money in, deposits and charges. Comes with seeing money — writing into an '
-        + 'account you cannot read is a state nobody means to create.' },
-  { id: 'reports',   label: 'See what things earn', keys: ['numbers.view'],
-    hint: 'What each product earns and how hard it works.' },
-  { id: 'team',      label: 'Manage the team',    keys: ['admin.team'],
-    hint: 'Add people and decide what they can do. There must always be at least one.' },
+  { id: 'jobs',      label: 'Orders',               keys: ['orders.write'] },
+  { id: 'van',       label: 'Dispatch and returns', keys: ['sendout.write', 'returns.write'] },
+  { id: 'undo',      label: 'Corrections',          keys: ['movement.correct'] },
+  { id: 'catalogue', label: 'Inventory',            keys: ['products.write', 'equipment.write'] },
+  { id: 'customers', label: 'Customers',            keys: ['customers.write'] },
+  { id: 'seemoney',  label: 'Finance (view)',       keys: ['ledger.view'] },
+  { id: 'postmoney', label: 'Finance (manage)',     keys: ['ledger.write'] },
+  { id: 'reports',   label: 'Reports',              keys: ['numbers.view'] },
+  { id: 'team',      label: 'Team administration',  keys: ['admin.team'] },
 ];
 
 let MEMBERS = [];
@@ -87,9 +70,8 @@ requireSession(async () => {
   await loadPermissions();
   if (!can('admin.team')) {
     $('#app').innerHTML = `<h1>Team</h1>` + stateBlock({
-      title: 'Only somebody who manages the team can open this',
-      body: 'Adding people and deciding what they can do is not something this account can do. '
-          + 'Ask whoever manages the team.',
+      title: 'Team administration only',
+      body: 'This account cannot manage the team.',
     });
     return;
   }
@@ -160,7 +142,7 @@ function render() {
            + (m.active ? '' : ' <span class="badge badge--muted">inactive</span>'),
       sub: mods.length
         ? mods.map(x => `<span class="badge">${esc(x.label)}</span>`).join(' ')
-        : '<span class="item__meta">nothing yet — they can sign in and see nothing</span>',
+        : '<span class="item__meta">no departments yet</span>',
       right: m.permissions?.['admin.team'] === true
         ? '<span class="badge badge--unit">admin</span>' : '',
     };
@@ -171,8 +153,8 @@ function render() {
     // last admin and locking everybody out of the Team screen.
     if (admins === 1) {
       $('#list').insertAdjacentHTML('afterend',
-        `<p class="field__hint" style="margin-top:10px">Only one person can manage the team. Give
-         it to somebody else before taking it away from them.</p>`);
+        `<p class="field__hint" style="margin-top:10px">Only one person manages the team — give it
+         to someone else before removing it here.</p>`);
   }
 }
 
@@ -187,32 +169,29 @@ function openMember(m) {
         <button class="btn btn--ghost btn--sm" data-sheet-close type="button">Close</button>
       </div>
 
-      ${isNew ? `<div class="note" style="margin-bottom:10px">
-        <strong>This screen cannot create an account.</strong> Making an account needs a master key,
-        and anything holding that key could make itself the owner — so this app never holds one.
-        Create the person in the Supabase dashboard under <em>Authentication → Users</em> with Auto
-        Confirm ticked, copy their user id, and paste it here.</div>
-        <label class="field"><span class="field__label">User id *</span>
-          <input class="field__input" id="t-uid" placeholder="00000000-0000-0000-0000-000000000000"
-                 spellcheck="false" autocapitalize="none"></label>` : ''}
+      ${isNew ? `<label class="field"><span class="field__label">Email</span>
+          <input class="field__input" id="t-email" type="email" inputmode="email" spellcheck="false"
+                 autocapitalize="none" placeholder="name@example.com"></label>` : ''}
 
-      <label class="field"><span class="field__label">Name *</span>
+      <label class="field"><span class="field__label">Name</span>
         <input class="field__input" id="t-name" value="${esc(m?.display_name ?? '')}"></label>
+
+      ${isNew ? `<label class="field"><span class="field__label">Password</span>
+          <input class="field__input" id="t-pass" type="text" autocapitalize="none"
+                 placeholder="at least 8 characters"></label>` : ''}
 
       <div class="card card--sunk">
         <strong>What can this person do?</strong>
         ${CAN_DO.map(x => `
           <label class="field field--inline" style="align-items:flex-start;margin-bottom:8px">
             <input type="checkbox" class="t-mod" data-id="${esc(x.id)}" ${held(perms, x) ? 'checked' : ''}>
-            <span><strong>${esc(x.label)}</strong>
-              <span class="field__hint" style="margin-top:1px">${esc(x.hint)}</span></span>
+            <span><strong>${esc(x.label)}</strong></span>
           </label>`).join('')}
       </div>
 
       ${!isNew ? `<label class="field field--inline">
         <input type="checkbox" id="t-active" ${m.active ? 'checked' : ''}>
-        <span>Still works here. Turn this off when somebody leaves, rather than deleting them —
-          everything they recorded keeps their name on it.</span></label>` : ''}
+        <span>Active — turn off instead of deleting, so their records keep their name.</span></label>` : ''}
 
       <div class="sheet__foot">
         <button class="btn" data-sheet-close type="button">Cancel</button>
@@ -223,7 +202,7 @@ function openMember(m) {
 
   $('#t-save').addEventListener('click', () => guardedWrite($('#t-save'), 'Saving…', async () => {
     const name = $('#t-name').value.trim();
-    if (!name) { toast('A name, so the list is readable.', 'error'); return; }
+    if (!name) { toast('Name required.', 'error'); return; }
 
     // Back into the database's own keys. The screen asks nine questions; the policies test eleven.
     const next = {};
@@ -235,13 +214,23 @@ function openMember(m) {
 
     try {
       if (isNew) {
-        const uid = $('#t-uid').value.trim();
-        if (!uid) { toast('Paste the user id from the dashboard.', 'error'); return; }
-        const { error } = await sb.rpc('fn_team_add',
-          { p_user_id: uid, p_display_name: name, p_permissions: next });
-        if (error) throw error;
-        LAST_SAVED = { what: 'Added', at: new Date() };
-        toast('Added. Their screens change the next time they sign in.');
+        const email = $('#t-email').value.trim();
+        const password = $('#t-pass').value;
+        if (!email) { toast('Email required.', 'error'); return; }
+        if (password.length < 8) { toast('Password of at least 8 characters.', 'error'); return; }
+        // The one place a login is created. The service key lives in the function, never here — see
+        // the header. The caller's token is sent for the function to verify; a user id is never sent.
+        const { data: { session } } = await sb.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/team-create`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY,
+                     Authorization: `Bearer ${session?.access_token ?? ''}` },
+          body: JSON.stringify({ email, name, permissions: next, password }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || out.error) { toast(out.error || 'Could not add them.', 'error'); return; }
+        LAST_SAVED = { what: `Added ${name}`, at: new Date() };
+        toast('Added.');
       } else {
         const { error } = await sb.rpc('fn_team_set_permissions', {
           p_user_id: m.user_id, p_permissions: next,
@@ -249,7 +238,7 @@ function openMember(m) {
         });
         if (error) throw error;
         LAST_SAVED = { what: 'Saved', at: new Date() };
-        toast('Saved. Their screens change the next time they reload.');
+        toast('Saved.');
       }
       sheet.close();
       await load();

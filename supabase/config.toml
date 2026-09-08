@@ -1,0 +1,7 @@
+project_id = "hjidocpqcrfbjucvqggu"
+
+# team-create verifies the caller's JWT itself (resolves the user, checks admin.team via the
+# fn_has_permission choke point) and must log a no-JWT attempt rather than have the platform reject
+# it silently — so platform-level JWT verification is off for this one function. It fails closed.
+[functions.team-create]
+verify_jwt = false
