@@ -492,10 +492,11 @@ now defends itself in-page — hidden by default, revealed only when it confirms
 The operator screens have no such guard and rely on the sign-in gate. The real fix is a host that
 sends headers; `web/_headers` is kept for exactly that.
 
-**`config.js` is fetched twice on every page load.** Visible only in the live network log: the HTML
-loads `config.js?v=<cache-bust>` and `app.js` then imports `./config.js` with no query, so the
-browser treats them as two resources. Harmless today — the service worker caches the unversioned
-one and the cache name changes on every deploy — but the unversioned import is outside the
-query-string cache-busting scheme, which is the one thing standing between a deploy and a stale
-screen. The fix is importing it with the same `?v=` the HTML uses.
+**~~`config.js` is fetched twice on every page load~~ — FIXED 2026-09-08.** It was `db.js` as well,
+which the first report missed: `app.js` imported both bare while all thirteen HTML files asked for
+`./config.js?v=<bust>`, and a module's identity is its resolved URL. Both now carry the version, so
+the deploy sed reaches them and `grep -ro "<old>" web/` returns 0. The lesson is recorded in the
+`djn-deploy` skill rather than only here: it survived the whole build because nothing about it is
+visible locally, and it appeared as two lines in the live network panel the first time the app was
+served from a real origin.
 

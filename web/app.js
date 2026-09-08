@@ -4,8 +4,24 @@
 // line costs, or what a customer owes — it asks the database and renders the answer. See the
 // djn-architecture skill, "Where logic goes".
 
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import * as store from './db.js';
+// VERSIONED, like every other import in this app, and it was the only place that was not.
+//
+// These two read `./config.js` and `./db.js` bare, while all thirteen HTML files ask for
+// `./config.js?v=<bust>`. A module's identity is its resolved URL, so the browser treated the two
+// spellings as two resources: two network round trips for the same file on every page load, and
+// two separate module instances of config.js.
+//
+// It was harmless in practice — config.js exports only constants, and sw.js keys its cache on the
+// PATHNAME with the query stripped, so the service worker collapsed both to one entry. But harmless
+// is not the point. These were two unversioned entries inside the one mechanism that stands between
+// a deploy and a stale screen on a phone at a venue, and "harmless because something else happens
+// to cover it" is how the next person inherits a bug.
+//
+// INVISIBLE UNTIL IT WAS SERVED FROM A REAL ORIGIN. Locally both spellings come off the same dev
+// server in a millisecond and nothing looks wrong. It showed up as two lines in the live network
+// log. See the djn-deploy skill.
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-16';
+import * as store from './db.js?v=2026-09-08-16';
 
 // The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
 //
