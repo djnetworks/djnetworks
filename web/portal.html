@@ -190,7 +190,7 @@ function render(d) {
             <span class="item__meta">${esc(r.order_no)} · due back ${esc(fmtDate(r.expected_return_date))}</span>
           </span>
           ${Number(r.days_overdue) > 0
-            ? `<span class="badge badge--out">${esc(r.days_overdue)} day${Number(r.days_overdue) === 1 ? '' : 's'} overdue</span>` : ''}
+            ? `<span class="badge badge--late">${esc(r.days_overdue)} day${Number(r.days_overdue) === 1 ? '' : 's'} overdue</span>` : ''}
         </div>`).join('')}</div>
       <p class="field__hint">Equipment is listed by what it is, not by our internal box numbers.</p>
     </div>` : ''}

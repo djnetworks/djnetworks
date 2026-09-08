@@ -399,7 +399,7 @@ async function openPiece(unitId, pieceNo) {
         <div class="item" style="cursor:default;${h.is_corrected ? 'opacity:.6' : ''}">
           <span class="item__main">
             <span class="item__title">${esc(label[h.movement_type] ?? h.movement_type)}
-              ${h.is_corrected ? '<span class="badge badge--out">corrected</span>' : ''}
+              ${h.is_corrected ? '<span class="badge badge--corrected">corrected</span>' : ''}
               ${h.is_correction ? '<span class="badge badge--muted">annotation</span>' : ''}</span>
             <span class="item__meta">${esc(fmtDate(h.moved_on))}${h.order_no ? ' · ' + esc(h.order_no) : ''}${
               h.condition_at_move ? ' · ' + esc(h.condition_at_move.replace('_',' ')) : ''}</span>

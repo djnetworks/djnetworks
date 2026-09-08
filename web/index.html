@@ -218,7 +218,7 @@ requireSession(async () => {
             <span class="card-row__right">
               <!-- Never a bare number beside "late": one screen meant days and the other meant
                    items, on the same order. Both facts, both named. -->
-              <span class="badge badge--out">${esc(days)} day${days === 1 ? '' : 's'} overdue</span>
+              <span class="badge badge--late">${esc(days)} day${days === 1 ? '' : 's'} overdue</span>
               <span class="item__meta">${esc(all.length)} item${all.length === 1 ? '' : 's'} still out</span>
               <a class="card-action btn--wa" target="_blank" rel="noopener"
                  href="${esc(waLink(o.customer?.whatsapp, msg))}">Remind</a>

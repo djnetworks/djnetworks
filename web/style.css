@@ -79,7 +79,7 @@ a { color: var(--accent); }
 .nav__item:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 
 /* Everything past the fifth destination. One tap, and the daily five never move. */
-.nav-more { position: fixed; inset: 0; background: rgba(51, 39, 27, .45); z-index: 29; display: grid; place-items: end stretch; }
+.nav-more { position: fixed; inset: 0; background: var(--scrim); z-index: 29; display: grid; place-items: end stretch; }
 .nav-more__panel {
   background: var(--surface); border-top: 1px solid var(--line);
   padding: 10px 10px calc(62px + env(safe-area-inset-bottom, 0px));
@@ -98,7 +98,7 @@ h2 { font-size: 15px; margin: 0 0 6px; }
 
 /* ---------- buttons ---------- */
 .btn {
-  min-height: var(--tap); padding: 8px 14px; border-radius: var(--radius);
+  min-height: var(--tap); padding: 8px 14px; border-radius: var(--radius-btn);
   /* --edge, not --line: a button is a thing you aim at, and --line is 1.11:1 against the page. */
   border: 1px solid var(--edge); background: var(--surface); color: var(--ink);
   font: inherit; font-weight: 600; cursor: pointer;
@@ -115,7 +115,9 @@ a.btn, a.item { text-decoration: none; }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn--danger { background: var(--bad); border-color: var(--bad); color: var(--white); }
 .btn--ghost { background: transparent; }
-.btn--block { width: 100%; }
+/* v6 E1: a primary button in a CTA is 48px, not the 46px base. --btn--block is that button —
+   the sticky "Send these out", "Record returns", "Save changes" bar at the bottom of a sheet. */
+.btn--block { width: 100%; min-height: var(--tap-cta); }
 /* Smaller type, NOT a smaller target. min-height was 36px and the spec-row ✕ was 37px wide;
    both are under the 44px a thumb needs, on a screen used one-handed at a van. */
 .btn--sm { min-height: var(--tap); min-width: var(--tap); padding: 6px 12px; font-size: 14px; }
@@ -145,7 +147,7 @@ a.btn, a.item { text-decoration: none; }
   width: 100%; min-height: var(--tap); padding: 8px 10px;
   /* --edge. A field is the thing most often aimed at one-handed in sunlight, and at 1.11:1 its
      boundary was effectively invisible — you found the box by finding the label above it. */
-  border: 1px solid var(--edge); border-radius: var(--radius);
+  border: 1px solid var(--edge); border-radius: var(--radius-input);
   font: inherit; background: var(--surface); color: var(--ink);
 }
 .field__area { min-height: 80px; resize: vertical; }
@@ -223,7 +225,7 @@ a.btn, a.item { text-decoration: none; }
 
 /* ---------- badges ---------- */
 .badge {
-  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill);
   font-size: 12px; font-weight: 700; background: var(--tint-neutral); color: var(--ink-soft);
   /* A badge is a label, not a paragraph. As a flex item beside a long product name it was being
      squeezed until "3 day(s) over" wrapped onto three lines inside a 999px radius and rendered as
@@ -231,11 +233,25 @@ a.btn, a.item { text-decoration: none; }
      looking for. It keeps its width; the text beside it has min-width:0 and shrinks instead. */
   white-space: nowrap; flex: none;
 }
-.badge--unit { background: var(--tint-teal); color: var(--teal-deep); }
+.badge--unit { background: var(--tint-teal); color: var(--teal-dark); }
 .badge--pool { background: var(--tint-green); color: var(--ok); }
 .badge--consumable { background: var(--tint-amber); color: var(--warn); }
 .badge--available { background: var(--tint-green); color: var(--ok); }
-.badge--out { background: var(--tint-red); color: var(--bad); }
+/* A COLOUR NEVER MEANS TWO THINGS (v6 A2). This class meant three: a piece normally out on hire,
+   a job running late, and a movement that had been corrected — all in the same red. Split:
+
+     out        a piece is with a customer. Entirely normal. INFO/teal.
+     late       past the promised day. Needs attention, nothing is broken. WARNING/amber.
+     corrected  an annotation on history, not a failure. NEUTRAL.
+
+   And red is now free to mean one thing: irreversible. That is worth more in this app than in a
+   catalogue — the ledger is append-only, orders are cancelled rather than deleted, pieces are
+   retired rather than removed, and a movement can only be undone by writing a correction that says
+   why. In a system built so that almost nothing is irreversible, the colour marking the things
+   that ARE must not also mark a job that is three days late. */
+.badge--out { background: var(--tint-teal); color: var(--teal-dark); }
+.badge--late { background: var(--tint-amber); color: var(--warn); }
+.badge--corrected { background: var(--tint-neutral); color: var(--ink-soft); }
 .badge--at_repair { background: var(--tint-amber); color: var(--warn); }
 .badge--retired, .badge--lost { background: var(--tint-neutral); color: var(--ink-soft); }
 .badge--muted { background: var(--tint-neutral); color: var(--ink-soft); }
@@ -243,7 +259,7 @@ a.btn, a.item { text-decoration: none; }
    grey pill: a job that is NOT happening looked exactly like a job that is, in the list where
    telling them apart is the whole point. Cancelled is the one that must never be acted on, so it
    is the one that carries the warning colour. */
-.badge--confirmed { background: var(--tint-teal); color: var(--teal-deep); }
+.badge--confirmed { background: var(--tint-teal); color: var(--teal-dark); }
 .badge--closed    { background: var(--tint-neutral); color: var(--ink-soft); }
 .badge--cancelled { background: var(--bad-bg); color: var(--bad); }
 /* v_unit_status returns `not_recorded` for a piece with no movement — the exact state a bulk
@@ -290,7 +306,7 @@ a.btn, a.item { text-decoration: none; }
 .toast {
   position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(120%);
   background: var(--ink); color: var(--white); padding: 12px 18px; border-radius: var(--radius);
-  box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 60; max-width: 90vw;
+  box-shadow: var(--shadow-toast); z-index: 60; max-width: 90vw;
   transition: transform .18s ease, opacity .18s ease, visibility .18s; font-weight: 600;
   /* An empty toast has no height, so translateY(120%) moves it almost nowhere and it shows as a
      dark sliver along the bottom of every screen. Hide it outright until it has something to say. */
@@ -308,7 +324,7 @@ a.btn, a.item { text-decoration: none; }
 
 /* ---------- modal / drawer ---------- */
 .sheet {
-  position: fixed; inset: 0; background: rgba(51, 39, 27, .45);
+  position: fixed; inset: 0; background: var(--scrim);
   display: grid; place-items: end center; z-index: 50;
 }
 .sheet__panel {
@@ -367,7 +383,7 @@ a.btn, a.item { text-decoration: none; }
 .thumb.is-primary img { border: 2px solid var(--accent); }
 .thumb__btn { width: 100%; font-size: 12px; padding: 4px 6px; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.note { font-size: 12.5px; line-height: 1.45; color: var(--teal-deep); background: var(--foam); padding: 8px 10px; border-radius: var(--radius); }
+.note { font-size: 12.5px; line-height: 1.45; color: var(--teal-dark); background: var(--foam); padding: 8px 10px; border-radius: var(--radius); }
 .note--warn { background: var(--tint-amber); color: var(--warn); }
 .note--bad { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
 
@@ -411,7 +427,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    Never decoration. Two facts must be visible on a screen used where the signal dies: whether
    this phone can reach the database, and how many writes it is still holding. */
 .conn {
-  padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  padding: 4px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 700;
   margin-left: auto;
 }
 .conn--off  { background: var(--tint-red); color: var(--bad); }
@@ -507,8 +523,8 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 }
 .wordmark__dot {
   flex: none; width: calc(var(--wm) * .34); height: calc(var(--wm) * .34);
-  border-radius: 999px; background: var(--orange);
-  box-shadow: 0 0 0 calc(var(--wm) * .18) rgba(255, 151, 0, .14);
+  border-radius: var(--radius-pill); background: var(--tangerine);
+  box-shadow: 0 0 0 calc(var(--wm) * .18) var(--tangerine-glow);
 }
 /* Two weights in one lockup: the name that gets said out loud is heavier than the part that is
    grammar. "DJ" is what people call the business; "Network's" is the rest of its name. */
@@ -558,11 +574,11 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    It is an ordinary control with WhatsApp's green as a border, not a filled green button that
    invites a confident tap on a message about somebody's money. */
 .btn--wa {
-  border-color: #128C7E; color: #0B5F55; background: var(--surface);
+  border-color: var(--wa); color: var(--wa-ink); background: var(--surface);
   text-decoration: none; white-space: nowrap;
 }
 .btn--wa::before { content: "\1F4AC"; margin-right: 6px; }
-.btn--wa:hover { border-color: #0B5F55; }
+.btn--wa:hover { border-color: var(--wa-ink); }
 
 /* ---------- TAPPABLE: three rules, fixed here rather than discovered per screen ----------
 
@@ -655,7 +671,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 }
 .card-row__ref::before {
   content: ""; position: absolute; left: -6px; right: -6px;
-  top: 50%; height: 44px; transform: translateY(-50%);
+  top: 50%; height: var(--tap); transform: translateY(-50%);
 }
 .card-row__ref::after { content: "copy"; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
 .card-row__ref.is-copied::after { content: "copied"; color: var(--ok); opacity: 1; }
@@ -671,7 +687,8 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 
 /* The connection pill is a control now, not a label: it opens the queue. It has to look like one,
    or nothing tells the operator there is a way in to a blockage. */
-.conn--tap { cursor: pointer; border: 1px solid currentColor; min-height: 28px; }
+/* v6 E1 chips ≥32. Was 28. */
+.conn--tap { cursor: pointer; border: 1px solid currentColor; min-height: var(--tap-chip); }
 .conn--tap::after { content: " ›"; font-weight: 700; }
 .conn--tap:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
@@ -687,7 +704,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    grid — same 84px square, same 44px Remove button stacked beneath it instead of floated on top
    of it, because a delete control overlapping a photo on a phone is a mis-tap waiting to happen.
    --------------------------------------------------------------------------- */
-.photos { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.photos { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .photos .field__hint { margin-top: 4px; }
 .photos .thumbs:not(:empty) { margin-top: 10px; }
 
@@ -699,3 +716,39 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   border: 1px dashed var(--edge); border-radius: var(--radius);
   background: var(--tint-neutral); color: var(--ink-faint); font-size: 12px;
 }
+
+/* ---------------------------------------------------------------------------
+   OVERFLOW (v6 Law 8). ≤1 primary + 2 secondary visible; the rest behind "More",
+   and destructive ONLY here — as red text, never a standing red button.
+
+   <details>, not a JS menu. A sheet footer is where three save paths broke in an
+   earlier pass, and the cheapest way not to break a fourth is not to add a
+   handler: the markup opens itself, and every button inside keeps the listener
+   it already had because it is still in the DOM.
+   --------------------------------------------------------------------------- */
+.overflow { position: relative; }
+.overflow > summary { list-style: none; display: inline-flex; align-items: center; justify-content: center; }
+.overflow > summary::-webkit-details-marker { display: none; }
+.overflow > summary::after { content: " ⌄"; opacity: .7; }
+.overflow[open] > summary::after { content: " ⌃"; }
+/* HIDE IT EXPLICITLY. Do not rely on <details> to do it.
+   Measured, not assumed: with the menu absolutely positioned, a CLOSED <details> still laid it out
+   at 210x168 and document.elementFromPoint at the Cancel button's own centre returned that button.
+   An invisible-but-tappable "Cancel this order" floating over the order sheet is strictly worse
+   than the standing red button this overflow was built to remove — the UA's content-hiding does not
+   reach a positioned child, and the whole point of Law 8 is that the destructive action is hard to
+   reach by accident. */
+.overflow:not([open]) .overflow__menu { display: none; }
+.overflow__menu {
+  position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 5;
+  display: grid; gap: 6px; min-width: 210px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-card); box-shadow: var(--shadow);
+}
+.overflow__menu .btn { width: 100%; justify-content: center; }
+/* Destructive is TEXT. It is the last item, it is the only red thing on the screen, and red now
+   means one thing in this app: you cannot take this back without writing a record that says why. */
+.btn--destructive {
+  background: transparent; border-color: transparent; color: var(--bad); font-weight: 700;
+}
+.btn--destructive:hover { border-color: var(--bad); }

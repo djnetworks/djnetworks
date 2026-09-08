@@ -326,3 +326,44 @@ is the one that has to be 44.
 `web/tokens.css`, and the three derived values in it that exist only because the bible's semantic
 colours are fills rather than inks. Nothing else. The wordmark would become a component if a real
 mark is ever drawn; until then it is text, which is the honest state.
+
+---
+
+## A finding for the Brand Kit's owner
+
+**v6 sets two colours as text without giving them an ink partner, and both fail its own Law 3.**
+
+Law 3 is a legibility floor. A2 states four semantics as ink-on-fill pairs — success `#1B7F43` on
+`#E9F8EF`, warning `#9B5C00` on `#FFF3D1`, info `#2B7379` on `#E8F2F1`, neutral `#828282` on
+`#F1F1EE` — which is the right construction. Measured (WCAG 2.1, sRGB):
+
+| pair | ratio | AA body text (4.5:1) |
+|---|---|---|
+| success `#1B7F43` on `#E9F8EF` | 4.60 | pass |
+| warning `#9B5C00` on `#FFF3D1` | 4.84 | pass |
+| info `#2B7379` on `#E8F2F1` | 4.80 | pass |
+| **neutral `#828282` on `#F1F1EE`** | **3.40** | **fail** |
+| **muted `#828282`** on paper `#F7F3EA` / white | **3.47 / 3.84** | **fail** |
+| **danger `#E5484D`** on paper / white | **3.53 / 3.91** | **fail** |
+| white on `#E5484D` (a solid danger button) | 3.91 | fail |
+
+`muted` is specified as "secondary text, metadata" and `danger` is put into text by E1
+("Destructive: red text in overflow only"). At 11–12px — which A3 permits for metadata — neither
+clears AA on either of v6's own grounds. The neutral **pair** fails as stated.
+
+This is not a style disagreement. v6's own one-line standard is *"a trade-smart but low-tech user on
+an older phone in a busy market"*. An older phone means a dimmer, lower-gamut panel; a busy market
+means glare. Those are the conditions under which 3.4:1 stops being readable, and they are the
+conditions the document names for itself.
+
+**The fix is the pattern v6 already uses,** applied twice more — keep the hex as the fill, add a
+darker ink. What this app uses, and what it measured:
+
+    v6 muted  #828282  →  ink #6B665F   5.14 paper · 5.69 white · 5.03 on #F1F1EE
+    v6 danger #E5484D  →  ink #B42F33   5.59 paper · 6.19 white · 5.41 on a #FDECEA tint
+
+Both keep the hue and the semantic; neither changes the fill, the border or the icon stroke. A
+solid-danger button also needs ink text rather than white, or a darker fill.
+
+*Raised from the DJ Network's implementation, 2026-09-08. Ratios reproducible with the checker
+described above.*

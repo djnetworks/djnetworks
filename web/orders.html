@@ -238,7 +238,7 @@ function renderList() {
          + (o.status !== 'confirmed' ? ` · <span class="badge badge--${esc(o.status)}">${esc(o.status)}</span>` : ''),
       ref: o.order_no,
       right: !f ? ''
-        : late ? `<span class="badge badge--out">${esc(daysOverdue(o))} day${daysOverdue(o) === 1 ? '' : 's'} overdue</span>
+        : late ? `<span class="badge badge--late">${esc(daysOverdue(o))} day${daysOverdue(o) === 1 ? '' : 's'} overdue</span>
                   <span class="item__meta">${esc(f.qty_outstanding)} item${f.qty_outstanding === 1 ? '' : 's'} still out</span>`
         : f.qty_outstanding > 0 ? `<strong style="font-size:13px">${esc(f.qty_outstanding)} out</strong>`
         : ['closed', 'cancelled'].includes(o.status) ? '<span class="item__meta">nothing out</span>'
@@ -461,15 +461,35 @@ async function openOrder(o, prefill = null) {
     <label class="field"><span class="field__label">Notes</span>
       <textarea class="field__area" id="f-notes">${esc(o.notes)}</textarea></label>
 
+    <!-- v6 LAW 8: at most one primary and two secondary visible; the rest in an overflow, and
+         DESTRUCTIVE ALWAYS IN OVERFLOW, never a standing red button.
+
+         This footer had six controls side by side on a confirmed order, one of them a solid red
+         "Cancel order" sitting a thumb's width from "Save changes" — in the sheet where the money
+         on a job is edited. Cancelling is the single most consequential thing on this screen and it
+         was the easiest thing to hit by accident.
+
+         Visible now: Save changes (primary), Send out and Return (the two real next actions).
+         Everything else moves behind "More", with the destructive item last and as red TEXT rather
+         than a red button.
+
+         Built as <details>, deliberately: no JavaScript, so there is no new handler to break, and
+         every existing #id keeps its listener because the buttons are still in the DOM. -->
     <div class="sheet__foot">
-      ${o.id && o.status === 'confirmed' ? `<button class="btn btn--danger" id="cancel-order">Cancel order</button>` : ''}
       ${o.id ? `<a class="btn" href="dispatch.html?order=${esc(o.id)}">Send out</a>
                 <a class="btn" href="return.html?order=${esc(o.id)}">Return</a>
-                <!-- "Booking confirmed" as a prefilled draft. Built from the SAVED lines, not from
-                     what is on screen: a message quoting an edit he has not committed would tell a
-                     customer something the database does not say. -->
-                <a class="btn btn--wa" id="wa-confirm" target="_blank" rel="noopener" href="#">Send confirmation</a>
-                <button class="btn" id="repeat-job" type="button">Repeat this job</button>` : ''}
+                <details class="overflow">
+                  <summary class="btn" aria-label="More actions">More</summary>
+                  <div class="overflow__menu">
+                    <!-- "Booking confirmed" as a prefilled draft. Built from the SAVED lines, not
+                         from what is on screen: a message quoting an edit he has not committed
+                         would tell a customer something the database does not say. -->
+                    <a class="btn btn--wa" id="wa-confirm" target="_blank" rel="noopener" href="#">Send confirmation</a>
+                    <button class="btn" id="repeat-job" type="button">Repeat this job</button>
+                    ${o.status === 'confirmed'
+                      ? `<button class="btn btn--destructive" id="cancel-order" type="button">Cancel this order</button>` : ''}
+                  </div>
+                </details>` : ''}
       <button class="btn" data-sheet-close type="button">Close</button>
       <button class="btn btn--primary" id="save">${isNew ? 'Create order' : 'Save changes'}</button>
     </div>`;

@@ -96,7 +96,7 @@ async function chooser() {
             <!-- Every job on this list is out, so red on the count would say nothing. Overdue is
                  the thing that separates one row from another here, so it gets the colour. -->
             <span class="badge badge--muted">${esc(x.qty_outstanding)} still out</span>
-            ${late ? '<span class="badge badge--out">overdue</span>' : ''}
+            ${late ? '<span class="badge badge--late">overdue</span>' : ''}
             ${['cancelled', 'closed'].includes(x.order_status)
               ? `<span class="badge badge--${esc(x.order_status)}">order ${esc(x.order_status)}</span>` : ''}
           </span></span>
@@ -165,7 +165,7 @@ function render() {
     <div class="row row--between">
       <div><h1>${esc(ORDER.order_no)}</h1>
         <p class="sub">${esc(cust)} · due back ${esc(fmtDate(ORDER.expected_return_date))}
-          ${overdue ? '<span class="badge badge--out">overdue</span>' : ''}</p></div>
+          ${overdue ? '<span class="badge badge--late">overdue</span>' : ''}</p></div>
       <!-- THIS ORDER, not the list of orders. It said "Order" and went to orders.html, so the one
            question asked from this screen — what was agreed on this job — landed on six cards to
            search through, and coming back lost every tick. orders.html?order=<id> opens that
@@ -247,7 +247,7 @@ function render() {
         <label for="t-${i}">
           <span class="ret-row__no">${esc(p?.short_code ?? '?')}${isUnit ? ' · piece ' + esc(r.piece_no) : ''}</span>
           ${!isUnit ? `<span class="badge badge--pool">${esc(r.qty_outstanding)} out</span>` : ''}
-          ${(r.days_overdue ?? 0) > 0 ? `<span class="badge badge--out">${esc(r.days_overdue)}d late</span>` : ''}
+          ${(r.days_overdue ?? 0) > 0 ? `<span class="badge badge--late">${esc(r.days_overdue)}d late</span>` : ''}
         </label>
         <div class="ret-detail" id="d-${i}" hidden>
           ${isUnit ? `
