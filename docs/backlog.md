@@ -48,13 +48,15 @@ longer the thing standing between the key and the data. The README's Status sect
 
 The original text, unedited:
 
-**Self-registration is open, and the publishable key is about to become public.** Measured
-2026-09-07 against `hjidocpqcrfbjucvqggu`:
+**~~Self-registration is open~~ — CLOSED 2026-09-08, and this time verified from outside.** The
+entry stays as a record of how it read, because it was reported done twice before it was true:
 
-    disable_signup      false          anyone may create an account
-    email provider      enabled
-    mailer_autoconfirm  false          they confirm from an inbox they control
-    auth.users          0 rows         no operator account exists yet either
+    2026-09-07  disable_signup  false      anyone may create an account
+    2026-09-08  disable_signup  true       POST /auth/v1/signup -> HTTP 422 signup_disabled,
+                                           and no auth.users row created
+
+Checked by making the request with the publishable key, not by reading the dashboard — which is the
+only reason it can be believed now, given it had been called done twice already.
 
 `web/config.js` is committed and ships the publishable key to the browser, which is correct and by
 design — but it is only safe because the sole route to `authenticated` is supposed to be an account
@@ -403,12 +405,11 @@ predictable from data already on screen. Two guards when it is built, both from 
 a payment chaser when `receivable <= 0` (a credit balance is reachable since `0018`), and never
 blend deposit held into what is owed.
 
-**Self-registration is still open on the project, and only the app nags about it.** `disable_signup`
-is `false`. `0021` makes it harmless — measured: a signed-in account with no `operator` row reads 0
-rows from all 17 tables and is refused on every write — but the front door should be shut as well as
-guarded. It is a Management-API setting, not SQL, so no migration can do it: Supabase dashboard →
-Authentication → Sign In / Providers → Email → turn off *Allow new users to sign up*. The Today
-screen shows a warning to whoever holds `admin.team` until it is done.
+**~~Self-registration is still open~~ — DONE 2026-09-08.** `disable_signup` is `true`;
+`POST /auth/v1/signup` answers HTTP 422 `signup_disabled` and creates nothing. `0021` had already
+made it harmless — a signed-in account with no `operator` row reads 0 rows from all 17 tables and is
+refused on every write — but the front door is now shut as well as guarded, and the Today and Team
+warnings go quiet on their own because they read the live auth settings rather than a constant.
 
 **`numbers.view` does not protect the cost columns themselves.** The reports are gated, but
 `unit.purchase_cost` and `repair_job.actual_cost` are still readable by any active operator, because
