@@ -60,6 +60,20 @@ It changes the price of every job and has never been confirmed by the person who
 The tier boundaries (1 / 2–3 / 4–7 / 8+) came from an earlier planning document. The percentages
 seeded in `0004` are all zero placeholders.
 
+**Two things now hang off this unanswered question, added with the customer default discount
+(`0031` / `0032`, 8 Sep 2026):**
+
+- **The ladder now stacks with a per-customer default.** `customer.default_discount_pct` is a
+  starting point copied onto each order line and added to the tier for that line's length of hire
+  (20% customer + 15% for eight days = 35% off). While the ladder is four zeros the customer default
+  is the only discount in play — but the first real tier percentage typed here reprices every future
+  order *on top of* whatever customer defaults exist by then. Fill it in knowing that, not as an
+  isolated number.
+- **`max_total_discount_pct` = 40 is an invented ceiling.** `0032` seeds a soft ceiling: the orders
+  screen warns (never blocks) when a line's total discount passes it. 40 is a placeholder chosen low
+  enough to fire at least once, not a figure from the business. It needs the same confirmation as the
+  tier percentages — and if the tiers land high, 40 may be too low and become noise.
+
 ---
 
 ## 6. Prune the taxonomy

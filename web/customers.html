@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Customers — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-35" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-35" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-35">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-36" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-36" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-36">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-35">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-36">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-35">
-<link rel="stylesheet" href="style.css?v=2026-09-08-35">
-<script src="vendor/supabase.js?v=2026-09-08-35" defer></script>
-<script src="boot.js?v=2026-09-08-35" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-36">
+<link rel="stylesheet" href="style.css?v=2026-09-08-36">
+<script src="vendor/supabase.js?v=2026-09-08-36" defer></script>
+<script src="boot.js?v=2026-09-08-36" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -26,7 +26,7 @@
 <script type="module">
 import { savedLine, icon, sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, initOffline, revealActiveTab, loadPermissions, can, cardList }
-  from './app.js?v=2026-09-08-35';
+  from './app.js?v=2026-09-08-36';
 
 $('#chrome').innerHTML = chrome('customers.html');
 revealActiveTab();
@@ -141,7 +141,8 @@ function renderList() {
 function openEditor(c) {
   const isNew = !c;
   c = c ?? { name: '', business_name: '', type: 'individual', whatsapp: '', alt_phone: '', email: '',
-             address: '', city: 'Ahmedabad', pincode: '', id_proof_type: '', id_proof_url: '', active: true };
+             address: '', city: 'Ahmedabad', pincode: '', id_proof_type: '', id_proof_url: '',
+             default_discount_pct: 0, active: true };
   const b = c.id ? BALANCES.get(c.id) : null;
 
   const sheet = openSheet(`
@@ -183,8 +184,15 @@ function openEditor(c) {
     </div>
 
     <div class="card card--sunk">
+      <strong>Discount</strong>
+      <label class="field"><span class="field__label">Default discount %</span>
+        <input class="field__input" id="f-disc" type="number" step="0.01" min="0" max="100"
+               inputmode="decimal" value="${esc(c.default_discount_pct ?? 0)}" placeholder="e.g. 10"></label>
+    </div>
+
+    <div class="card card--sunk">
       <strong>ID document</strong>
-      
+
       <div class="grid2">
         <label class="field"><span class="field__label">Document type</span>
           <input class="field__input" id="f-idtype" value="${esc(c.id_proof_type)}"
@@ -266,9 +274,16 @@ function openEditor(c) {
       pincode: $('#f-pin').value.trim() || null,
       id_proof_type: $('#f-idtype').value.trim() || null,
       id_proof_url: $('#f-idurl').value.trim() || null,
+      default_discount_pct: Number($('#f-disc').value) || 0,
       active: $('#f-active').checked,
     };
     if (!row.name || !row.whatsapp) { toast('Name and WhatsApp number are both needed.', 'error'); return; }
+    // The database CHECK is the backstop; catch it here so the message names the field rather than
+    // surfacing a raw constraint error. The discount is a prefill on future orders — it never
+    // touches a job already saved (rule 5), so an out-of-range value is a typo, not a repricing.
+    if (row.default_discount_pct < 0 || row.default_discount_pct > 100) {
+      toast('Default discount must be between 0 and 100%.', 'error'); focusField('#f-disc'); return;
+    }
     if (/^\d{6,}$/.test(row.id_proof_type ?? '')) {
       toast('That looks like an ID number. This field is for the KIND of document — the number itself '
           + 'must never be stored here.', 'error'); focusField('#f-idtype'); return;

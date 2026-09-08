@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orders — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-35" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-35" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-35">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-36" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-36" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-36">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-35">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-36">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-35">
-<link rel="stylesheet" href="style.css?v=2026-09-08-35">
-<script src="vendor/supabase.js?v=2026-09-08-35" defer></script>
-<script src="boot.js?v=2026-09-08-35" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-36">
+<link rel="stylesheet" href="style.css?v=2026-09-08-36">
+<script src="vendor/supabase.js?v=2026-09-08-36" defer></script>
+<script src="boot.js?v=2026-09-08-36" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -32,7 +32,7 @@ import { savedLine, icon, sb, $, $$, esc, money, fmtDate, todayLocal, chrome, re
          openSheet, focusField, initOffline, revealActiveTab, fulfilLabel, orderState, rememberFilters,
          waLink, waMessage,
          customerPicker, cardList, loadPermissions, guardedWrite }
-  from './app.js?v=2026-09-08-35';
+  from './app.js?v=2026-09-08-36';
 
 $('#chrome').innerHTML = chrome('orders.html');
 revealActiveTab();
@@ -113,7 +113,7 @@ async function load() {
   try {
     const [ords, custs, prods, ful, tiers, settings, ledger] = await Promise.all([
       sb.from('rental_order').select('*').order('out_date', { ascending: false }),
-      sb.from('customer').select('id,name,business_name,whatsapp,alt_phone,city,type').eq('active', true).order('name'),
+      sb.from('customer').select('id,name,business_name,whatsapp,alt_phone,city,type,default_discount_pct').eq('active', true).order('name'),
       sb.from('product').select('id,short_code,brand,model_name,tracking_mode,base_rate_per_day,rentable,active')
         .eq('active', true).order('short_code'),
       sb.from('v_order_fulfilment').select('*'),
@@ -162,6 +162,8 @@ const dayCountLabel = () => SETTINGS.day_count_mode === 'inclusive_both_ends'
   ? 'Both ends count: out on the 2nd, back on the 4th is 3 days.'
   : `Day count mode: ${SETTINGS.day_count_mode ?? 'unset'}.`;
 
+// The day-length ladder ALONE — the tier for a given number of days, and nothing else. This is
+// still the tier half of the stack; it is read on its own only where the screen names the ladder.
 function suggestDiscount(days) {
   const t = TIERS.find(x => days >= x.min_days && (x.max_days === null || days <= x.max_days));
   return t ? Number(t.discount_pct) : 0;
@@ -170,6 +172,27 @@ function suggestDiscount(days) {
 // owner (docs/open-questions.md item 5). Saying "0% suggested" as though it were a decision would
 // be inventing one, so the screen says the ladder is unset instead.
 const ladderIsPlaceholder = () => TIERS.length > 0 && TIERS.every(t => Number(t.discount_pct) === 0);
+
+// ---------------------------------------------------------------------------
+// The stacked discount (0031/0032). A line's starting discount is the CUSTOMER'S standing default
+// plus the day-length tier, added together — 20% customer + 15% for eight days = 35% off. It is a
+// PREFILL: it is copied onto a NEW or still-unedited line and never recomputed onto a saved one, so
+// changing a customer's default cannot rewrite a job already agreed (rule 5). The screen shows the
+// arithmetic on every line so the number is never a mystery.
+// ---------------------------------------------------------------------------
+const custDefault = () => Number(PICKED_CUSTOMER?.default_discount_pct ?? 0);
+// The hard floor under the price: a stacked (or fat-fingered) discount can never drive an agreed
+// rate below zero. Not configurable — unlike the soft ceiling below, this is arithmetic, not policy.
+const clampPct = n => Math.min(100, Math.max(0, round2(Number(n) || 0)));
+const prefillDiscount = days => clampPct(custDefault() + suggestDiscount(days));
+// The soft ceiling from app_setting (0032): a WARNING, never a block. Read as a number, defaulting
+// to 40 if the row is somehow missing, so the warning fails safe rather than never firing.
+const maxTotalDiscount = () => Number(SETTINGS.max_total_discount_pct ?? 40);
+// 20.00 -> "20", 15.50 -> "15.5". A percentage reads better without trailing zeros.
+const fmtPct = n => String(round2(Number(n) || 0));
+// Copy the prefill onto a line and mark it as prefilled, so hints() can show the split and a later
+// customer change can safely re-apply it. recalcSuggestion then derives agreed_rate / line_total.
+function applyPrefill(l) { l.discount_pct = prefillDiscount(l.days); l._prefill = true; recalcSuggestion(l); }
 
 function renderList() {
   const list = $('#list');
@@ -356,29 +379,35 @@ async function openOrder(o, prefill = null) {
     out_date: pFrom, expected_return_date: pTo, days: dayCount(pFrom, pTo) ?? 1,
     deposit_amount: '', availability_override: false, availability_override_reason: '', notes: '',
   };
-  // From "Repeat this job": lines already re-priced, and the customer carried over because the
-  // whole point is the same decorator booking again.
+  // Resolve the customer FIRST. Both prefill blocks below stack the customer's default discount
+  // through applyPrefill, and applyPrefill reads PICKED_CUSTOMER — so it has to be set before they
+  // run, not at line ~600 where the picker is wired. For an existing order this just re-finds the
+  // same customer the picker will show; the loaded lines are never touched by a prefill.
+  if (prefill?.customer) o.customer_id = prefill.customer.id;
+  PICKED_CUSTOMER = CUSTOMERS.find(c => c.id === o.customer_id) ?? null;
+
+  // From "Repeat this job": products and quantities carry over, and every rate is RE-PRICED at
+  // today's product base, today's day-ladder and today's customer default — never copied from the
+  // old order (rule 5). The old order keeps exactly what it was charged.
   if (prefill?.lines?.length) {
     LINES = prefill.lines.map(l => ({ ...l, days: dayCount(pFrom, pTo) ?? l.days }));
-    for (const l of LINES) recalcSuggestion(l);
+    for (const l of LINES) applyPrefill(l);
   }
-  if (prefill?.customer) o.customer_id = prefill.customer.id;
 
   if (prefill?.want?.length) {
-    // Quantities and products only. Every rate is REGENERATED from the product's current default,
-    // exactly as if the product had just been chosen in the dropdown — CLAUDE.md rule 5:
-    // order_line.agreed_rate is what was agreed on THIS order, and a number arriving from another
-    // screen must never be able to become it without passing through today's rate card.
+    // Quantities and products only. Every rate is REGENERATED — product base + day-ladder tier +
+    // customer default — exactly as if the product had just been chosen in the dropdown. CLAUDE.md
+    // rule 5: order_line.agreed_rate is what was agreed on THIS order, and a number arriving from
+    // another screen must never become it without passing through today's rate card.
     const n = dayCount(pFrom, pTo) ?? 1;
     LINES = prefill.want.map(w => {
       const p = PRODUCTS.find(x => x.id === w.id);
       const line = {
         product_id: w.id, qty: w.n, days: n,
         base_rate: Number(p?.base_rate_per_day ?? 0),
-        discount_pct: suggestDiscount(n),
-        agreed_rate: 0, line_total: 0, is_subhired: false,
+        discount_pct: 0, agreed_rate: 0, line_total: 0, is_subhired: false,
       };
-      recalcSuggestion(line);
+      applyPrefill(line);
       return line;
     });
   }
@@ -594,7 +623,16 @@ async function openOrder(o, prefill = null) {
   PICKED_CUSTOMER = CUSTOMERS.find(c => c.id === o.customer_id) ?? null;
   if (isNew) {
     customerPicker($('#cust-pick'), CUSTOMERS, PICKED_CUSTOMER,
-      c => { PICKED_CUSTOMER = c; }, { required: true, id: 'oc' });
+      c => {
+        PICKED_CUSTOMER = c;
+        // A different customer means a different default, so re-apply the prefill to every line
+        // still sitting at its prefill. A line the operator has already hand-edited
+        // (_prefill === false) is left exactly as typed — the whole point of an override is that a
+        // later change does not silently undo it. Only reachable on a NEW order: on a saved one the
+        // customer is a read-only badge, so a stored line is never touched (rule 5).
+        for (const l of LINES) if (l._prefill) applyPrefill(l);
+        renderLines();
+      }, { required: true, id: 'oc' });
   } else {
     const c = PICKED_CUSTOMER;
     $('#cust-pick').innerHTML = `<div class="field" style="margin-bottom:0">
@@ -668,7 +706,10 @@ function renderLines() {
       l.qty = Number($('.l-qty', el).value) || 1;
       l.days = Number($('.l-days', el).value) || 1;
       l.base_rate = Number($('.l-base', el).value) || 0;
-      l.discount_pct = Number($('.l-disc', el).value) || 0;
+      // Clamp on the way in: order_line.discount_pct has no upper CHECK, and a pasted 150 would
+      // otherwise store and then invert the price on the next read. The input's max=100 stops most
+      // of it; this is the backstop for a paste that slips past it.
+      l.discount_pct = clampPct($('.l-disc', el).value);
       l.agreed_rate = Number($('.l-agreed', el).value) || 0;
       l.line_total = Number($('.l-total', el).value) || 0;
       l.is_subhired = $('.l-sub', el).checked;
@@ -677,19 +718,30 @@ function renderLines() {
       read();
       const p = PRODUCTS.find(x => x.id === LINES[i].product_id);
       // The product rate SEEDS the line. From here the two are independent for ever: raising the
-      // rate next March must not rewrite what was charged last March (rule 5).
+      // rate next March must not rewrite what was charged last March (rule 5). The discount is
+      // seeded the same way — customer default + day-ladder tier — and is equally independent once
+      // the operator touches it.
       if (p) {
         LINES[i].base_rate = Number(p.base_rate_per_day ?? 0);
-        LINES[i].discount_pct = suggestDiscount(LINES[i].days);
-        recalcSuggestion(LINES[i]);
+        applyPrefill(LINES[i]);
       }
       renderLines(); checkAvailability();
     });
     ['.l-qty', '.l-days', '.l-base', '.l-disc'].forEach(sel =>
       $(sel, el).addEventListener('input', () => {
-        read(); recalcSuggestion(LINES[i]);
+        read();
+        // Editing the discount by hand takes the line OFF its prefill: it keeps what was typed and
+        // is never re-applied under it afterwards — the same promise the agreed-rate override makes.
+        if (sel === '.l-disc') LINES[i]._prefill = false;
+        // The ladder is a DAY-length ladder, so a line still at its prefill follows its days across
+        // a tier boundary — 3 days becoming 8 re-picks the tier. A hand-edited line does not move.
+        else if (sel === '.l-days' && LINES[i]._prefill) applyPrefill(LINES[i]);
+        recalcSuggestion(LINES[i]);
         $('.l-agreed', el).value = LINES[i].agreed_rate;
         $('.l-total', el).value = LINES[i].line_total;
+        // A days re-apply above may have changed the discount; show it. Never write back into
+        // .l-disc while the operator is typing in it, or the caret jumps to the end.
+        if (sel !== '.l-disc') $('.l-disc', el).value = LINES[i].discount_pct;
         renderTotals(); hints(el, i);
         // ---------------------------------------------------------------------
         // CHANGING THE QUANTITY MUST RE-ASK. It did not, and that is a double
@@ -712,12 +764,16 @@ function renderLines() {
         // ---------------------------------------------------------------------
         if (sel === '.l-qty') scheduleAvailability();
       }));
-    // Editing agreed_rate or line_total by hand wins and is never overwritten afterwards.
+    // Editing agreed_rate or line_total by hand wins and is never overwritten afterwards — which
+    // means the line must come OFF its prefill too. If it did not, the next customer switch or days
+    // change would run applyPrefill over it and silently re-derive the rate from the discount stack,
+    // wiping the number just typed. _prefill = false is what makes "wins" true.
     $('.l-agreed', el).addEventListener('input', () => {
-      read(); LINES[i].line_total = round2(LINES[i].agreed_rate * LINES[i].qty * LINES[i].days);
+      read(); LINES[i]._prefill = false;
+      LINES[i].line_total = round2(LINES[i].agreed_rate * LINES[i].qty * LINES[i].days);
       $('.l-total', el).value = LINES[i].line_total; renderTotals(); hints(el, i);
     });
-    $('.l-total', el).addEventListener('input', () => { read(); renderTotals(); hints(el, i); });
+    $('.l-total', el).addEventListener('input', () => { read(); LINES[i]._prefill = false; renderTotals(); hints(el, i); });
     $('.l-sub', el).addEventListener('change', () => { read(); checkAvailability(); });
     $('.l-del', el).addEventListener('click', () => { LINES.splice(i, 1); renderLines(); checkAvailability(); });
     hints(el, i);
@@ -728,8 +784,12 @@ function renderLines() {
 
 const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 function recalcSuggestion(l) {
-  l.agreed_rate = round2(l.base_rate * (1 - (l.discount_pct / 100)));
-  l.line_total = round2(l.agreed_rate * l.qty * l.days);
+  // The discount used FOR THE PRICE is clamped at 100 so a stacked or mistyped value can never
+  // drive the agreed rate below zero (0032). The stored discount_pct keeps whatever it holds — only
+  // the arithmetic is floored — and hints() says "capped at 100%" when the stack ran past it.
+  const d = clampPct(l.discount_pct);
+  l.agreed_rate = round2((Number(l.base_rate) || 0) * (1 - d / 100));
+  l.line_total = round2(l.agreed_rate * (Number(l.qty) || 0) * (Number(l.days) || 0));
 }
 function hints(el, i) {
   const l = LINES[i];
@@ -737,9 +797,62 @@ function hints(el, i) {
   $('.l-total-hint', el).textContent = l.line_total === suggested
     ? `${l.qty} × ${l.days} day(s) × ${money(l.agreed_rate)}`
     : `Overridden. Rate × qty × days would be ${money(suggested)}.`;
-  $('.l-disc-hint', el).textContent = ladderIsPlaceholder()
-    ? 'The discount ladder is still all zeros — placeholders, not the owner\'s numbers.'
-    : `Ladder suggests ${suggestDiscount(l.days)}% for ${l.days} day(s).`;
+
+  // The discount, said as arithmetic so the number is never a mystery. The cases, in order:
+  //   • no product yet — nothing to say;
+  //   • the AGREED RATE was typed in by hand, so the discount % no longer produces it — say exactly
+  //     that, and never print a split that does not hold (base − 20% = ₹700 when 20% off is ₹800);
+  //   • a prefilled line — the full split, base − customer − duration = rate/day;
+  //   • a line whose DISCOUNT was hand-edited off the prefill — say so, and what the prefill was;
+  //   • anything else (a saved line reopened, or a line where only the total was overridden) — its
+  //     STORED discount, with NO split reconstructed from today's customer default. That recompute
+  //     is the one way rule 5 breaks, and it would look perfectly right while doing it.
+  const discEl = $('.l-disc-hint', el);
+  const base = Number(l.base_rate) || 0;
+  const computedAgreed = round2(base * (1 - clampPct(l.discount_pct) / 100));
+  const agreedMatches = round2(Number(l.agreed_rate) || 0) === computedAgreed;
+  const cust = custDefault();
+  const tier = suggestDiscount(l.days);
+  const rawPrefill = round2(cust + tier);
+  const prefillNow = fmtPct(Math.min(100, rawPrefill));
+  // The discount actually being given: the stored % normally, but derived from the agreed rate when
+  // that was overridden by hand, so the ceiling reflects the REAL price cut either way — a low
+  // hand-typed rate is just as much a discount as a high percentage.
+  const effectiveDisc = agreedMatches
+    ? Number(l.discount_pct)
+    : (base > 0 ? round2((1 - (Number(l.agreed_rate) || 0) / base) * 100) : 0);
+  let text;
+
+  if (!l.product_id) {
+    text = '';
+  } else if (!agreedMatches) {
+    text = `Agreed rate set by hand at ${money(l.agreed_rate)}/day.`;
+  } else if (l._prefill) {
+    if (cust > 0 || tier > 0) {
+      const parts = [`${money(l.base_rate)} base`];
+      if (cust > 0) parts.push(`− ${fmtPct(cust)}% customer`);
+      if (tier > 0) parts.push(`− ${fmtPct(tier)}% for ${l.days} day(s)`);
+      text = `${parts.join(' ')} = ${money(l.agreed_rate)}/day`;
+      if (rawPrefill > 100) text += ' (capped at 100%)';
+    } else {
+      text = ladderIsPlaceholder()
+        ? 'No customer discount, and the day-ladder is still all zeros.'
+        : 'No discount — full rate.';
+    }
+  } else if (l._prefill === false && fmtPct(l.discount_pct) !== prefillNow) {
+    text = `Edited to ${fmtPct(l.discount_pct)}% — the prefill for ${l.days} day(s) is ${prefillNow}%.`;
+  } else {
+    text = `${fmtPct(l.discount_pct)}% off → ${money(l.agreed_rate)}/day`;
+  }
+
+  // The soft ceiling (0032): a WARNING, never a block. It fires on the EFFECTIVE discount, so a low
+  // hand-typed agreed rate warns exactly as a high percentage does. Save is never gated on it — the
+  // warn styling and the sentence are the whole intervention.
+  const over = effectiveDisc > maxTotalDiscount();
+  if (over) text = text ? `${text} · above the ${fmtPct(maxTotalDiscount())}% ceiling`
+                        : `above the ${fmtPct(maxTotalDiscount())}% ceiling`;
+  discEl.textContent = text;
+  discEl.classList.toggle('field__hint--warn', over);
 }
 
 function renderCharges() {
@@ -925,7 +1038,7 @@ function repeatJob(source) {
     const line = {
       product_id: l.product_id, qty: l.qty, days: l.days,
       base_rate: Number(p?.base_rate_per_day ?? 0),
-      discount_pct: suggestDiscount(l.days),
+      discount_pct: prefillDiscount(l.days),
       agreed_rate: 0, line_total: 0, is_subhired: false,
     };
     recalcSuggestion(line);

@@ -172,6 +172,10 @@ a.btn, a.item { text-decoration: none; }
 .field { display: block; margin-bottom: 10px; }
 .field__label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 2px; }
 .field__hint { display: block; font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
+/* A field hint carrying a soft warning — the discount ceiling on an order line (0032). Warning ink
+   and weight so it reads as a caution against the faint grey of a normal hint, not a decorative
+   colour. It never blocks anything; it only wants the eye. */
+.field__hint--warn { color: var(--warning); font-weight: 600; }
 .field__input, .field__select, .field__area {
   /* 16px, not inherited: under 16 iOS Safari zooms the page on focus (see body). */
   width: 100%; font-size: 16px; min-height: var(--tap); padding: 11px;
