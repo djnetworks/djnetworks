@@ -97,6 +97,26 @@ product photos and recording damaged returns.
 Neither is business data in a table, so neither is in `factory_reset.sql` — putting them there would
 be claiming to have done something the SQL cannot do.
 
+## Team accounts, the attempt log, and reading its errors
+
+Adding a team member goes through the `team-create` Edge Function (email, name, password, ticked
+departments — no dashboard, no pasted user id). Two operational facts worth knowing:
+
+**A 503 from team-create means "under load", not "broken".** The rate-limit check fails *closed*:
+if it cannot read the attempt counts, it refuses rather than let the wall silently vanish. So a real
+admin who hits *"Could not check the limit just now. Try again in a moment."* is seeing the wall
+work under a flood, not a bug. Wait and retry; do not go looking for a fault. (A 403 is the opposite
+— that account genuinely lacks `admin.team`.)
+
+**The attempt logs are capped, and only one of them ever needed capping.** Checked, not assumed:
+`portal_attempt` (0029) already prunes rows older than 30 days on ~2% of writes, inside
+`fn_portal_view`. `team_create_attempt` (0030) had **no** ceiling — `verify_jwt` is off so a caller
+with no JWT reaches the function and is logged, and with no JWT there is no admin identity, so only
+the per-IP wall applies; an IP-rotating caller could grow the table without bound. Nothing is
+exposed (no password stored, admin-only `SELECT`) — it is storage and noise. The same 30-day / 2%
+prune now rides `team-create`'s write path. The older endpoint was already safe; the newer one was
+the unbounded one.
+
 ## Checking the state
 
 ```bash

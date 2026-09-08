@@ -59,7 +59,16 @@ async function log(row: { actor?: string | null; email?: string | null; ip: stri
     await service.from('team_create_attempt').insert({
       actor: row.actor ?? null, email_tried: row.email ?? null, ip: row.ip, ok: row.ok, outcome: row.outcome,
     });
-  } catch { /* the log must never be the reason a refusal fails to return */ }
+    // RETENTION, matching 0029's portal_attempt (which prunes on ~2% of writes). This table had no
+    // ceiling: verify_jwt is off so a caller with no JWT reaches here and is logged, and with no JWT
+    // there is no admin identity, so only the per-IP wall applies — an IP-rotating flood could grow
+    // this table without bound. Nothing is exposed (no password, and admin-only SELECT); it is
+    // storage and noise. Pruning rides the write path so it costs nothing when the endpoint is idle.
+    if (Math.random() < 0.02) {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      await service.from('team_create_attempt').delete().lt('at', cutoff);
+    }
+  } catch { /* the log/prune must never be the reason a refusal fails to return */ }
 }
 
 Deno.serve(async (req) => {
@@ -113,6 +122,10 @@ Deno.serve(async (req) => {
   // FAIL CLOSED. If the count itself cannot be read, refuse — the wall must not quietly vanish on a
   // database hiccup, and "(count ?? 0)" would have skipped the limit entirely on a query error.
   if (actorCount.error || (ip && ipCount.error)) {
+    // A 503 HERE MEANS "UNDER LOAD", NOT "BROKEN". Fix B fails the rate-limit check closed: if the
+    // count cannot be read, the endpoint refuses rather than let the wall vanish. So a real admin
+    // hitting 503 during a flood is the wall working, not the function failing — whoever reads this
+    // error next should wait and retry, not go looking for a bug. (docs/build-setup.md.)
     await log({ actor, ip, ok: false, outcome: 'rate_limited' });
     return json(503, { error: 'Could not check the limit just now. Try again in a moment.' });
   }
