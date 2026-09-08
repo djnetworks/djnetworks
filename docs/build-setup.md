@@ -62,6 +62,41 @@ unconditionally, for every role, with no bypass — that is rule 12, and it is t
 session-variable bypass baked into the five guard functions (a migration, and a deliberate weakening)
 or a temporary trigger disable (forbidden). Both are decisions. The teardown refuses instead.
 
+## Wiping practice data before go-live
+
+Decided: **no second project.** Chachu learns the app by making real entries in the production
+database, and they are wiped before the first real row. `dev_teardown.sql` cannot do it — his
+entries carry no seed prefix — so `supabase/seed/factory_reset.sql` exists for this one job. It
+removes all business data, keeps masters and logins, refuses unless armed in-session, and refuses
+once `app_setting.go_live` is set. It is a one-time pre-go-live operation; `docs/decisions.md`
+records why it is allowed to break rule 12 and why it stops working after go-live. Arming and run
+instructions are in the header of that file.
+
+### Two things factory_reset.sql cannot reach — handle these in the same sitting
+
+**1 · The offline queue on chachu's phone. This is the one that bites.** The app keeps an IndexedDB
+database `djn` on each device, with a `queue` store of writes made while offline (and a `cache`
+store of prefetched jobs). `flush()` replays that queue on reconnect. If chachu made practice
+dispatches or returns with a bad signal — which is exactly when the queue fills, and exactly the
+conditions this app is built for — those writes are sitting on his phone, and **they will sync
+practice movements back into the clean database the next time he opens the app online.** The server
+reset cannot see them. Before go-live, on every phone that has used the app: open it while online
+and let the queue drain to empty (the connection pill shows the count and the queue sheet lists
+them), OR clear the site data for the app in the phone's browser settings, which drops `djn`
+entirely. There is currently no in-app "reset this phone" button — noted in the backlog. Confirm
+the pill reads no pending writes before running factory_reset, or the wipe is undone by a
+reconnect.
+
+**2 · Storage buckets.** `product-images` (public) and `return-photos` (private) hold files keyed on
+product and order ids. SQL cannot delete a storage object — `storage.protect_delete()` blocks it —
+so clearing the tables leaves every practice photo orphaned in its bucket, reachable by anyone who
+still holds a signed or public URL. Empty both buckets through the Storage API (or the dashboard's
+Storage view) before go-live. They are empty right now; this matters once chachu starts adding
+product photos and recording damaged returns.
+
+Neither is business data in a table, so neither is in `factory_reset.sql` — putting them there would
+be claiming to have done something the SQL cannot do.
+
 ## Checking the state
 
 ```bash

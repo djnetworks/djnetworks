@@ -556,3 +556,10 @@ bar reads as *a small number* and a full one reads as *complete* — both are th
 stop, and no colour fixes that. It also leaves the only near-empty bar on the screen meaning an
 honest zero.
 
+**No in-app "clear this phone" control for the offline queue.** `factory_reset.sql` wipes the
+server, but the IndexedDB `djn` queue on a device replays unsynced writes on reconnect — so a
+practice dispatch made offline can reappear after a pre-go-live wipe. Today the only ways to clear
+it are to let it drain online or to clear site data in the browser. A one-tap "this phone has no
+pending work / clear it" action in the account menu would make the pre-go-live checklist safe
+without depending on browser settings. Small, and it matters specifically at go-live.
+

@@ -335,3 +335,32 @@ Four consequences from one posting rule is no longer a list of separate bugs; it
 rule showing through. The decision to revisit it **before the first real customer is billed** should
 now be read as a recommendation rather than an option. Nothing here has met a customer who queries
 an invoice, and after that it is expensive.
+
+### factory_reset.sql breaks rule 12, once, in the window before go-live
+`supabase/seed/factory_reset.sql` deletes every product, unit, customer, vendor, order, movement,
+ledger entry and repair — the whole business dataset — leaving only the migration-seeded masters
+and the logins. That is a direct, deliberate breach of rule 12 (history is never deleted), and it
+exists for one reason: **chachu will learn the app by making practice entries in the production
+database, because there is no second project** (that was decided, not defaulted), and those entries
+must be gone before the first real row.
+
+**Why the exception is sound, and not a crack in rule 12.** Rule 12 protects *history* — a record
+of things that happened to a real business. Practice entries are not history; they are a rehearsal,
+and carrying a rehearsal into the ledger is the exact contamination rule 12 elsewhere prevents. The
+alternative tools cannot do this job: `dev_teardown.sql` only removes rows carrying the seed prefix,
+and chachu's entries carry none; and rule 12's own `BEFORE DELETE` triggers block `DELETE` on five
+of these tables outright, so nothing short of `TRUNCATE` (granted only to postgres/service_role by
+`0009`) can clear them. The exception is real, but it is the smallest one that does the job.
+
+**Why it cannot become a habit — enforced, not promised.** Two guards, and the second is the one
+that matters:
+- It refuses unless a token is set in the same session, so it cannot fire by accident.
+- It refuses if `app_setting.go_live` exists. The go-live procedure sets that key, and from that
+  moment the file will not run — the rule-12 exception *closes itself* the instant real data is
+  declared live. This is the same shape as the teardown refusing on a non-seed row: a promise in a
+  comment ("never run after go-live") converted into a check that fails loudly. Verified both ways —
+  it wipes a populated pre-go-live database to zero, and refuses once `go_live` is set.
+
+**After go-live it is dead.** If a reset is ever wanted again — it should not be — the honest path
+is a restore from backup, not this file. The window this exception lives in is the window before the
+first real row, and `go_live` is how the database knows the window has shut.
