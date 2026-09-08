@@ -91,11 +91,18 @@ statement that runs — `rentable` lives on `product` and `Tool & spare` is a **
 `category` has no such column. Every product in the fixture is `rentable = true`. Whoever creates
 a tool or a ladder has to untick the box by hand, and nothing reminds him.
 
-So the open question is really two:
-- does he hire out generators, ladders and tool kits at all — Power is unit-tracked and rentable
-  today, which is probably right, but the boundary is a guess; and
-- should `rentable` default from the **subcategory** rather than from `true`, so that a fleet
-  entered through the bulk import does not arrive with every spanner offered for hire.
+**The import half is now answered, and the answer is not a schema default.** The bulk importer
+defaults `rentable` to FALSE for `Tool & spare` and true everywhere else, and reports every row it
+did that to; the product form starts a NEW product in that category unticked and says on screen
+what either answer means. Consumables are untouched — fog fluid is charged to the customer and is
+genuinely rentable. A category-varying **database** default was considered and rejected: a rule
+living in a column default is invisible at the call site, and nobody can see why their spanner came
+back unhireable. In the importer it is overridable, visible and announced. See the `djn-sheet-sync`
+skill and `openEditor` in `products.html`.
+
+**What is still open:** does he hire out generators, ladders and tool kits at all? Power is
+unit-tracked and rentable today, which is probably right, but the boundary is a guess — and it is
+the boundary, not the mechanism, that only he can settle.
 
 ---
 

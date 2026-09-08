@@ -36,15 +36,40 @@ them through a web form one at a time will stall. The Sheet is the realistic pat
 A staging tab, validated before anything is written:
 
 **Products tab** — `short_code`, `category`, `subcategory`, `brand`, `model_name`, `model_number`,
-`tracking_mode`, `base_rate_per_day`, `default_purchase_cost`, `pieces` (how many units to create),
-`image_url` (optional), plus free-form spec columns folded into `specs` jsonb.
+`tracking_mode`, `rentable` (optional, default true), `base_rate_per_day`, `default_purchase_cost`,
+`pieces` (how many units to create), `image_url` (optional), plus free-form spec columns folded into
+`specs` jsonb.
 
 **Validation before import, not after:**
 - `short_code` unique, and not already used by a different product
 - `category` / `subcategory` exist in the taxonomy — reject rather than silently creating
 - `tracking_mode` is one of unit / pool / consumable
 - `pieces` is only meaningful for `tracking_mode = unit`
+- `rentable` parses as a boolean — accept `TRUE`/`FALSE`, `yes`/`no`, `1`/`0` and blank, because a
+  Sheet column typed by a person will contain all of them. **Blank is not false**, it is "use the
+  default below"; a row that means false has to say so.
 - money columns parse as numbers, including when the Sheet has formatted them as text with ₹
+
+**`rentable` defaults to FALSE for the `Tool & spare` category, and true everywhere else.** The
+database column defaults to `true` (`0001`), which is right for a form where a person is looking at
+one product — and wrong for an import of two hundred rows, where the ladders and the spanners
+arrive silently offered for hire. `ask.html` would then quote a customer a stepladder, and nothing
+on any screen would look wrong.
+
+Two things this rule is deliberately not:
+
+- **Not consumables.** Fog fluid, tape and batteries are issued, charged and never expected back —
+  genuinely rentable, and the `consumable` tracking mode already says the rest. Only `Tool & spare`.
+- **Not a database default that varies by category.** That was considered and rejected: a rule
+  living in a schema default is invisible at the call site and nobody can see why their spanner
+  came back unhireable. In the importer it is overridable — a row that says `TRUE` wins — and it
+  gets reported, which is the point below.
+
+**Report the defaulted rows, do not just apply the default.** The import summary names every row
+where `rentable` was left blank and set false by category, e.g. *"14 Tool & spare rows imported as
+not for hire — set rentable TRUE in the sheet and re-import any you do hire out."* A default that
+happens silently is a rule nobody can see, which is the objection to putting it in the schema; a
+default that announces itself is a suggestion the operator can overrule.
 
 Report every rejected row with its reason, and import the rest. An all-or-nothing import of 200 rows
 that fails on row 3 is how people give up.
