@@ -1,3 +1,27 @@
+> # ⚠ SUPERSEDED — 2026-09-08
+>
+> **The Brand Kit arrived.** `reference/design/Ekum_Brand_and_UI_Laws.md` (Design Bible v6) is now
+> the source of truth for colour, type, elevation, radius, components, shell and copy. It is the
+> document this file kept saying was missing.
+>
+> Everything below was **derived provisionally** from the Phase 1 interactive bible precisely
+> because v6 did not exist. Read it for the *reasoning* — the measured contrast ratios, why
+> `--border` was split from `--edge`, why a hex outside `tokens.css` is a bug — all of which still
+> holds. Do **not** read it for values.
+>
+> The one thing that carries over unchanged is the rule at the top: `web/tokens.css` is the only
+> file that names a colour, so replacing the palette is a one-file change. That is what made this
+> supersession cheap, and it is why the rule was written.
+>
+> **What v6 governs, and what it does not:** Parts A, B, E, F and G apply to this app. Parts C, D
+> and H are Ekum's own navigation, screens and product architecture — a textile trading network
+> with followers, resale chains and quote cards. They are not this business and are deliberately
+> not imported. See the plan in `docs/decisions.md`.
+>
+> Where this file and v6 disagree, **v6 wins**, with two measured exceptions recorded in
+> `docs/decisions.md`: v6's `muted #828282` fails AA for body text at 3.47:1, and its
+> `danger #E5484D` fails at 3.53:1. Both are kept for fills and borders and replaced for *text*.
+
 # Design — where the look comes from, and what is still provisional
 
 ## The one thing to know
