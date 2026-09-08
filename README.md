@@ -8,9 +8,15 @@ Equipment rental management for DJ Network's, Ahmedabad. Supabase + static HTML.
 - **What is still unanswered:** `docs/open-questions.md`
 - **Found and not fixed:** `docs/backlog.md`
 - **Where the look comes from:** `docs/design.md` — provisional tokens, and what is still missing.
+- **Live site:** https://djnetworks.github.io/djnetworks/
 - **Verification that rolls itself back:** `supabase/probes/` — three, each asserting on numbers or status codes and each carrying a false-positive control.
 
 ## Status
+
+**Invite-only is now real, and verified from outside.** `POST /auth/v1/signup` with the publishable
+key answers **HTTP 422 `signup_disabled`** and creates no row — checked by making the request, not by
+reading the dashboard. `disable_signup` is `true`. The app still carries the nag on Today and Team;
+it now stays silent.
 
 **Access control is granular permissions, not a role and not a signup toggle.** `0017` made
 membership of the `operator` table the thing every policy tests; `0021` made *which* permission the
@@ -48,12 +54,35 @@ prefetch in signal, dispatch with no connection, queue surviving a page teardown
 reconnect, movements landing. Access control is enforced by an `operator` allowlist (`0017`), not by
 a signup toggle — a stranger who self-registers reads zero rows from every table.
 
-**Hosting: Cloudflare Pages**, connected to this private repo, auto-deploying on push to `main`.
-No build step — build command empty, output directory `web`. GitHub Pages was rejected rather than
-merely unavailable: on a free plan it requires the repo to be public, and publishing the repo would
-publish `docs/`, the backlog and every migration. `0017` makes the publishable key safe to ship;
-that is not a reason to ship the schema. Cache-busting on every deploy is in the `djn-deploy` skill
-and it has three steps, not one.
+**Live at https://djnetworks.github.io/djnetworks/**
+
+**Hosting: GitHub Pages, deployed by Actions** (`.github/workflows/pages.yml`). Every push to `main`
+uploads `web/` as the Pages artifact and deploys it; there is no build step and nothing to run
+locally. Pages' built-in source can only serve the repository root or `/docs`, and this site is in
+`web/` — pointing it at `docs/` would publish the backlog as a website and still not serve the app —
+so the workflow builds the artifact instead. It also refuses to deploy if anything key-shaped
+appears under `web/`.
+
+The repository is public. Before publishing it, every blob in the history — not just `HEAD` — was
+scanned for JWT-shaped tokens, `sb_secret_` values and service-role keys: none, ever. `.env` appears
+in no commit on any ref. `web/config.js` carries `sb_publishable_` only, which is public by design
+and is what `0017`, `0021` and RLS exist to make safe.
+
+**The site is served from a subpath**, `/djnetworks/`, and that works only because every path in the
+app is relative. Verified on the deployed site, not in the source: the service worker registers with
+scope `https://djnetworks.github.io/djnetworks/`, its shell cache holds 27 of 27 entries all under
+that prefix with none at the domain root, and the manifest's `start_url` and `scope` resolve inside
+it. One leading slash anywhere would produce a site that loads and then silently fails to cache.
+
+**What Pages cannot do is send headers.** `web/_headers` is kept for a host that can. Measured on
+the live origin: `Strict-Transport-Security` IS sent; `X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`, `Permissions-Policy` and both `Cache-Control` rules are not, and a CSP
+`frame-ancestors` cannot be set either. The one that mattered is framing, because the portal takes
+an access code — so `portal.html` hides itself and reveals only on confirming it is the top window.
+
+Cache-busting is still manual and still three steps, in the `djn-deploy` skill. Nothing about
+Actions changes that: the query strings in the HTML and the `CACHE` name in `sw.js` are what reach
+a phone that already has the old shell.
 
 What exists:
 
@@ -81,6 +110,10 @@ as a spec: two of its assumptions have already been contradicted by how the busi
 supabase link --project-ref hjidocpqcrfbjucvqggu
 supabase db push
 ```
+
+Deploys need nothing: push to `main` and the Pages workflow publishes `web/`. Watch it under
+**Actions → Deploy web/ to GitHub Pages**. Pages' source is set to **GitHub Actions**
+(Settings → Pages → Build and deployment → Source), not to a branch.
 
 ## Agents
 

@@ -481,12 +481,20 @@ uploading on reconnect is the fix, and it means the queue carrying binary rather
 `{path, at, caption}` and the return screen sends only the first two. A caption is what turns "a
 photograph of a speaker" into "the crack on the back panel, left corner" a week later on the phone.
 
-**GitHub Pages sends none of `web/_headers`, and one of them mattered.** Measured on a live 200 from
-`*.github.io`: the only header of interest is `cache-control: max-age=600`. So `X-Frame-Options`,
-`Referrer-Policy`, `Permissions-Policy`, `X-Content-Type-Options`, `Strict-Transport-Security` and
-both `Cache-Control` rules are lost, and a CSP `frame-ancestors` cannot be set either. `portal.html`
+**GitHub Pages drops five of the six headers in `web/_headers`, and one of them mattered.**
+Measured on our own live origin, which corrected an earlier measurement taken on a different
+`github.io` site: **`Strict-Transport-Security: max-age=31556952` IS sent** — that one is not lost.
+`X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-Content-Type-Options` and both
+`Cache-Control` rules are, and a CSP `frame-ancestors` cannot be set either. `portal.html`
 now defends itself in-page — hidden by default, revealed only when it confirms it is the top window
 — because that page takes an access code and a framed copy under a transparent overlay harvests it.
 The operator screens have no such guard and rely on the sign-in gate. The real fix is a host that
 sends headers; `web/_headers` is kept for exactly that.
+
+**`config.js` is fetched twice on every page load.** Visible only in the live network log: the HTML
+loads `config.js?v=<cache-bust>` and `app.js` then imports `./config.js` with no query, so the
+browser treats them as two resources. Harmless today — the service worker caches the unversioned
+one and the cache name changes on every deploy — but the unversioned import is outside the
+query-string cache-busting scheme, which is the one thing standing between a deploy and a stale
+screen. The fix is importing it with the same `?v=` the HTML uses.
 
