@@ -549,12 +549,10 @@ data: the number exists. Pooled ROI is `default_purchase_cost × quantity owned`
 rental revenue. It is a view change and therefore a migration, so it was not done in the reports
 pass — recorded here so it does not come to be believed impossible.
 
-**The flat "no measurement" bar has no token of its own.** The reports mockup uses `#CFCBC3` for it.
-This app's `--edge` is `#828282` — a control edge, and far too strong: a dark bar at full width
-reads as a full bar, i.e. a good result, which is the opposite of what the state means. `--shimmer`
-`#D8D5C6` is the nearest thing that exists and is used instead. Measured with the tokens-pass
-checker: 1.47:1 against `--surface`, 1.30:1 against its own trough — deliberately faint, and
-acceptable only because the words "Cost not recorded" carry the meaning, not the bar. If the flat
-bar should be legible in its own right it needs a token between `#D8D5C6` and `#828282`, which is a
-decision rather than a guess.
+**~~The flat "no measurement" bar has no token of its own~~ — RESOLVED by deleting the bar.** The
+hunt for a grey between `#D8D5C6` and `#828282` was the wrong question. A bar is a mark for a value;
+when the return is unknown there is no value, so the row now carries no track at all. A short flat
+bar reads as *a small number* and a full one reads as *complete* — both are the lie rule 3 exists to
+stop, and no colour fixes that. It also leaves the only near-empty bar on the screen meaning an
+honest zero.
 

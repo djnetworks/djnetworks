@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reports — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-23" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-23" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-23">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-25" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-25" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-25">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-23">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-23">
-<link rel="stylesheet" href="style.css?v=2026-09-08-23">
-<script src="vendor/supabase.js?v=2026-09-08-23" defer></script>
-<script src="boot.js?v=2026-09-08-23" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-25">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-25">
+<link rel="stylesheet" href="style.css?v=2026-09-08-25">
+<script src="vendor/supabase.js?v=2026-09-08-25" defer></script>
+<script src="boot.js?v=2026-09-08-25" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
          initOffline, revealActiveTab, loadPermissions, can, initNav }
-  from './app.js?v=2026-09-08-23';
+  from './app.js?v=2026-09-08-25';
 
 $('#chrome').innerHTML = chrome('reports.html');
 revealActiveTab();
@@ -137,7 +137,11 @@ async function load() {
 
 const prodOf = id => PRODUCTS.find(p => p.id === id);
 const nameOf = p => p ? ((p.brand ? p.brand + ' ' : '') + p.model_name) : 'unknown product';
-const pct = (n, max) => max > 0 ? Math.max(2, Math.round(100 * n / max)) : 0;
+// A 2% floor so a tiny value still draws something — but ONLY for a value that is actually above
+// zero. A true zero gets an empty track: drawing a sliver for 0.0% is the same lie as drawing a
+// flat bar for an unknown, one decimal place smaller. MH-BEAM has earned nothing back and the bar
+// says nothing back.
+const pct = (n, max) => (max > 0 && n > 0) ? Math.max(2, Math.round(100 * n / max)) : 0;
 
 function render() {
   $('#body').innerHTML = money_() + earning() + working() + customers() + breaks();
@@ -229,9 +233,14 @@ function earning() {
       : counted
         ? `<span class="rrow__v rrow__v--none">Not tracked<br>for counted stock</span>`
         : `<span class="rrow__v rrow__v--none">Cost not<br>recorded</span>`;
-    const bar = known
-      ? `<span class="bar"><i style="width:${pct(roi, max)}%"></i></span>`
-      : `<span class="bar bar--flat"><i style="width:100%"></i></span>`;
+    // NO BAR AT ALL when the return is unknown. A bar is a mark for a value; there is no value, so
+    // any bar is decoration standing where data should be — and a short one reads as "a small
+    // number", which is the exact lie rule 3 exists to stop. A full-width flat one is no better: it
+    // reads as complete. The label carries the meaning and needs no help.
+    //
+    // It also protects the honest zero. With the unpriced rows carrying no track, the only
+    // near-empty bar on the screen is MH-BEAM's, which genuinely means zero.
+    const bar = known ? `<span class="bar"><i style="width:${pct(roi, max)}%"></i></span>` : '';
     // The piece count is shown ONLY where it means something: a unit product with unpriced pieces.
     const note = (!known && !counted && Number(r.units_missing_cost) > 0)
       ? ` · ${esc(r.units_missing_cost)} of ${esc(r.units_ever)} pieces unpriced` : '';

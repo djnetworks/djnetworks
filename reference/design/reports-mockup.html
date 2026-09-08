@@ -337,8 +337,12 @@
   <footer>
     <b>Example figures.</b> Products and customers are from the test fixture; the amounts are
     illustrative. Every number here comes from views that already exist &mdash; v_product_roi,
-    v_unit_utilisation, v_customer_figures and the movement ledger &mdash; except repairs per 10 jobs,
-    which needs one new view.
+    v_unit_utilisation, v_customer_figures and the movement ledger.
+    <br><br>
+    <b>Corrected 8 Sep 2026.</b> This line previously said repairs per 10 jobs &ldquo;needs one new
+    view&rdquo;. It does not: <code>repair_job</code> joins through <code>unit</code> to
+    <code>v_unit_utilisation.times_hired</code>, measured in SQL before the screen was built. No
+    migration was needed for any figure on this page.
   </footer>
 
 </div>

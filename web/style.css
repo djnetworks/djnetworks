@@ -920,12 +920,13 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
      --r-card/-input/-pill  --radius-card / --radius-input / --radius-pill
      --r-btn 13px      --radius-btn 14px  ours
 
-   THE ONE THAT DOES NOT MAP: the mockup's --edge #CFCBC3, used only for the flat
-   "no measurement" bar. This app's --edge is #828282 — a CONTROL edge, and far too
-   strong: a dark bar at 100% width reads as a full bar, i.e. as a good result,
-   which is the opposite of what it means. --shimmer #D8D5C6 is the nearest thing
-   that exists and is a neutral fill by definition. Flagged rather than invented;
-   if it wants a token of its own, that is a decision, not a guess.
+   THE ONE THAT DID NOT MAP — the mockup's --edge #CFCBC3, for the flat "no
+   measurement" bar — turned out to be the wrong question. There is no flat bar. A
+   bar is a mark for a value, and when the return is unknown there is no value, so
+   the row carries no track at all: a short flat bar reads as a small number and a
+   full one reads as complete, and rule 3 exists to stop precisely that lie. The
+   label carries it. Every colour on this screen now maps to a token that already
+   existed; nothing was invented and nothing needed to be.
 
    The dark-theme blocks in the mockup are ignored on instruction — this app is
    light-only and has no dark surface to map to.
@@ -997,7 +998,8 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 /* The bar. Thin, left-anchored, teal on a foam trough. */
 .bar { grid-column: 1 / 3; height: 6px; border-radius: 4px; background: var(--accent-soft); overflow: hidden; margin-top: 3px; }
 .bar i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
-/* No measurement exists. Inert grey, and it is FULL width on purpose — a short grey bar would be
-   read as a low score, which is the exact lie this state exists to avoid. */
-.bar--flat { background: var(--tint-neutral); }
-.bar--flat i { background: var(--shimmer); }
+/* THERE IS NO FLAT BAR. When the return is unknown the row carries no track at all.
+   A bar is a mark for a value; with no value, a short bar reads as a small number and a full one
+   reads as complete — both lies, and rule 3 exists to stop exactly that one. The words "Cost not
+   recorded" carry it. This also leaves the only near-empty bar on the screen meaning an honest
+   zero. The token hunt for a "flat grey" was the wrong question. */

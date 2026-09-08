@@ -312,3 +312,26 @@ happens when the picture is taken and the path is held until "Record returns".
 undone and rewritten. Judged acceptable because the screen puts the camera in the row, under the
 deduction, which is the only moment anybody is looking at the damage. The counterweight is on
 screen: money coming off a deposit with no photograph shows a warning until there is one.
+
+### No customer is ever labelled "always pays" — and that is the FOURTH thing posting-on-confirmation has cost
+The reports mockup tagged a customer *"always pays"*, and the spec's own section list said *"pays on
+time"*. Both were replaced with the fact underneath: "₹2,800.00 owed · 30 days", "nothing owed ·
+never late", "2 returned late".
+**Why:** revenue posts on order CONFIRMATION, so a customer with three confirmed jobs and nothing
+dispatched owes ₹0.00 and reads as a model payer. The verdict is not merely unprovable, it is
+reliably wrong in the one direction that matters — it recommends the customer you have not yet been
+paid by. `0025` refused to compute it for `v_customer_figures`; this is the same refusal on a second
+screen, which is why it is written down as a decision rather than left as a code comment.
+**Cost:** the screen is a page of numbers with no summary judgement, and chachu does the judging.
+Every customer row carries the line "Facts, not a verdict — what they mean is yours to decide."
+
+**AND THE COUNT IS NOW THE ARGUMENT.** `docs/backlog.md` already traced three things to
+posting-on-confirmation: the damage charge recorded on return that never reaches the balance, the
+`deposit_amount` / `deposit_held` label collision, and the entire reversal apparatus `0018` exists
+to make work. This is the fourth, and it is the first that reaches the *screen* rather than the
+schema — the others cost migrations, this one costs the operator a figure he cannot trust.
+
+Four consequences from one posting rule is no longer a list of separate bugs; it is the shape of the
+rule showing through. The decision to revisit it **before the first real customer is billed** should
+now be read as a recommendation rather than an option. Nothing here has met a customer who queries
+an invoice, and after that it is expensive.
