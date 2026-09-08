@@ -1,6 +1,8 @@
 # Open questions
 
 Ordered by what they block. Items 1 and 3 are blocking; the rest can be answered while building.
+Items 9-11 were exposed by drafting the seven questions for chachu, not by building — asking is
+cheaper than discovering.
 
 ---
 
@@ -78,8 +80,60 @@ routinely, the inclusion-list workaround will start to hurt.
 
 ## 8. Does chachu hire out tools, ladders and generators
 
-Tool & spare is currently flagged not rentable. Power (generators, distribution boxes, stabilisers)
-is unit-tracked and rentable, which is probably right — but the boundary is a guess.
+`product.rentable` exists (`0001`, `boolean not null default true`) and is wired end to end: a
+checkbox on the product form, a badge in the list, and filtered out of both `ask.html`'s
+availability check and `orders.html`'s line picker. So the answer costs a tick per product, not a
+migration.
+
+**What is NOT true, and this line used to say it was:** nothing is currently flagged. `0005`'s
+"Tool & spare is additionally flagged not rentable" is a *comment recording intent*, not a
+statement that runs — `rentable` lives on `product` and `Tool & spare` is a **category**, and
+`category` has no such column. Every product in the fixture is `rentable = true`. Whoever creates
+a tool or a ladder has to untick the box by hand, and nothing reminds him.
+
+So the open question is really two:
+- does he hire out generators, ladders and tool kits at all — Power is unit-tracked and rentable
+  today, which is probably right, but the boundary is a guess; and
+- should `rentable` default from the **subcategory** rather than from `true`, so that a fleet
+  entered through the bulk import does not arrive with every spanner offered for hire.
+
+---
+
+## 9. "On the order but not counted" has no tracking mode
+
+Asking chachu how to hold cables, stands and clamps exposed a third answer the schema cannot
+express. `pool` counts them and `consumable` charges them and never expects them back; "write it on
+the order so it is priced and remembered, but do not keep a running count" is neither. The nearest
+thing available — a pooled product with no stock recorded — reports **zero available** and blocks
+the order, which is the opposite of what he would mean.
+
+If that is how he actually works for the low-value long tail, it is a fourth mode or a
+`counts_stock` flag on `pool`, not a workaround.
+
+---
+
+## 10. Should `discount_tier` exist at all
+
+Item 5 asks what the percentages are. That assumes the answer is a number, and it may not be. If
+long-hire pricing is negotiated per party rather than by slab, the table is dead weight: rule 5
+already writes the agreed rate onto `order_line`, so nothing is lost by deleting it and quite a lot
+of confusion is avoided by not carrying a rate card that nobody applies.
+
+Ask which of the two it is **before** asking for percentages, because "har party se alag" is not a
+variant of the same answer — it deletes the table.
+
+---
+
+## 11. "Gujarati mein chahiye" is two questions, and one of them is a project
+
+- **His vocabulary.** Trade words instead of software words — already the standing rule, and
+  already partly done ("Send out", "Came back", "Equipment"). More of it is a copy pass, an
+  afternoon.
+- **Translating the app.** Gujarati strings across 13 HTML files and `app.js`, with no i18n layer of
+  any kind today — every string is inline in markup. That is a project, and it also raises a
+  question nobody has asked: does the *customer portal* change language too, and per customer?
+
+Find out which he means before agreeing to it. They cost two different things.
 
 ---
 

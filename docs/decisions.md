@@ -39,7 +39,9 @@ happen after dispatch, which is where unit tracking actually earns its keep.
 
 ### Three tracking modes
 `unit` for numbered boxes; `pool` for Cable, Mic accessory, Stand & rigging and Tool & spare;
-`consumable` for fog fluid, tape and batteries. Tool & spare is also flagged not rentable.
+`consumable` for fog fluid, tape and batteries. Tools and spares get `product.rentable = false`,
+which keeps them out of the availability check and the order picker — but that is a per-product
+tick with no category-level default, so nothing applies it automatically. See open-questions 8.
 **Why:** numbering 200 XLR cables is a fantasy nobody sustains, and a system abandoned in one corner
 gets distrusted everywhere. Consumables are charged and never come back, which is a third case, not
 a kind of pool.
