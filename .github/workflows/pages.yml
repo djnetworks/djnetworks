@@ -1,0 +1,61 @@
+# Deploy web/ to GitHub Pages.
+#
+# WHY A WORKFLOW AND NOT THE BRANCH SETTING. GitHub Pages' built-in source can serve the repository
+# root or /docs, and nothing else. This site lives in web/, and docs/ is the design documentation —
+# pointing Pages at it would publish the backlog as a website and still not serve the app. So the
+# artifact is built here: upload web/, deploy that.
+#
+# The app is subpath-safe, which is what makes this work at https://<user>.github.io/<repo>/ rather
+# than at a domain root. Checked rather than assumed: the service worker registers 'sw.js' with no
+# leading slash (so its scope becomes the subpath), the manifest uses "start_url": "index.html" and
+# "scope": "./", the shell list in sw.js is entirely relative, and no HTML file references an asset
+# as "/something". One leading slash anywhere in that list would produce a site that loads and then
+# fails to cache, offline, on a phone at a venue.
+name: Deploy web/ to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: this needs to read the repo and mint a Pages deployment, and nothing else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one in flight — a half-replaced shell is worse than an old
+# one, because sw.js and the files it caches would come from different builds.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse to publish a secret
+        run: |
+          # Cheap, and it runs on every deploy rather than once when somebody remembered to look.
+          # .env is gitignored, but a gitignore is a convention and this is a public artifact.
+          if [ -f web/.env ] || [ -f web/.dev-session.json ]; then
+            echo "::error::A credential file is inside web/ and would be published. Refusing."; exit 1
+          fi
+          if grep -rlE 'sb_secret_[A-Za-z0-9]|eyJ[A-Za-z0-9_-]{20,}' web/ ; then
+            echo "::error::web/ contains something shaped like a service-role key or a JWT. Refusing."; exit 1
+          fi
+          echo "web/ carries only the publishable key, which is public by design."
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

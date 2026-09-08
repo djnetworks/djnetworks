@@ -256,16 +256,6 @@ finding it in the list and reopening it.
 
 
 
-**The portal code has no rate limiting, and that is the weak point of the portal.** `fn_portal_view`
-is callable by `anon` over `/rest/v1/rpc/fn_portal_view` with no throttle. The code is eight
-characters from a 32-symbol alphabet — about 10^12 combinations, which is far too many to guess by
-hand and not obviously too many for a script left running. The phone number narrows nothing, since
-a customer's WhatsApp number is not secret. Mitigations, roughly in order of effort: a per-IP rate
-limit in front of the function, a lockout counter on `customer` after N failures, or the change that
-makes this moot — replacing the static code with a one-time code, which `docs/open-questions.md`
-item 2 already prefers. The gate was deliberately built as a separate function from the query so
-that swap touches nothing else.
-
 **The Sheet's IN lane does not exist yet.** `sheet/DataSync.gs` and the `sheet-mirror` function are
 the read-only mirror OUT. The bulk catalogue importer — the lane that actually matters, because the
 catalogue is empty and the fleet runs to hundreds of items — is still to build, with validation
@@ -490,3 +480,13 @@ uploading on reconnect is the fix, and it means the queue carrying binary rather
 **`photos` has a `caption` in its contract and nothing writes one.** The shape allows
 `{path, at, caption}` and the return screen sends only the first two. A caption is what turns "a
 photograph of a speaker" into "the crack on the back panel, left corner" a week later on the phone.
+
+**GitHub Pages sends none of `web/_headers`, and one of them mattered.** Measured on a live 200 from
+`*.github.io`: the only header of interest is `cache-control: max-age=600`. So `X-Frame-Options`,
+`Referrer-Policy`, `Permissions-Policy`, `X-Content-Type-Options`, `Strict-Transport-Security` and
+both `Cache-Control` rules are lost, and a CSP `frame-ancestors` cannot be set either. `portal.html`
+now defends itself in-page — hidden by default, revealed only when it confirms it is the top window
+— because that page takes an access code and a framed copy under a transparent overlay harvests it.
+The operator screens have no such guard and rely on the sign-in gate. The real fix is a host that
+sends headers; `web/_headers` is kept for exactly that.
+
