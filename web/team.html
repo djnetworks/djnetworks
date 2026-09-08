@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Team — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-34" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-34" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-34">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-35" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-35" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-35">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-34">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-34">
-<link rel="stylesheet" href="style.css?v=2026-09-08-34">
-<script src="vendor/supabase.js?v=2026-09-08-34" defer></script>
-<script src="boot.js?v=2026-09-08-34" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-35">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-35">
+<link rel="stylesheet" href="style.css?v=2026-09-08-35">
+<script src="vendor/supabase.js?v=2026-09-08-35" defer></script>
+<script src="boot.js?v=2026-09-08-35" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -26,9 +26,9 @@
 
 <script type="module">
 import { savedLine, sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, toast, openSheet,
-         initOffline, revealActiveTab, loadPermissions, can, cardList, guardedWrite }
-  from './app.js?v=2026-09-08-34';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-34';
+         initOffline, revealActiveTab, loadPermissions, can, cardList, guardedWrite, focusField }
+  from './app.js?v=2026-09-08-35';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-35';
 
 $('#chrome').innerHTML = chrome('team.html');
 revealActiveTab();
@@ -177,8 +177,8 @@ function openMember(m) {
         <input class="field__input" id="t-name" value="${esc(m?.display_name ?? '')}"></label>
 
       ${isNew ? `<label class="field"><span class="field__label">Password</span>
-          <input class="field__input" id="t-pass" type="text" autocapitalize="none"
-                 placeholder="at least 8 characters"></label>` : ''}
+          <input class="field__input" id="t-pass" type="text" autocapitalize="none" autocorrect="off"
+                 spellcheck="false" placeholder="at least 8 characters"></label>` : ''}
 
       <div class="card card--sunk">
         <strong>What can this person do?</strong>
@@ -195,15 +195,15 @@ function openMember(m) {
 
       <div class="sheet__foot">
         <button class="btn" data-sheet-close type="button">Cancel</button>
-        <button class="btn btn--primary" id="t-save" type="button">${isNew ? 'Add them' : 'Save'}</button>
+        <button class="btn btn--primary" id="t-save" type="button">${isNew ? 'Add' : 'Save'}</button>
       </div>
     </div>
   </div>`);
 
   $('#t-save').addEventListener('click', () => guardedWrite($('#t-save'), 'Saving…', async () => {
     const name = $('#t-name').value.trim();
-    if (!name) { toast('Name required.', 'error'); return; }
-
+    // Validation follows FIELD ORDER (Email, Name, Password) and points at the offending field with
+    // focusField, not a bottom toast the operator has to hunt for on a scrollable sheet (app.js).
     // Back into the database's own keys. The screen asks nine questions; the policies test eleven.
     const next = {};
     for (const el of $$('.t-mod')) {
@@ -216,8 +216,9 @@ function openMember(m) {
       if (isNew) {
         const email = $('#t-email').value.trim();
         const password = $('#t-pass').value;
-        if (!email) { toast('Email required.', 'error'); return; }
-        if (password.length < 8) { toast('Password of at least 8 characters.', 'error'); return; }
+        if (!email) { toast('Email required.', 'error'); focusField('#t-email'); return; }
+        if (!name) { toast('Name required.', 'error'); focusField('#t-name'); return; }
+        if (password.length < 8) { toast('Password of at least 8 characters.', 'error'); focusField('#t-pass'); return; }
         // The one place a login is created. The service key lives in the function, never here — see
         // the header. The caller's token is sent for the function to verify; a user id is never sent.
         const { data: { session } } = await sb.auth.getSession();
@@ -232,6 +233,7 @@ function openMember(m) {
         LAST_SAVED = { what: `Added ${name}`, at: new Date() };
         toast('Added.');
       } else {
+        if (!name) { toast('Name required.', 'error'); focusField('#t-name'); return; }
         const { error } = await sb.rpc('fn_team_set_permissions', {
           p_user_id: m.user_id, p_permissions: next,
           p_display_name: name, p_active: $('#t-active').checked,

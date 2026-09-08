@@ -109,7 +109,13 @@ Deno.serve(async (req) => {
     .select('id', { count: 'exact', head: true }).eq('actor', actor).gte('at', since);
   const ipCount = ip
     ? await service.from('team_create_attempt').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('at', since)
-    : { count: 0 };
+    : { count: 0, error: null };
+  // FAIL CLOSED. If the count itself cannot be read, refuse — the wall must not quietly vanish on a
+  // database hiccup, and "(count ?? 0)" would have skipped the limit entirely on a query error.
+  if (actorCount.error || (ip && ipCount.error)) {
+    await log({ actor, ip, ok: false, outcome: 'rate_limited' });
+    return json(503, { error: 'Could not check the limit just now. Try again in a moment.' });
+  }
   if ((actorCount.count ?? 0) >= await setNum('team_create_actor_max', 10)
       || (ipCount.count ?? 0) >= await setNum('team_create_ip_max', 20)) {
     await log({ actor, ip, ok: false, outcome: 'rate_limited' });
@@ -147,8 +153,15 @@ Deno.serve(async (req) => {
   //      account that can sign in with no operator row.
   const grant = await caller.rpc('fn_team_add', { p_user_id: newId, p_display_name: name, p_permissions: perms });
   if (grant.error) {
-    await service.auth.admin.deleteUser(newId);
+    const del = await service.auth.admin.deleteUser(newId);
     await log({ actor, email, ip, ok: false, outcome: 'grant_failed' });
+    if (del.error) {
+      // Grant failed AND rollback failed: an email-confirmed login exists with no operator row. It
+      // can authenticate but passes zero RLS checks (fn_has_permission finds no row), so it is
+      // INERT — but it must be removed by hand. Surface it in the function log rather than swallow it.
+      console.error(`team-create: ORPHAN LOGIN not rolled back — ${email} (${newId}): ${del.error.message}`);
+      return json(500, { error: `Permissions could not be written and the empty login could not be removed automatically. A no-access login for ${email} exists; delete it in Authentication → Users.` });
+    }
     return json(500, { error: 'The account was rolled back — its permissions could not be written. Nothing was created.' });
   }
 

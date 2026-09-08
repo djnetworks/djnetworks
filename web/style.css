@@ -178,7 +178,10 @@ a.btn, a.item { text-decoration: none; }
   /* --edge. A field is the thing most often aimed at one-handed in sunlight, and at 1.11:1 its
      boundary was effectively invisible — you found the box by finding the label above it. */
   border: 1px solid var(--edge); border-radius: var(--radius-input);
-  font: inherit; background: var(--surface); color: var(--ink);
+  /* family and weight from the body, but NOT the size: `font: inherit` (the shorthand) was resetting
+     the 16px above back to the body's 14px, which is the exact iOS-zoom bug the comment up top warns
+     against. Set the two properties that were actually wanted instead of the shorthand that undoes it. */
+  font-family: inherit; font-weight: inherit; background: var(--surface); color: var(--ink);
 }
 .field__area { min-height: 80px; resize: vertical; }
 .field__input:focus, .field__select:focus, .field__area:focus {
