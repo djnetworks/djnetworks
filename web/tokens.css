@@ -122,7 +122,6 @@
   --shadow:       0 12px 30px rgba(51, 39, 27, .08);
   --shadow-toast: 0 6px 24px rgba(0, 0, 0, .18);
   --shadow-sheet: 0 -15px 45px rgba(0, 0, 0, .12);   /* a sheet rises from the bottom edge */
-  --shadow-nav:   0 -6px 18px rgba(51, 39, 27, .07);  /* cast upward: the nav sits above content */
   --scrim:        rgba(51, 39, 27, .45);   /* behind a sheet and behind the More menu */
 
   /* -------------------------------------------------------------------------

@@ -40,6 +40,11 @@ Everything else comes from `web/tokens.css`. Do not restate hexes in screen file
 Inter throughout. **Legibility floor: any text carrying a decision is ≥ 12px.** 11px is for pure
 metadata only.
 
+**Inputs are pinned to 16px, deliberately — do not "fix" this back to the body size.** iOS Safari
+zooms the page whenever a focused field is under 16px, on the one device this app is built for.
+Body is 14px as specified above; `.field__input`, `.field__select` and `.field__area` set 16px
+explicitly rather than inheriting. Decided 8 September after the consistency pass raised it.
+
 | element | size | weight |
 |---|---|---|
 | Page title | 24–25px | 700 |

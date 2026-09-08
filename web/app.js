@@ -20,8 +20,8 @@
 // INVISIBLE UNTIL IT WAS SERVED FROM A REAL ORIGIN. Locally both spellings come off the same dev
 // server in a millisecond and nothing looks wrong. It showed up as two lines in the live network
 // log. See the djn-deploy skill.
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-30';
-import * as store from './db.js?v=2026-09-08-30';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-32';
+import * as store from './db.js?v=2026-09-08-32';
 
 // The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
 //
@@ -69,6 +69,66 @@ export function money(v) {
 export const publicUrl = path => !path ? null
   : path.startsWith('http') ? path
   : sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
+
+/**
+ * THE ICON SET. One inline SVG family, and the reason it exists rather than emoji.
+ *
+ * Every icon in this app was an emoji: 📡 📋 ✅ 📦 🏷 🔒 📍 🔍 🎛 👥 👆. Three problems, none of
+ * which a better-chosen emoji fixes:
+ *
+ *   1. They are a different picture on every OS and version. The operator's phone, the staff
+ *      member's phone and the laptop the catalogue is typed on do not agree on what 🎛 looks like.
+ *   2. They cannot take a colour. `fill="currentColor"` does nothing to a colour emoji, so the
+ *      active-nav teal, the muted state and the disabled state simply do not apply to them — the
+ *      one place in this app where a rule silently stops working.
+ *   3. Several are more saturated than --tangerine, which breaks the one-attention-colour law
+ *      without anybody choosing to.
+ *
+ * So: stroke-based, 24px grid, 1.75px stroke, `stroke="currentColor" fill="none"`. Every icon
+ * inherits the colour of whatever it sits in, which means the existing active / muted / disabled
+ * rules work on icons for the first time.
+ *
+ * NO ICON FONT AND NO CDN. This app vendors its Supabase client precisely so it owes nothing to the
+ * public internet, and it runs offline behind a service worker. Fetching icons would reverse that
+ * decision for decoration.
+ */
+const ICON_PATHS = {
+  // the five nav slots
+  home:     '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4v-5H9v5H5a1 1 0 0 1-1-1z"/>',
+  jobs:     '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>',
+  gear:     '<path d="M12 3 3 7.5v9L12 21l9-4.5v-9z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
+  money:    '<path d="M7 6h10M7 10h10M9 6c3.5 0 5 1.6 5 4s-1.5 4-5 4h-2l7 6"/>',
+  reports:  '<path d="M5 20V10M12 20V4M19 20v-7"/>',
+  // the actions
+  sendout:  '<path d="M12 20V5M6 11l6-6 6 6"/>',
+  return:   '<path d="M12 4v15M6 13l6 6 6-6"/>',
+  transfer: '<path d="M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3"/>',
+  search:   '<circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>',
+  filter:   '<path d="M4 6h16l-6 7v6l-4-2v-4z"/>',
+  add:      '<path d="M12 5v14M5 12h14"/>',
+  edit:     '<path d="M4 20h4L19 9a2 2 0 0 0-3-3L5 17z"/>',
+  chevron:  '<path d="m9 5 7 7-7 7"/>',
+  close:    '<path d="M6 6l12 12M18 6 6 18"/>',
+  check:    '<path d="m4 12 5 5L20 6"/>',
+  photo:    '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4 4 3 3-2 4 3"/>',
+  warning:  '<path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17.2v.1"/>',
+  offline:  '<path d="M4 4l16 16M8.5 15.5a5 5 0 0 1 5.2-1.2M5 12a10 10 0 0 1 4-2.4M2 8.5a15 15 0 0 1 5-3M12 19v.1"/>',
+};
+
+/**
+ * One icon, as an inline SVG string.
+ *
+ * `aria-hidden` by default: an icon beside a label is decoration and a screen reader saying
+ * "image, home, Home" is worse than silence. Pass a `label` only where the icon is genuinely alone.
+ */
+export function icon(name, { size = 22, label = '' } = {}) {
+  const d = ICON_PATHS[name];
+  if (!d) return '';
+  return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+    ${label ? `role="img" aria-label="${esc(label)}"` : 'aria-hidden="true" focusable="false"'}
+    >${d}</svg>`;
+}
 
 /**
  * DAMAGE PHOTOGRAPHS (0028). The other bucket, and everything about it is the opposite.
@@ -569,6 +629,30 @@ export function confirmBlock(host, { what, detail = '', at = new Date() }) {
 }
 
 /**
+ * THE CHEAP DURABLE RECEIPT — one line, with a clock time.
+ *
+ * confirmBlock() is the full card, for writes that move stock or money. This is the same promise in
+ * one line, for the writes that only change a record: a customer edited, a product renamed, a piece
+ * added.
+ *
+ * WHY THOSE NEED ONE AT ALL. The argument for a durable receipt is not that the act is commercial —
+ * it is that on a bad signal the operator cannot tell whether the write landed, and that is exactly
+ * as true of a customer edit as of a dispatch. A toast is gone in 3.5 seconds and takes the only
+ * evidence with it.
+ *
+ * RULE 18 APPLIES HERE TOO: the host must sit outside whatever the write's own reload rebuilds, or
+ * this line is destroyed by the thing it is confirming.
+ */
+export function savedLine(host, what, at = new Date()) {
+  if (!host) return;
+  const time = at.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })
+    .replace(/\s/g, ' ');
+  host.innerHTML = `<p class="saved" role="status">
+    <span class="saved__tick" aria-hidden="true">${icon('check', { size: 14 })}</span>
+    ${esc(what)} · ${esc(time)}</p>`;
+}
+
+/**
  * REMEMBER A LIST'S FILTERS BETWEEN VISITS (v6 Law 11).
  *
  * "Preserve drafts/selections/filters/scroll." Every filter in this app reset the moment the page
@@ -721,9 +805,17 @@ export function networkMessage(e) {
  * Every screen uses this, so the three states look the same everywhere and none of them
  * can be forgotten — an empty grid with no explanation is the failure mode this exists to stop.
  */
-export function stateBlock({ icon = '', title, body = '', actionLabel = '', actionId = '' }) {
+/**
+ * `glyph`, not `icon`, for two reasons. It takes RAW SVG from icon() rather than a character, so it
+ * must not be escaped — and the old name now shadows the exported icon() function inside this
+ * scope, which is a trap rather than a bug only because nothing here happens to call it yet.
+ *
+ * With no glyph the element is omitted entirely, not left empty: an empty div still takes its
+ * margin, and a refusal that opens with a blank band above the sentence reads as a broken screen.
+ */
+export function stateBlock({ glyph = '', title, body = '', actionLabel = '', actionId = '' }) {
   return `<div class="state">
-    <div class="state__icon" aria-hidden="true">${esc(icon)}</div>
+    ${glyph ? `<div class="state__icon" aria-hidden="true">${glyph}</div>` : ''}
     <h2 class="state__title">${esc(title)}</h2>
     ${body ? `<p class="state__body">${esc(body)}</p>` : ''}
     ${actionLabel ? `<button class="btn btn--primary" id="${esc(actionId)}">${esc(actionLabel)}</button>` : ''}
@@ -1066,10 +1158,10 @@ export function wordmark({ large = false, invert = false, href = null } = {}) {
  * Team, settings and the account are NOT departments. They are in the top bar.
  */
 const DEPARTMENTS = [
-  { id: 'home',    label: 'Home',    icon: '\u2302',
+  { id: 'home',    label: 'Home',    icon: 'home',
     screens: [ { href: 'index.html', label: 'Home', key: null } ] },
 
-  { id: 'jobs',    label: 'Jobs',    icon: '\u2637',
+  { id: 'jobs',    label: 'Jobs',    icon: 'jobs',
     screens: [
       { href: 'orders.html',   label: 'Orders',       key: 'orders.write'  },
       { href: 'ask.html',      label: 'Availability', key: null            },
@@ -1077,20 +1169,20 @@ const DEPARTMENTS = [
       { href: 'return.html',   label: 'Return',       key: 'returns.write' },
     ] },
 
-  { id: 'gear',    label: 'Gear',    icon: '\u25A3',
+  { id: 'gear',    label: 'Gear',    icon: 'gear',
     screens: [
       { href: 'units.html',    label: 'Equipment',    key: 'equipment.write' },
       { href: 'products.html', label: 'Products',     key: 'products.write'  },
       { href: 'transfer.html', label: 'Load the van', key: 'equipment.write' },
     ] },
 
-  { id: 'money',   label: 'Money',   icon: '\u20B9',
+  { id: 'money',   label: 'Money',   icon: 'money',
     screens: [
       { href: 'customers.html', label: 'Customers',   key: 'customers.write' },
       { href: 'ledger.html',    label: 'Ledger',      key: 'ledger.view'     },
     ] },
 
-  { id: 'reports', label: 'Reports', icon: '\u2211',
+  { id: 'reports', label: 'Reports', icon: 'reports',
     screens: [ { href: 'reports.html', label: 'Reports', key: 'numbers.view' } ] },
 ];
 
@@ -1226,7 +1318,7 @@ function navMarkup() {
       const on = activeDept && activeDept.id === d.id;
       return `<a class="nav__item${on ? ' is-active' : ''}" href="${screens[0].href}"${
         on ? ' aria-current="page"' : ''}>
-        <span class="nav__icon" aria-hidden="true">${d.icon}</span>
+        <span class="nav__icon">${icon(d.icon, { size: 24 })}</span>
         <span class="nav__label">${esc(d.label)}</span></a>`;
     }).join('')}
   </nav>`;

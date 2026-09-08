@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Equipment — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -32,10 +32,10 @@
 <div id="sheet-host"></div>
 
 <script type="module">
-import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
+import { savedLine, icon, sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, fmtDate, todayLocal, networkMessage, initOffline,
          revealActiveTab, cardList, loadPermissions, publicUrl, signedPhotoUrl }
-  from './app.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('units.html');
 revealActiveTab();
@@ -67,11 +67,18 @@ async function boot() {
       <div><h1>Equipment</h1></div>
       <button class="btn btn--primary" id="bulk" hidden>Add pieces</button>
     </div>
+      <!-- Rule 18: the receipt lives OUTSIDE the region load() rebuilds. -->
+      <div id="saved"></div>
     <div id="picker"></div>
     <div id="body" class="skeleton"><div class="skeleton__row"></div><div class="skeleton__row"></div></div>`;
   $('#bulk').addEventListener('click', () => openBulk(SELECTED));
   await load();
 }
+
+// The cheap durable receipt (§6 law 4). Held in a variable and repainted after every load, because
+// load() rebuilds the list and would wipe a line written straight to the DOM — rule 18.
+let LAST_SAVED = null;
+function paintSaved() { if (LAST_SAVED) savedLine($('#saved'), LAST_SAVED.what, LAST_SAVED.at); }
 
 async function load() {
   $('#body').className = 'skeleton';
@@ -124,6 +131,7 @@ async function load() {
     $('#body').innerHTML = errorBlock(err, 'retry');
     $('#retry')?.addEventListener('click', load);
   }
+  paintSaved();
 }
 
 /** What the ?status= tile narrowed this screen to, and the way back out of it. */
@@ -209,7 +217,7 @@ async function renderBody() {
   if (!PRODUCTS.length && STATUS_FILTER && ALL_NUMBERED.length) {
     body.className = '';
     body.innerHTML = stateBlock({
-      icon: '✅',
+      glyph: icon('check'),
       title: STATUS_FILTER === 'out' ? 'Nothing is out with a customer' : 'Nothing is at a repair shop',
       body: `Every numbered piece of the ${ALL_NUMBERED.length} product${ALL_NUMBERED.length === 1 ? '' : 's'} `
           + 'you own is accounted for somewhere else.',
@@ -224,7 +232,6 @@ async function renderBody() {
   if (!PRODUCTS.length) {
     body.className = '';
     body.innerHTML = stateBlock({
-      icon: '🏷️',
       title: 'No numbered products yet',
       body: 'Pieces belong to a product, so a product has to exist first — and it has to be one tracked '
           + 'as numbered pieces. Cables and fog fluid are counted instead, and never get piece numbers.',
@@ -270,7 +277,7 @@ async function renderBody() {
   // A product that exists but has no pieces yet — the state right after adding a product.
   if (!UNITS.length) {
     body.innerHTML = stateBlock({
-      icon: '📦',
+      glyph: icon('gear'),
       title: `${SELECTED.short_code} has no pieces yet`,
       body: 'Add them all at once: enter how many, pick where they live, and each one is numbered and '
           + 'given an opening movement so it can never exist without a location.',
@@ -668,6 +675,7 @@ async function openBulk(product) {
       return;
     }
 
+    LAST_SAVED = { what: n === 1 ? `Piece ${nextNo} created` : `${n} pieces created`, at: new Date() };
     toast(n === 1 ? `Piece ${nextNo} created.` : `${n} pieces created, numbered ${nextNo}–${nextNo + n - 1}.`);
     sheet.close();
     await load();

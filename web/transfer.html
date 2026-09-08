@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Load the van — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -25,10 +25,10 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, store, $, $$, esc, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
+import { icon, sb, store, $, $$, esc, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
          toast, initOffline, syncNow, revealActiveTab, loadPermissions, can, trackBadge,
          newRequestId, guardedWrite, publicUrl, confirmBlock }
-  from './app.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('transfer.html');
 revealActiveTab();
@@ -61,7 +61,7 @@ requireSession(async () => {
   await loadPermissions();
   if (!can('equipment.write')) {
     $('#app').innerHTML = `<h1>Load the van</h1>` + stateBlock({
-      icon: '🔒', title: 'This account cannot move gear between our places',
+      title: 'This account cannot move gear between our places',
       body: 'This account can record what goes out to a customer and what comes back, but not '
           + 'where our own equipment sits in between. Ask whoever manages the team.',
     });
@@ -116,7 +116,7 @@ async function load() {
 
     if (LOCS.length < 2) {
       $('#body').innerHTML = stateBlock({
-        icon: '📍', title: 'There is only one place to be',
+        title: 'There is only one place to be',
         body: 'Moving gear needs somewhere to move it to. Add a second location — a van, the shop — '
             + 'in Supabase (table location) and this screen becomes useful.',
       });
@@ -164,7 +164,7 @@ function render() {
   body.className = '';
   if (!here.length) {
     body.innerHTML = stateBlock({
-      icon: '📦', title: 'Nothing is standing here',
+      glyph: icon('gear'), title: 'Nothing is standing here',
       body: `No numbered piece is at ${esc(LOCS.find(l => l.id === FROM)?.name ?? 'this place')} right now. `
           + 'Counted stock — cables, fog fluid — has no piece numbers and is not moved from this screen.',
     });

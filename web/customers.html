@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Customers — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -24,9 +24,9 @@
 <div id="sheet-host"></div>
 
 <script type="module">
-import { sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
+import { savedLine, icon, sb, $, $$, esc, money, fmtDate, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, initOffline, revealActiveTab, loadPermissions, can, cardList }
-  from './app.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('customers.html');
 revealActiveTab();
@@ -42,6 +42,8 @@ async function boot() {
       <div><h1>Customers</h1><p class="sub" id="count-line"></p></div>
       <button class="btn btn--primary" id="new-cust">Add customer</button>
     </div>
+      <!-- Rule 18: the receipt lives OUTSIDE the region load() rebuilds. -->
+      <div id="saved"></div>
     <div class="row" id="filters" hidden>
       <!-- A placeholder is not a label: it vanishes on the first keystroke. -->
       <label class="sr-only" for="q">Search customers</label>
@@ -53,6 +55,11 @@ async function boot() {
   $('#q').addEventListener('input', renderList);
   await load();
 }
+
+// The cheap durable receipt (§6 law 4). Held in a variable and repainted after every load, because
+// load() rebuilds the list and would wipe a line written straight to the DOM — rule 18.
+let LAST_SAVED = null;
+function paintSaved() { if (LAST_SAVED) savedLine($('#saved'), LAST_SAVED.what, LAST_SAVED.at); }
 
 async function load() {
   try {
@@ -72,6 +79,7 @@ async function load() {
     $('#list').className = ''; $('#list').innerHTML = errorBlock(err, 'retry');
     $('#retry')?.addEventListener('click', load);
   }
+  paintSaved();
 }
 
 function renderList() {
@@ -81,7 +89,7 @@ function renderList() {
     $('#count-line').textContent = 'Nobody yet.';
     list.className = '';
     list.innerHTML = stateBlock({
-      icon: '👥', title: 'No customers yet',
+      title: 'No customers yet',
       body: 'An order needs a customer, so this is the other thing that has to exist before any job '
           + 'can be recorded. WhatsApp is the primary contact and the portal identity.',
       actionLabel: 'Add the first customer', actionId: 'empty-new',
@@ -97,7 +105,7 @@ function renderList() {
 
   if (!rows.length) {
     list.className = '';
-    list.innerHTML = stateBlock({ icon: '🔍', title: 'Nobody matches that',
+    list.innerHTML = stateBlock({ glyph: icon('search'), title: 'Nobody matches that',
       body: `There are ${CUSTOMERS.length} customers in total.`,
       actionLabel: 'Clear the search', actionId: 'clear' });
     $('#clear').addEventListener('click', () => { $('#q').value = ''; renderList(); });
@@ -274,6 +282,7 @@ function openEditor(c) {
         ? 'That portal identifier is already used by another customer.' : res.error.message, 'error');
       return;
     }
+    LAST_SAVED = { what: c.id ? 'Customer saved' : `${row.name} added`, at: new Date() };
     toast(c.id ? 'Customer saved.' : `${row.name} added.`);
     // A brand new customer gets a code immediately: it is the only moment chachu has the person's
     // attention on WhatsApp, and the code cannot be read back later.
@@ -304,8 +313,6 @@ async function issueCode(c) {
         <button class="btn btn--sm" id="copy-code" type="button">Copy the code</button>
         <button class="btn btn--sm" id="copy-msg" type="button">Copy a WhatsApp message</button>
       </div>
-      <p class="field__hint" style="margin-bottom:0">Only a hash is stored. Nobody can read this back —
-        if it is lost, issue a new one.</p>
     </div>`;
   const copy = async (text, what) => {
     try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }

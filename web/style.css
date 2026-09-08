@@ -33,7 +33,7 @@ a { color: var(--accent); }
    edge and no affordance saying so; it is 40px now and holds nothing you have to reach for. */
 .topbar {
   display: flex; align-items: center; gap: 8px;
-  padding: 4px 16px; min-height: 52px;
+  padding: 0 16px; min-height: 48px;
   background: var(--surface); border-bottom: 1px solid var(--line);
   /* NOT sticky, and this is why. #dept-host is a sibling of .topbar inside #chrome, so #chrome
      became the topbar's containing block and gave it exactly the strip's height as travel: measured
@@ -76,22 +76,22 @@ a { color: var(--accent); }
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   display: grid; grid-template-columns: repeat(var(--nav-slots, 5), 1fr);
-  /* The nav is the one piece of page chrome that genuinely FLOATS, so under v6's elevation law it
-     is the one that should carry a shadow — and it had none while every list row had one. Exactly
-     backwards. Upward-cast, so it reads as sitting above the content it covers. */
+  /* THIS APP HAS NO FLOATING CHROME (§2). The nav is attached to the bottom edge, solid, and
+     separated by a hairline — no capsule, no FAB, no shadow. An upward shadow was added here on an
+     earlier reading of this file and is wrong against the current one: only a sheet and a toast sit
+     OVER the page, and only they cast. */
   background: var(--surface); border-top: 1px solid var(--line);
-  box-shadow: var(--shadow-nav);
-  /* §4: bottom nav 68px. The items are 64 and the top border is 1, so 3px of padding lands it on
-     68 before the safe-area inset — which is added below and is 0 on anything without a notch. */
+  /* §4: bottom nav 60px. Items are 56, the top border is 1, so 3px of padding lands it on 60
+     before the safe-area inset — added below, and 0 on anything without a notch. */
   padding-top: 3px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 /* Before permissions are known: the same 52px of reserved space, and nothing in it to aim at.
    See navMarkup() — a guessed bar re-flows and moves the target under the thumb. */
-.nav--pending { min-height: 68px; }
+.nav--pending { min-height: 60px; }
 .nav__item {
   display: grid; place-items: center; gap: 1px;
-  min-height: 64px; padding: 8px 2px;
+  min-height: 56px; padding: 6px 2px;
   border: 0; background: transparent; font: inherit; cursor: pointer;
   color: var(--ink-faint); text-decoration: none;
 }
@@ -109,7 +109,8 @@ a { color: var(--accent); }
 
 /* ---------- layout ---------- */
 /* padding-bottom clears the fixed nav; without it the last row of every list is unreachable. */
-.wrap { max-width: 1100px; margin: 0 auto; padding: 10px 16px calc(88px + env(safe-area-inset-bottom, 0px)); }
+/* 8px, so chrome-to-content is 48 + 40 + 8 = 96 with a strip and 56 without — §2b's ceiling. */
+.wrap { max-width: 1100px; margin: 0 auto; padding: 8px 16px calc(80px + env(safe-area-inset-bottom, 0px)); }
 /* No navigation bar (the van view) means no space to reserve for one. Set by app.js when it knows. */
 body.no-nav .wrap { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -503,7 +504,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    BOTH edges of a 390px screen, so the document scrolled sideways (scrollWidth 394 against
    clientWidth 390) and dragged the fixed nav out with it. */
 .dispatch-bar {
-  position: sticky; bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  position: sticky; bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   background: var(--surface);
   border-top: 1px solid var(--line); padding: 12px;
   margin: 16px -12px 0; z-index: 10;
@@ -847,7 +848,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
      <main class="wrap"> and therefore has no side padding to cancel — the -12px each side made the
      strip 24px wider than the viewport and put a horizontal scrollbar on every screen at 320px.
      .card-row's identical negative margins ARE correct, because those rows sit inside .wrap. */
-  padding: 8px 16px; margin: 0 0 10px;
+  min-height: 40px; box-sizing: border-box; padding: 3px 16px; margin: 0;
   background: var(--bg); border-bottom: 1px solid var(--line);
   /* NOT sticky. #dept-host is a wrapper exactly as tall as this strip, and a sticky element cannot
      leave its containing block — so there was zero travel and it scrolled away like static content
@@ -1010,3 +1011,16 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    reads as complete — both lies, and rule 3 exists to stop exactly that one. The words "Cost not
    recorded" carry it. This also leaves the only near-empty bar on the screen meaning an honest
    zero. The token hunt for a "flat grey" was the wrong question. */
+
+/* Inline SVG icons (app.js icon()). currentColor throughout, so an icon takes the colour of
+   whatever it sits in — which is the whole reason they replaced emoji. */
+.icon { display: block; flex: none; }
+.nav__icon .icon { width: 24px; height: 24px; }
+
+/* The cheap durable receipt (app.js savedLine). One line with a clock time, for writes that change
+   a record rather than moving stock or money — the full .done card would shout. */
+.saved {
+  display: flex; align-items: center; gap: 6px; margin: 0 0 10px;
+  font-size: 13px; font-weight: 700; color: var(--ok);
+}
+.saved__tick { display: inline-flex; color: var(--ok); }

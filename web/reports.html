@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reports — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,7 +27,7 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
          initOffline, revealActiveTab, loadPermissions, can, initNav }
-  from './app.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('reports.html');
 revealActiveTab();
@@ -85,7 +85,7 @@ requireSession(async () => {
   // Rule 14: refuse in words rather than render a screen of zeros somebody would believe.
   if (!can('numbers.view')) {
     $('#app').innerHTML = `<h1>Reports</h1>` + stateBlock({
-      icon: '🔒', title: 'The reports are not visible to this account',
+      title: 'The reports are not visible to this account',
       body: 'This account cannot see what things earn. Ask whoever manages the team.',
     });
     return;

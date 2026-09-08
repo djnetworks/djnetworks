@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Send out — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,11 +27,11 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
+import { icon, sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, syncNow, revealActiveTab,
          trackBadge, publicUrl, waLink, waMessage, newRequestId, guardedWrite, networkMessage,
          confirmBlock }
-  from './app.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
@@ -107,7 +107,7 @@ async function renderChooser() {
          <div class="list">${cached.map(c => `<a class="item" href="dispatch.html?order=${esc(c.data.order.id)}">
            <span class="item__main"><span class="item__title">${esc(c.data.order.order_no)}</span>
            <span class="item__meta">loaded ${esc(fmtDate(c.cached_at))}</span></span></a>`).join('')}</div>`
-      : stateBlock({ icon: '📡', title: 'No connection, and no job loaded',
+      : stateBlock({ glyph: icon('offline'), title: 'No connection, and no job loaded',
           body: 'Nothing has been loaded onto this phone for offline use. Open the job while you '
               + 'still have signal — the pick list is a read, and with no signal there is nothing to pick from.' });
     return;
@@ -122,7 +122,7 @@ async function renderChooser() {
           <span class="item__meta">${esc(f.qty_dispatched)} of ${esc(f.qty_ordered)} loaded ·
           ${esc(f.qty_undispatched)} still to go</span></span>
         <span class="item__right">›</span></a>`).join('')}</div>`
-    : stateBlock({ icon: '✅', title: 'Nothing waiting to go out',
+    : stateBlock({ glyph: icon('check'), title: 'Nothing waiting to go out',
         body: 'Every live order has been fully sent out. New jobs appear here as soon as they are agreed.' });
 }
 
@@ -203,7 +203,7 @@ async function load() {
     $('#body').innerHTML = online
       ? errorBlock(err, 'retry-load')
       : stateBlock({
-          icon: '📡', title: 'This job is not on this phone',
+          glyph: icon('offline'), title: 'This job is not on this phone',
           body: 'There is no connection and this order was never loaded for offline use. Sending out needs '
               + 'to know which pieces are on the shelf, and that is a read — there is nothing to pick from. '
               + 'Open it once while you have signal and it will be here.',
@@ -382,7 +382,7 @@ function render() {
   const body = $('#body');
   body.className = '';
   if (!LINES.length) {
-    body.innerHTML = stateBlock({ icon: '📋', title: 'This order has no lines',
+    body.innerHTML = stateBlock({ glyph: icon('jobs'), title: 'This order has no lines',
       body: 'Nothing has been agreed on this job yet, so there is nothing to load.' });
     return;
   }
@@ -745,7 +745,6 @@ function renderInclusions() {
               <input type="checkbox" class="incl-box" data-unit="${esc(unitId)}" data-item="${esc(item)}" checked>
               <span>${esc(item)}</span></label>`).join('')}</div></div>`;
       }).join('')}
-      <span class="field__hint">Unticking one is how you catch that the cable did not come back.</span>
     </div>`;
   });
   $$('.incl-box').forEach(cb => cb.addEventListener('change', () => {

@@ -107,6 +107,16 @@ These are not style preferences. Each one exists because breaking it has already
     carry and threw on null inside a click handler, silently. Each file still parsed both times.
     Only running one shows the break.
 
+18. **A confirmation element lives OUTSIDE the region its own write reloads.** A durable receipt
+    written into a block that the write's own `load()` rebuilds is destroyed by the thing it exists
+    to confirm — and the code parses, the toast says "Recorded", and the write really did land, so
+    every signal says success while the evidence is gone. It has now happened three times: twice on
+    `return.html` and once on `ledger.html`, each caught only by reading the DOM after driving the
+    write, never by a parse and never by the toast. Hold the confirmation in a variable, render it
+    from a host declared above the render targets, and repaint it at the end of every load. This is
+    rules 14 and 16 in a third costume: the danger is not the failure you can see, it is the
+    confident report of success over a missing result.
+
 ---
 
 ## Who applies schema changes

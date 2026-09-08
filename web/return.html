@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Return — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,11 +27,11 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
+import { icon, sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, revealActiveTab, waLink, waMessage,
          newRequestId, guardedWrite, cardList, loadPermissions, can, networkMessage,
          uploadReturnPhoto, signedPhotoUrl, confirmBlock }
-  from './app.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('return.html');
 revealActiveTab();
@@ -107,7 +107,7 @@ async function chooser() {
           </span></span>
         <span class="item__right">›</span></a>`;
       }).join('')}</div>`
-    : stateBlock({ icon: '✅', title: 'Nothing is out',
+    : stateBlock({ glyph: icon('check'), title: 'Nothing is out',
         body: 'Everything that went out has come back, been written off, or been marked lost. Nothing is with a customer.' });
 }
 
@@ -207,7 +207,7 @@ function render() {
 
   if (!OUTSTANDING.length) {
     body.innerHTML = stateBlock({
-      icon: '✅', title: 'Nothing is outstanding on this job',
+      glyph: icon('check'), title: 'Nothing is outstanding on this job',
       body: 'Everything that went out has come back, been written off, or been marked lost. '
           + (ORDER.status === 'closed' ? 'The order is already closed.' : 'The order can now be closed.'),
       actionLabel: ORDER.status === 'closed' ? '' : 'Close this order', actionId: 'close-order',
@@ -219,11 +219,6 @@ function render() {
 
   body.innerHTML = `
     <div class="card">
-      <p class="field__hint" style="margin-top:0">
-        Tick each item as it physically comes back. <strong>An unticked item stays out</strong> — nothing
-        here is ever inferred from a date passing. That is the bug this screen exists to prevent:
-        six went out, five came back, and the sixth was quietly offered for hire while it sat in a hall.
-      </p>
       <!-- THE COMMON CASE IS THAT EVERYTHING CAME BACK. Gear arrives at 2am after a wedding, in
            the dark, and the work should be describing the exceptions rather than confirming the
            rule — a screen that makes the ordinary night slow is a screen filled in from memory on
@@ -234,7 +229,6 @@ function render() {
       <div class="row" style="gap:8px;margin-bottom:10px">
         <button class="btn btn--primary" id="tick-all" type="button">All ${esc(OUTSTANDING.length)} back</button>
         <button class="btn btn--sm" id="tick-none" type="button" hidden>Clear</button>
-        <span class="field__hint" style="margin:0">Then untick anything that did not come back.</span>
       </div>
       <div id="rows"></div>
       <div id="short-share" style="margin-top:12px"></div>

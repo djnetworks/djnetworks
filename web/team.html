@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Team — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -25,10 +25,10 @@
 <main id="app" class="wrap" hidden></main>
 
 <script type="module">
-import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, toast, openSheet,
+import { savedLine, sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, toast, openSheet,
          initOffline, revealActiveTab, loadPermissions, can, cardList, guardedWrite }
-  from './app.js?v=2026-09-08-30';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('team.html');
 revealActiveTab();
@@ -87,7 +87,7 @@ requireSession(async () => {
   await loadPermissions();
   if (!can('admin.team')) {
     $('#app').innerHTML = `<h1>Team</h1>` + stateBlock({
-      icon: '🔒', title: 'Only somebody who manages the team can open this',
+      title: 'Only somebody who manages the team can open this',
       body: 'Adding people and deciding what they can do is not something this account can do. '
           + 'Ask whoever manages the team.',
     });
@@ -102,6 +102,8 @@ async function boot() {
       <div><h1>Team</h1></div>
       <button class="btn btn--primary" id="add" type="button">Add someone</button>
     </div>
+      <!-- Rule 18: the receipt lives OUTSIDE the region load() rebuilds. -->
+      <div id="saved"></div>
     <div id="warn"></div>
     <div id="list" class="card-list"><div class="skeleton__row"></div></div>
     `;
@@ -127,6 +129,11 @@ async function checkSignupIsClosed() {
   } catch { /* offline: not worth an error on this screen */ }
 }
 
+// The cheap durable receipt (§6 law 4). Held in a variable and repainted after every load, because
+// load() rebuilds the list and would wipe a line written straight to the DOM — rule 18.
+let LAST_SAVED = null;
+function paintSaved() { if (LAST_SAVED) savedLine($('#saved'), LAST_SAVED.what, LAST_SAVED.at); }
+
 async function load() {
   try {
     const { data, error } = await sb.from('operator')
@@ -139,6 +146,7 @@ async function load() {
     $('#list').innerHTML = errorBlock(err, 'retry');
     $('#retry')?.addEventListener('click', load);
   }
+  paintSaved();
 }
 
 const held = (perms, m) => m.keys.every(k => perms?.[k] === true);
@@ -193,8 +201,6 @@ function openMember(m) {
 
       <div class="card card--sunk">
         <strong>What can this person do?</strong>
-        <p class="field__hint" style="margin:2px 0 8px">Tick the jobs they actually do. Leave the
-          rest — anything untick&#101;d is simply not on their screen.</p>
         ${CAN_DO.map(x => `
           <label class="field field--inline" style="align-items:flex-start;margin-bottom:8px">
             <input type="checkbox" class="t-mod" data-id="${esc(x.id)}" ${held(perms, x) ? 'checked' : ''}>
@@ -234,6 +240,7 @@ function openMember(m) {
         const { error } = await sb.rpc('fn_team_add',
           { p_user_id: uid, p_display_name: name, p_permissions: next });
         if (error) throw error;
+        LAST_SAVED = { what: 'Added', at: new Date() };
         toast('Added. Their screens change the next time they sign in.');
       } else {
         const { error } = await sb.rpc('fn_team_set_permissions', {
@@ -241,6 +248,7 @@ function openMember(m) {
           p_display_name: name, p_active: $('#t-active').checked,
         });
         if (error) throw error;
+        LAST_SAVED = { what: 'Saved', at: new Date() };
         toast('Saved. Their screens change the next time they reload.');
       }
       sheet.close();

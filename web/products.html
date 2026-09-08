@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Products — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-32" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-32" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-32">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-32">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
-<link rel="stylesheet" href="style.css?v=2026-09-08-30">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-32">
+<link rel="stylesheet" href="style.css?v=2026-09-08-32">
 <!-- Vendored, not a CDN. Classic + defer, so it executes before the deferred module
      below that needs window.supabase. -->
-<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
-<script src="boot.js?v=2026-09-08-30" defer></script>
+<script src="vendor/supabase.js?v=2026-09-08-32" defer></script>
+<script src="boot.js?v=2026-09-08-32" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -32,10 +32,10 @@
 <div id="sheet-host"></div>
 
 <script type="module">
-import { sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
+import { savedLine, icon, sb, $, $$, esc, money, chrome, requireSession, stateBlock, errorBlock, toast,
          openSheet, focusField, networkMessage, initOffline, revealActiveTab,
          trackLabel, trackBadge, publicUrl, cardList, loadPermissions, can, fmtDate }
-  from './app.js?v=2026-09-08-30';
+  from './app.js?v=2026-09-08-32';
 
 $('#chrome').innerHTML = chrome('products.html');
 revealActiveTab();
@@ -98,6 +98,8 @@ async function boot() {
       <div><h1>Products</h1><p class="sub" id="count-line"></p></div>
       <button class="btn btn--primary" id="new-product">Add product</button>
     </div>
+      <!-- Rule 18: the receipt lives OUTSIDE the region load() rebuilds. -->
+      <div id="saved"></div>
     <div class="row" id="filters" hidden>
       <!-- A placeholder is not a label: it vanishes on the first keystroke and a screen reader
            announces an unnamed edit box. The mode filter had no accessible name at all. -->
@@ -122,6 +124,11 @@ async function boot() {
   if (new URLSearchParams(location.search).get('new') === '1') openEditor(null);
 }
 
+// The cheap durable receipt (§6 law 4). Held in a variable and repainted after every load, because
+// load() rebuilds the list and would wipe a line written straight to the DOM — rule 18.
+let LAST_SAVED = null;
+function paintSaved() { if (LAST_SAVED) savedLine($('#saved'), LAST_SAVED.what, LAST_SAVED.at); }
+
 async function load() {
   try {
     // Four requests, not five: `location` was fetched on every load and never read by anything
@@ -143,6 +150,7 @@ async function load() {
     $('#list').innerHTML = errorBlock(err, 'retry-list');
     $('#retry-list')?.addEventListener('click', load);
   }
+  paintSaved();
 }
 
 function renderList() {
@@ -156,7 +164,6 @@ function renderList() {
     $('#count-line').textContent = 'Nothing listed yet.';
     list.className = '';
     list.innerHTML = stateBlock({
-      icon: '🎛️',
       title: 'The catalogue is empty',
       body: 'Hundreds of items exist in the godown and none are listed yet. Add one product to begin — '
           + 'or import the whole catalogue from the Google Sheet, which is the faster path for a large fleet.',
@@ -182,7 +189,7 @@ function renderList() {
   if (!rows.length) {
     list.className = '';
     list.innerHTML = stateBlock({
-      icon: '🔍',
+      glyph: icon('search'),
       title: 'No product matches that',
       body: `Nothing matches ${q ? `“${q}”` : 'this filter'}. The catalogue has ${PRODUCTS.length} products in it.`,
       actionLabel: 'Clear the filters', actionId: 'clear-filters',
@@ -608,6 +615,7 @@ function openEditor(p) {
       toast(friendly(res.error), 'error');
       return;
     }
+    LAST_SAVED = { what: p.id ? 'Product saved' : `${row.short_code} added`, at: new Date() };
     toast(p.id ? 'Product saved.' : `${row.short_code} added.`);
     close();
     await load();
