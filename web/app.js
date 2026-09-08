@@ -20,8 +20,8 @@
 // INVISIBLE UNTIL IT WAS SERVED FROM A REAL ORIGIN. Locally both spellings come off the same dev
 // server in a millisecond and nothing looks wrong. It showed up as two lines in the live network
 // log. See the djn-deploy skill.
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-16';
-import * as store from './db.js?v=2026-09-08-16';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-17';
+import * as store from './db.js?v=2026-09-08-17';
 
 // The client is VENDORED at web/vendor/supabase.js and loaded by boot.js as a classic script.
 //
@@ -154,6 +154,13 @@ export const trackLabel = m => ({
  * @param onOpen    (row) => void — the card's own tap
  */
 export function cardList(host, rows, render, onOpen) {
+  // v6 LAW 11: preserve scroll. Every one of these screens re-renders its whole list after a write
+  // — record a return, save a customer, add a piece — and innerHTML replacement drops the scroll
+  // position on the floor. On a twenty-row list that means recording one return and then hunting
+  // for where you were, which is exactly the "the user never wonders" this law is about.
+  // Captured before the replacement and restored after layout, because the page can be shorter than
+  // it was and the browser will clamp.
+  const y = window.scrollY;
   host.className = 'card-list';
   host.innerHTML = rows.map((r, i) => {
     const c = render(r, i);
@@ -183,6 +190,10 @@ export function cardList(host, rows, render, onOpen) {
     const row = e.target.closest('.card-row');
     if (row) onOpen(rows[Number(row.dataset.i)]);
   };
+  // After layout, not during: the list has just changed height and scrollTo before the browser has
+  // reflowed lands somewhere else.
+  if (y > 0) requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
+
   host.onkeydown = (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const row = e.target.closest('.card-row');
@@ -514,6 +525,125 @@ export const fulfilLabel = s => ({
   part_returned:      'part back',
   all_returned:       'all back',
 }[s] ?? String(s ?? '').replace(/_/g, ' '));
+
+/**
+ * A DURABLE CONFIRMATION (v6 Laws 4 and 10).
+ *
+ * "After an important action, a durable success state with status + timestamp" — not a toast that
+ * disappears. This app had 77 toast() calls and zero durable confirmations, and the toast lasts
+ * 3.5 seconds. On the one screen where it matters most — a van, one hand, somebody talking to you —
+ * 3.5 seconds is easily missed, and the strongest evidence that six speakers were recorded as gone
+ * was that a row moved somewhere else on the page.
+ *
+ * The failure this prevents is specific and expensive: an operator who is not sure it saved does it
+ * again. Idempotency (0022/0024) means the second tap writes nothing, which is right — but he still
+ * does not know, and "did that work?" at a venue ends with a phone call.
+ *
+ * So a consequential write leaves a block behind that says WHAT happened, HOW MANY, and WHEN, with
+ * a real clock time, and it stays until the next action replaces it. It survives the list reloading
+ * underneath it because it is rendered outside the list.
+ *
+ * Deliberately NOT a toast replacement everywhere: "Customer saved" is fine as a toast. This is for
+ * writes that move stock or money.
+ */
+export function confirmBlock(host, { what, detail = '', at = new Date() }) {
+  if (!host) return;
+  const time = at.toLocaleTimeString('en-IN',
+    { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s/g, ' ');
+  const day = fmtDate(todayLocal());
+  host.innerHTML = `
+    <div class="done" role="status">
+      <span class="done__tick" aria-hidden="true">✓</span>
+      <span class="done__body">
+        <strong>${esc(what)}</strong>
+        ${detail ? `<span class="done__detail">${esc(detail)}</span>` : ''}
+        <span class="done__when">Recorded ${esc(day)} at ${esc(time)}</span>
+      </span>
+    </div>`;
+}
+
+/**
+ * REMEMBER A LIST'S FILTERS BETWEEN VISITS (v6 Law 11).
+ *
+ * "Preserve drafts/selections/filters/scroll." Every filter in this app reset the moment the page
+ * reloaded, and the operator reloads constantly — he taps an order, comes back, records a return,
+ * comes back. Setting the same filter for the fourth time is the friction the law is about.
+ *
+ * sessionStorage, not localStorage, and that is the whole design: a filter is a working state, not
+ * a preference. It should survive a reload and a trip into an order; it should NOT still be there
+ * tomorrow morning, silently hiding half the jobs from somebody who has forgotten they set it.
+ * A filter you cannot remember setting is worse than one that resets.
+ *
+ * Wrapped in try/catch because sessionStorage throws outright in some privacy modes, and a screen
+ * that will not render because it could not remember a dropdown is a bad trade.
+ */
+export function rememberFilters(key, controls, onRestore) {
+  const K = `djn-filters-${key}`;
+  const read = () => { try { return JSON.parse(sessionStorage.getItem(K) || '{}'); } catch { return {}; } };
+  const save = () => {
+    try {
+      const v = {};
+      for (const [name, el] of Object.entries(controls)) {
+        if (!el) continue;
+        v[name] = el.type === 'checkbox' ? el.checked : el.value;
+      }
+      sessionStorage.setItem(K, JSON.stringify(v));
+    } catch { /* private mode: the filter simply will not be remembered */ }
+  };
+  const saved = read();
+  let restored = false;
+  for (const [name, el] of Object.entries(controls)) {
+    if (!el) continue;
+    if (saved[name] !== undefined) {
+      if (el.type === 'checkbox') el.checked = !!saved[name]; else el.value = saved[name];
+      if (saved[name] !== '' && saved[name] !== false) restored = true;
+    }
+    // One listener per control, whether or not it had a saved value — a control that starts empty
+    // still has to record the moment it stops being empty.
+    el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', save);
+  }
+  if (restored && onRestore) onRestore();
+  return { save, clear: () => { try { sessionStorage.removeItem(K); } catch {} } };
+}
+
+/**
+ * WHAT IS ACTUALLY HAPPENING TO THIS JOB, AND WHAT TO DO NEXT (v6 Law 15).
+ *
+ * "Status states the real state — never a bare Active/Configured/Confirmed without the next
+ * action." The order list rendered `rental_order.status` raw, so a job showed the word `confirmed`,
+ * or `closed`, or `cancelled`: three database enum values, none of which tells anybody standing at
+ * a van what to do with the gear.
+ *
+ * `confirmed` is the worst of the three, because it is the state 90% of live jobs are in and it
+ * says nothing at all. Confirmed with nothing loaded and confirmed with everything still at a venue
+ * are the same word and opposite situations.
+ *
+ * So the status and the fulfilment counts are read TOGETHER, and the answer names the next move.
+ * Deliberately NOT a colour — the label carries it, because a colour cannot say "3 still out".
+ *
+ * A NEW export rather than a change to fulfilLabel: that helper has five callers and its contract
+ * is "describe how much has moved", which is still exactly right and still used inside this one.
+ */
+export function orderState(order, fulfil, today) {
+  const st = order?.status;
+  if (st === 'cancelled') return { text: 'Cancelled — do not load', tone: 'cancelled' };
+  if (st === 'closed')    return { text: 'Finished', tone: 'closed' };
+
+  const out = Number(fulfil?.qty_outstanding ?? 0);
+  const todo = Number(fulfil?.qty_undispatched ?? 0);
+  const due = order?.expected_return_date;
+
+  // Overdue outranks everything else: it is the only one of these that is somebody's afternoon.
+  if (out > 0 && due && today && due < today) {
+    return { text: `${out} still out · overdue`, tone: 'late' };
+  }
+  if (out > 0 && todo > 0) return { text: `${out} still out · ${todo} yet to go`, tone: 'out' };
+  if (out > 0)             return { text: `${out} still out · due back ${fmtDate(due)}`, tone: 'out' };
+  if (todo > 0)            return { text: 'Ready to send out', tone: 'confirmed' };
+  // Nothing outstanding, nothing left to send, but the job is not closed: everything is back and
+  // somebody has to decide it is finished. Rule 9 — closing is never a side effect of a date.
+  return { text: 'All back · ready to close', tone: 'confirmed' };
+}
 
 /** The same three, short enough for a badge in a table cell. */
 export const trackBadge = m => ({

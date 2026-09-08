@@ -500,3 +500,44 @@ the deploy sed reaches them and `grep -ro "<old>" web/` returns 0. The lesson is
 visible locally, and it appeared as two lines in the live network panel the first time the app was
 served from a real origin.
 
+---
+
+## From the v6 Brand Kit pass
+
+**The raised central New (+) FAB — PARKED, not rejected.** v6 Part C puts a raised solid-teal
+circular FAB at the centre of the bottom nav, opening a 2x2 grid of large icons. Part C's *contents*
+do not apply here, but the pattern is worth having: for this business the four would be **New order ·
+New customer · Send out · Add equipment**, replacing four journeys that today each begin by
+navigating to the right screen first.
+
+Two caveats, both real, and the reason it is parked rather than built:
+- **It makes the nav six slots where five were fixed.** The five fixed slots were themselves a fix
+  for a bar that re-flowed and moved the target under a moving thumb. A centre FAB is a sixth
+  position and needs deciding, not assuming.
+- **The grid must hide what the person cannot do.** "Send out" needs `sendout.write`. Offering it to
+  somebody who will then be refused teaches them the app is unreliable — and it is the same mistake
+  as a permissions matrix, one screen later.
+
+Navigation has been rebuilt twice in one day. A third rebuild for a user who has not yet opened the
+app is speculation, and it should wait until chachu has used the nav that exists.
+
+**Preserving an in-progress form draft is not done.** v6 Law 11 asks for drafts, selections, filters
+and scroll. Scroll is preserved (in `cardList`), filters and search are preserved for the orders list
+(`rememberFilters`, sessionStorage so they do not silently persist to tomorrow), and repeated taps
+have been idempotent since `0024`. **Drafts are not**: a half-filled order sheet is still lost on
+reload. It is the largest of the four and touches five sheets; doing it properly means deciding what
+counts as a draft worth restoring and what is a stale form somebody abandoned on purpose.
+
+**Durable confirmations exist on two screens, not everywhere.** `confirmBlock` (v6 Laws 4/10) is
+wired into send-out and return — the two writes that move stock, and the two whose "did that work?"
+ends in a phone call from a venue. The ledger, orders, customers and equipment screens still confirm
+with a toast that is gone in 3.5 seconds. That is defensible for "Customer saved" and not for
+"Payment recorded"; the ledger is the next one to do.
+
+**"All 12" staged one piece.** On send-out for DJN-2609-0001 the button read *All 12* and dispatching
+recorded a single item. The button's own comment says its number is "what WOULD be added by pressing
+it — not the size of the order", precisely so it cannot lie; if only one piece was available at the
+selected location then the count is wrong, and if twelve were staged then the write is. Found while
+driving the v6 pass, not chased — it predates it, and it needs the availability numbers checked
+against the pick list at a known location rather than a guess.
+

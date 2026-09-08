@@ -59,7 +59,11 @@ a { color: var(--accent); }
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   display: grid; grid-template-columns: repeat(var(--nav-slots, 5), 1fr);
+  /* The nav is the one piece of page chrome that genuinely FLOATS, so under v6's elevation law it
+     is the one that should carry a shadow — and it had none while every list row had one. Exactly
+     backwards. Upward-cast, so it reads as sitting above the content it covers. */
   background: var(--surface); border-top: 1px solid var(--line);
+  box-shadow: var(--shadow-nav);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 /* Before permissions are known: the same 52px of reserved space, and nothing in it to aim at.
@@ -72,7 +76,9 @@ a { color: var(--accent); }
   color: var(--ink-faint); text-decoration: none;
 }
 .nav__icon { font-size: 17px; line-height: 1; }
-.nav__label { font-size: 10px; font-weight: 600; letter-spacing: -.01em; }
+/* v6 Law 3: decision-bearing text >= 12px. A nav label is the most decision-bearing text on the
+   screen — it is how you choose where to go — and it was 10px. */
+.nav__label { font-size: 12px; font-weight: 600; letter-spacing: -.02em; }
 .nav__item.is-active { color: var(--accent); }
 .nav__item.is-active .nav__label { font-weight: 700; }
 .nav__item:active { background: var(--accent-soft); }
@@ -163,9 +169,10 @@ a.btn, a.item { text-decoration: none; }
 
 /* ---------- cards / list ---------- */
 .card {
+  /* v6 E2: info/section blocks and forms stay white, hairline-bordered and 16px — and FLAT. The
+     shadow went with the elevation law; it is content, not something hovering over content. */
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-card); padding: 11px 12px; margin-bottom: 8px;
-  box-shadow: var(--shadow-card);
 }
 /* A card nested inside a sheet — the ID-document block, the portal-code block, an order line.
    It was six copies of style="background:#fbfcfd", a cool grey that read as a smudge once the
@@ -181,7 +188,8 @@ a.btn, a.item { text-decoration: none; }
 .item__thumb {
   width: 52px; height: 52px; border-radius: var(--radius); object-fit: cover;
   background: var(--tint-neutral); flex: none; display: grid; place-items: center;
-  color: var(--ink-faint); font-size: 11px; font-weight: 700;
+  /* 12px, not 11: with no photo this code IS the product identity in the row (v6 Law 3). */
+  color: var(--ink-faint); font-size: 12px; font-weight: 700;
   /* When there is no photo the tile falls back to the short code, and it used to be cut to four
      characters — "AMP-" and "SPK-" for two different products. The code wraps instead. */
   text-align: center; line-height: 1.1; padding: 0 3px; overflow-wrap: anywhere;
@@ -291,9 +299,9 @@ a.btn, a.item { text-decoration: none; }
 
 /* ---------- sign in ---------- */
 .signin {
+  /* Flat: a sign-in panel is content, not something hovering over content (v6 Law 1). */
   max-width: 380px; margin: 12vh auto; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--radius-card); padding: 24px;
-  box-shadow: var(--shadow-card);
 }
 .signin__title { margin: 0 0 4px; font-size: 22px; }
 .signin__sub { margin: 0 0 20px; color: var(--ink-soft); }
@@ -447,7 +455,8 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   font: inherit; cursor: pointer; display: grid; place-items: center; gap: 2px;
 }
 .piece__no { font-size: 26px; font-weight: 700; line-height: 1; }
-.piece__tag { font-size: 10px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; }
+/* Was 10px. This is the piece number on a tile you are choosing between — the decision itself. */
+.piece__tag { font-size: 12px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; }
 .piece.is-on { border-color: var(--accent); background: var(--accent-soft); }
 .piece.is-on .piece__no { color: var(--accent); }
 .piece:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -562,7 +571,9 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 }
 .pick-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .pick-thumb__code {
-  font-size: 11px; font-weight: 700; color: var(--ink-faint); text-align: center;
+  /* Was 11px. This IS the product identity on the tile being chosen — rule 8, every screen is
+     product-first, so this is the text the whole flow turns on. */
+  font-size: 12px; font-weight: 700; color: var(--ink-faint); text-align: center;
   padding: 0 4px; overflow-wrap: anywhere; line-height: 1.15;
 }
 .pick-head__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
@@ -629,13 +640,35 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    Browse-first: a list arrives full and search filters it. Each card carries WHAT IT IS and WHAT
    NEEDS ATTENTION, and nothing else — the detail is one tap away and does not need pre-loading
    into the row. */
-.card-list { display: grid; gap: 6px; }
+/* Contiguous. The gap between cards was what made them read as separate objects; the divider is
+   what makes rows read as one list. */
+.card-list { display: grid; gap: 0; }
+/* THE ELEVATION LAW (v6 Law 1, A5, E2). Streams are FLAT, FULL-WIDTH, HAIRLINE-DIVIDED rows with
+   the whole row tappable. Not floating rounded cards with a shadow.
+
+   This reverses Pass G, which asked for cards, and v6 is explicit: "shadows belong only to floating
+   things — the bottom nav, sheets, the FAB, a sticky selection bar. All page content is flat."
+   Shadow now means HOVERING, and nothing in a list hovers.
+
+   It is a better fit for what these lists are, which is the argument rather than the authority: a
+   card is a discrete object you might rearrange, and these are rows of a register. A godown list
+   read at arm's length gains more from edge-to-edge width and an unambiguous divider than it does
+   from 16px of corner radius and a shadow that is invisible in daylight anyway.
+
+   The MARKUP does not change — cardList() already gives each row role="button" and delegates the
+   click — so this is a stylesheet change and the five screens that call it keep every handler. */
 .card-row {
-  display: flex; align-items: flex-start; gap: 9px;
-  background: var(--surface); border-radius: var(--radius-card);
-  padding: 9px 10px; text-align: left; width: 100%; font: inherit; color: inherit;
-  box-shadow: var(--shadow-card);
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--surface);
+  /* Edge-to-edge: cancel .wrap's 12px side padding, and put it back inside the row so the text
+     still lines up with every heading on the page. */
+  margin: 0 -12px; padding: 11px 12px;
+  text-align: left; width: auto; font: inherit; color: inherit;
+  border-bottom: 1px solid var(--line);
 }
+/* The last row's divider would be a line under nothing. */
+.card-row:last-child { border-bottom: 0; }
+.card-row:active { background: var(--foam); }
 .card-row__thumb {
   position: relative; flex: none; width: 40px; height: 40px;
   border-radius: var(--radius); overflow: hidden; background: var(--tint-neutral);
@@ -643,7 +676,8 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 }
 .card-row__thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .card-row__code {
-  font-size: 9px; font-weight: 700; color: var(--ink-faint); text-align: center;
+  /* Was 9px — the product code shown when there is no photo, i.e. the only identifier on the row. */
+  font-size: 12px; font-weight: 700; color: var(--ink-faint); text-align: center;
   padding: 0 2px; overflow-wrap: anywhere; line-height: 1.05;
 }
 .card-row__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
@@ -665,7 +699,10 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
      box now hugs its own text, and the ::before below is what makes that text a 44px target. */
   justify-self: start;
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums;
+  /* 12px: the order number is deliberately DEMOTED (Pass G) but it is still a control you tap
+     to copy, and a control is decision-bearing whatever its rank. Demotion is weight and
+     colour here, not size — v6 Law 3 puts the floor under anything interactive. */
+  font-size: 12px; color: var(--ink-faint); font-variant-numeric: tabular-nums;
   background: none; border: 0; padding: 2px 0; font-family: inherit; cursor: pointer;
   min-height: auto;
 }
@@ -673,7 +710,8 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   content: ""; position: absolute; left: -6px; right: -6px;
   top: 50%; height: var(--tap); transform: translateY(-50%);
 }
-.card-row__ref::after { content: "copy"; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+/* "copy" is a control, not decoration. Was 9px. */
+.card-row__ref::after { content: "copy"; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
 .card-row__ref.is-copied::after { content: "copied"; color: var(--ok); opacity: 1; }
 .card-row__right { flex: none; display: grid; gap: 4px; justify-items: end; text-align: right; }
 
@@ -752,3 +790,26 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   background: transparent; border-color: transparent; color: var(--bad); font-weight: 700;
 }
 .btn--destructive:hover { border-color: var(--bad); }
+
+/* ---------------------------------------------------------------------------
+   DURABLE CONFIRMATION (v6 Laws 4 and 10). Stays on the screen with a timestamp,
+   instead of a toast that is gone in 3.5 seconds.
+
+   Flat, per the elevation law — it is content, not something hovering. The tick
+   is drawn rather than animated: Law 4 asks for a drawn checkmark and explicitly
+   rules out confetti and bounce.
+   --------------------------------------------------------------------------- */
+.done {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--tint-green); border: 1px solid var(--ok);
+  border-radius: var(--radius-card); padding: 11px 12px; margin-bottom: 10px;
+}
+.done__tick {
+  flex: none; width: 24px; height: 24px; border-radius: var(--radius-pill);
+  background: var(--ok); color: var(--white);
+  display: grid; place-items: center; font-size: 14px; font-weight: 800; line-height: 1;
+}
+.done__body { display: grid; gap: 2px; min-width: 0; }
+.done__body strong { color: var(--ok); font-size: 15px; }
+.done__detail { font-size: 13px; color: var(--ink); }
+.done__when { font-size: 12px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }

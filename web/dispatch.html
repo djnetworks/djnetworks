@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Send out — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-16" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-16" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-16">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-16">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-16">
-<link rel="stylesheet" href="style.css?v=2026-09-08-16">
-<script src="vendor/supabase.js?v=2026-09-08-16" defer></script>
-<script src="boot.js?v=2026-09-08-16" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
+<link rel="stylesheet" href="style.css?v=2026-09-08-17">
+<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
+<script src="boot.js?v=2026-09-08-17" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -29,8 +29,9 @@
 <script type="module">
 import { sb, store, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, initOffline, syncNow, revealActiveTab,
-         trackBadge, publicUrl, waLink, waMessage, newRequestId, guardedWrite, networkMessage }
-  from './app.js?v=2026-09-08-16';
+         trackBadge, publicUrl, waLink, waMessage, newRequestId, guardedWrite, networkMessage,
+         confirmBlock }
+  from './app.js?v=2026-09-08-17';
 
 $('#chrome').innerHTML = chrome('dispatch.html');
 revealActiveTab();
@@ -39,6 +40,7 @@ revealActiveTab();
 // screen rather than only from this one. See BUILTIN_HANDLERS there.
 initOffline();
 
+let LAST_DONE = null;
 let ORDER = null, CUSTOMER = null, LINES = [], PRODUCTS = new Map(), LOCS = [], AVAIL = new Map();
 let PINNED = new Map(), DISPATCHED = new Map(), PICK = new Map(), POOLPICK = new Map();
 let FROM_CACHE = false, CACHED_AT = null;
@@ -103,6 +105,11 @@ async function renderChooser() {
     : stateBlock({ icon: '✅', title: 'Nothing waiting to go out',
         body: 'Every live order has been fully sent out. New jobs appear here as soon as they are agreed.' });
 }
+
+/** Repaint the durable confirmation after every load. It has to be re-applied rather than merely
+ *  written once: the send-out calls load(), and load() rebuilds this screen's markup — including
+ *  the #done host — so a block written before that call is destroyed by it. */
+function paintDone() { if (LAST_DONE) confirmBlock($('#done'), LAST_DONE); }
 
 async function load() {
   const app = $('#app');
@@ -183,6 +190,7 @@ async function load() {
         });
     $('#retry-load')?.addEventListener('click', load);
   }
+  paintDone();
 }
 
 async function refreshAvailability() {
@@ -381,6 +389,8 @@ function render() {
          a separate deliberate press. Send-out does not need 0019's correction machinery, because a
          dispatch recorded in error is undone by the return that follows it; it needs the same
          stage-then-commit separation, and that it has. -->
+    <!-- v6 Laws 4/10: the durable confirmation lands here and outlives the toast. -->
+    <div id="done"></div>
     <div class="row" id="load-all-row" style="gap:8px;margin-bottom:10px"></div>
     <div id="lines"></div>
     <div class="card">
@@ -593,6 +603,7 @@ function renderLines() {
 // else. A button reading "Load all 8" that adds 5 is a button that has lied once and will not be
 // trusted again, and this is a screen operated one-handed at a van.
 // ---------------------------------------------------------------------------
+
 function loadAllPlan() {
   const picks = [];                 // [unit_id, product_id]
   const pools = new Map();          // product_id -> qty
@@ -869,6 +880,13 @@ async function doDispatch() {
     const { error: e2 } = await sb.from('ledger_entry')
       .update({ state: 'due' }).eq('order_id', orderId).eq('state', 'upcoming');
     if (e2) throw e2;
+    // v6 Laws 4/10. The write whose failure mode is a box leaving the godown with no record is the
+    // last one that should rely on a message that vanishes in 3.5 seconds.
+    LAST_DONE = {
+      what: `${movements.length} item${movements.length === 1 ? '' : 's'} sent out`,
+      detail: `${ORDER.order_no} · ${CUSTOMER?.business_name || CUSTOMER?.name || ''}`,
+      at: new Date(),
+    };
     toast(`${movements.length} item(s) sent out.`);
     // The message the customer actually wants, built from what was just recorded: how many items,
     // who is bringing them, and the number to ring when the van is late. It is a PREFILLED DRAFT

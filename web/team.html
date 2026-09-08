@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Team — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-16" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-16" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-16">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-17" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-17" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-17">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-16">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-16">
-<link rel="stylesheet" href="style.css?v=2026-09-08-16">
-<script src="vendor/supabase.js?v=2026-09-08-16" defer></script>
-<script src="boot.js?v=2026-09-08-16" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-17">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-17">
+<link rel="stylesheet" href="style.css?v=2026-09-08-17">
+<script src="vendor/supabase.js?v=2026-09-08-17" defer></script>
+<script src="boot.js?v=2026-09-08-17" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,52 +27,58 @@
 <script type="module">
 import { sb, $, $$, esc, chrome, requireSession, stateBlock, errorBlock, toast, openSheet,
          initOffline, revealActiveTab, loadPermissions, can, cardList, guardedWrite }
-  from './app.js?v=2026-09-08-16';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-16';
+  from './app.js?v=2026-09-08-17';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js?v=2026-09-08-17';
 
 $('#chrome').innerHTML = chrome('team.html');
 revealActiveTab();
 initOffline();
 
 // ---------------------------------------------------------------------------
-// THE TEAM SCREEN.
+// THE TEAM SCREEN — "what can this person do?"
 //
-// MODULES, NOT KEYS. The database holds eleven granular permissions because that is the right
-// granularity for a policy; a person setting somebody up should not be asked eleven questions.
-// Nine toggles cover all eleven, and the two that bundle are the two that always travel together.
+// v6 A1 BANS "module" AND "permissions" as words, and Law 14 says teach a new idea through the
+// closest familiar thing, never a settings matrix. This screen was built as exactly that matrix:
+// nine toggles labelled Jobs / Van / Catalogue, under a heading that said "eleven permissions
+// underneath". The grouping was right — the database's eleven keys are the right granularity for a
+// policy and the wrong number of questions to ask a person — but the FRAME was a config screen.
 //
-// The one place granularity survives is money: "see it" and "post to it" are separate, because a
-// bookkeeper who reconciles and an owner who bills are different jobs and the whole reason
-// ledger.view exists as its own key.
+// So the same nine groups now answer one question in trade words: what can Ramesh do? Each line
+// names a job somebody does at the van or at the desk — "Send gear out", "Record returns",
+// "See money" — not a capability he is granted.
+//
+// The one place the split survives is money, because seeing a balance and taking a payment are
+// genuinely different jobs: a person who reconciles and a person who bills are different people.
 //
 // What this screen CANNOT do, and why: it cannot create an account. That needs the auth admin API
 // and the service key, and a browser must never hold one — a key that can create an account can
 // create an admin. So an account is made once in the Supabase dashboard, and this screen decides
-// what it may do. Said on the screen rather than discovered.
+// what that person can do. Said on the screen rather than discovered.
 // ---------------------------------------------------------------------------
 
-const MODULES = [
-  { id: 'jobs',      label: 'Jobs',              keys: ['orders.write'],
-    hint: 'Create and change orders, lines and charges.' },
-  { id: 'van',       label: 'Send out & return', keys: ['sendout.write', 'returns.write'],
+const CAN_DO = [
+  { id: 'jobs',      label: 'Book jobs',          keys: ['orders.write'],
+    hint: 'Take a booking, add gear to it, change the rate.' },
+  { id: 'van',       label: 'Send gear out and take it back', keys: ['sendout.write', 'returns.write'],
     hint: 'Record what leaves and what comes back. The everyday job at the van.' },
-  { id: 'undo',      label: 'Undo a movement',   keys: ['movement.correct'],
-    hint: 'Take back a dispatch or a return recorded in error. It never deletes anything — it '
-        + 'writes a correction that says why — but it changes what every screen believes is on '
-        + 'the shelf. Give it to whoever answers for the count.' },
-  { id: 'catalogue', label: 'Catalogue',         keys: ['products.write', 'equipment.write'],
-    hint: 'Products, photos, pieces, locations, vendors and repairs.' },
-  { id: 'customers', label: 'Customers',         keys: ['customers.write'],
-    hint: 'Customer records and portal codes.' },
-  { id: 'seemoney',  label: 'See money',         keys: ['ledger.view'],
-    hint: 'Balances and the ledger. Without it, money is blank rather than zero everywhere.' },
-  { id: 'postmoney', label: 'Post to the ledger', keys: ['ledger.write'],
-    hint: 'Record payments, deposits and charges. Implies seeing money — posting to a ledger you '
-        + 'cannot read is a state nobody means to create.' },
-  { id: 'reports',   label: 'Reports',           keys: ['numbers.view'],
+  { id: 'undo',      label: 'Undo a mistake',     keys: ['movement.correct'],
+    hint: 'Take back a send-out or a return that was recorded wrongly. Nothing is ever deleted — '
+        + 'it writes a line saying what was undone and why — but it changes what every screen '
+        + 'believes is on the shelf. Give it to whoever answers for the count.' },
+  { id: 'catalogue', label: 'Add and change equipment', keys: ['products.write', 'equipment.write'],
+    hint: 'Products, photos, pieces, godowns, repair shops and repairs.' },
+  { id: 'customers', label: 'Add and change customers', keys: ['customers.write'],
+    hint: 'Customer details, and the code that opens their portal.' },
+  { id: 'seemoney',  label: 'See money',          keys: ['ledger.view'],
+    hint: 'What customers owe and what deposits we hold. Without this, money reads blank rather '
+        + 'than zero — so nobody is told a customer owes nothing when the truth is they cannot see.' },
+  { id: 'postmoney', label: 'Take payments',      keys: ['ledger.write'],
+    hint: 'Record money in, deposits and charges. Comes with seeing money — writing into an '
+        + 'account you cannot read is a state nobody means to create.' },
+  { id: 'reports',   label: 'See what things earn', keys: ['numbers.view'],
     hint: 'What each product earns and how hard it works.' },
-  { id: 'team',      label: 'Manage the team',   keys: ['admin.team'],
-    hint: 'Add people and decide what they may do. There must always be at least one.' },
+  { id: 'team',      label: 'Manage the team',    keys: ['admin.team'],
+    hint: 'Add people and decide what they can do. There must always be at least one.' },
 ];
 
 let MEMBERS = [];
@@ -82,8 +88,8 @@ requireSession(async () => {
   if (!can('admin.team')) {
     $('#app').innerHTML = `<h1>Team</h1>` + stateBlock({
       icon: '🔒', title: 'Only somebody who manages the team can open this',
-      body: 'Adding people and deciding what they may do needs the "manage the team" permission. '
-          + 'This account does not have it.',
+      body: 'Adding people and deciding what they can do is not something this account can do. '
+          + 'Ask whoever manages the team.',
     });
     return;
   }
@@ -93,14 +99,14 @@ requireSession(async () => {
 async function boot() {
   $('#app').innerHTML = `
     <div class="row row--between">
-      <div><h1>Team</h1><p class="sub">Who has an account, and what each of them may do.</p></div>
+      <div><h1>Team</h1><p class="sub">Who has an account, and what each person can do.</p></div>
       <button class="btn btn--primary" id="add" type="button">Add someone</button>
     </div>
     <div id="warn"></div>
     <div id="list" class="card-list"><div class="skeleton__row"></div></div>
     <p class="field__hint" style="margin-top:10px">
-      A change takes effect on that person's next sign-in or page reload — the navigation is built
-      once, at login, from the modules they hold. Ask them to reload if they are already in.
+      A change takes effect the next time that person signs in or reloads — their screens are built
+      once, when they sign in, from what they can do. Ask them to reload if they are already in.
     </p>`;
   $('#add').addEventListener('click', () => openMember(null));
   checkSignupIsClosed();
@@ -143,13 +149,13 @@ const held = (perms, m) => m.keys.every(k => perms?.[k] === true);
 function render() {
   const admins = MEMBERS.filter(m => m.active && m.permissions?.['admin.team'] === true).length;
   cardList($('#list'), MEMBERS, m => {
-    const mods = MODULES.filter(x => held(m.permissions, x));
+    const mods = CAN_DO.filter(x => held(m.permissions, x));
     return {
       title: esc(m.display_name || '(no name)')
            + (m.active ? '' : ' <span class="badge badge--muted">inactive</span>'),
       sub: mods.length
         ? mods.map(x => `<span class="badge">${esc(x.label)}</span>`).join(' ')
-        : '<span class="item__meta">no modules yet — they can sign in and see nothing</span>',
+        : '<span class="item__meta">nothing yet — they can sign in and see nothing</span>',
       right: m.permissions?.['admin.team'] === true
         ? '<span class="badge badge--unit">admin</span>' : '',
     };
@@ -175,10 +181,10 @@ function openMember(m) {
       </div>
 
       ${isNew ? `<div class="note" style="margin-bottom:10px">
-        <strong>This screen cannot create an account.</strong> That needs the service key, and a key
-        that can create an account can create an admin — so a browser never holds one. Create the
-        person in the Supabase dashboard under <em>Authentication → Users</em> with Auto Confirm
-        ticked, copy their user id, and paste it here.</div>
+        <strong>This screen cannot create an account.</strong> Making an account needs a master key,
+        and anything holding that key could make itself the owner — so this app never holds one.
+        Create the person in the Supabase dashboard under <em>Authentication → Users</em> with Auto
+        Confirm ticked, copy their user id, and paste it here.</div>
         <label class="field"><span class="field__label">User id *</span>
           <input class="field__input" id="t-uid" placeholder="00000000-0000-0000-0000-000000000000"
                  spellcheck="false" autocapitalize="none"></label>` : ''}
@@ -187,10 +193,10 @@ function openMember(m) {
         <input class="field__input" id="t-name" value="${esc(m?.display_name ?? '')}"></label>
 
       <div class="card card--sunk">
-        <strong>What they may do</strong>
-        <p class="field__hint" style="margin:2px 0 8px">Nine toggles, eleven permissions underneath.
-          Nobody should have to tick eleven boxes.</p>
-        ${MODULES.map(x => `
+        <strong>What can this person do?</strong>
+        <p class="field__hint" style="margin:2px 0 8px">Tick the jobs they actually do. Leave the
+          rest — anything untick&#101;d is simply not on their screen.</p>
+        ${CAN_DO.map(x => `
           <label class="field field--inline" style="align-items:flex-start;margin-bottom:8px">
             <input type="checkbox" class="t-mod" data-id="${esc(x.id)}" ${held(perms, x) ? 'checked' : ''}>
             <span><strong>${esc(x.label)}</strong>
@@ -200,8 +206,8 @@ function openMember(m) {
 
       ${!isNew ? `<label class="field field--inline">
         <input type="checkbox" id="t-active" ${m.active ? 'checked' : ''}>
-        <span>Active. Turn this off instead of deleting — the movements and ledger entries this
-          person wrote keep a valid author.</span></label>` : ''}
+        <span>Still works here. Turn this off when somebody leaves, rather than deleting them —
+          everything they recorded keeps their name on it.</span></label>` : ''}
 
       <div class="sheet__foot">
         <button class="btn" data-sheet-close type="button">Cancel</button>
@@ -214,11 +220,11 @@ function openMember(m) {
     const name = $('#t-name').value.trim();
     if (!name) { toast('A name, so the list is readable.', 'error'); return; }
 
-    // Toggles back into keys. The database never sees a module — it sees the eleven.
+    // Back into the database's own keys. The screen asks nine questions; the policies test eleven.
     const next = {};
     for (const el of $$('.t-mod')) {
       if (!el.checked) continue;
-      const mod = MODULES.find(x => x.id === el.dataset.id);
+      const mod = CAN_DO.find(x => x.id === el.dataset.id);
       for (const k of mod.keys) next[k] = true;
     }
 
@@ -229,14 +235,14 @@ function openMember(m) {
         const { error } = await sb.rpc('fn_team_add',
           { p_user_id: uid, p_display_name: name, p_permissions: next });
         if (error) throw error;
-        toast('Added. They see the new modules after they reload.');
+        toast('Added. Their screens change the next time they sign in.');
       } else {
         const { error } = await sb.rpc('fn_team_set_permissions', {
           p_user_id: m.user_id, p_permissions: next,
           p_display_name: name, p_active: $('#t-active').checked,
         });
         if (error) throw error;
-        toast('Saved. They see the change after they reload.');
+        toast('Saved. Their screens change the next time they reload.');
       }
       sheet.close();
       await load();
