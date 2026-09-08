@@ -121,9 +121,9 @@
 
   --shadow:       0 12px 30px rgba(51, 39, 27, .08);
   --shadow-toast: 0 6px 24px rgba(0, 0, 0, .18);
+  --shadow-sheet: 0 -15px 45px rgba(0, 0, 0, .12);   /* a sheet rises from the bottom edge */
   --shadow-nav:   0 -6px 18px rgba(51, 39, 27, .07);  /* cast upward: the nav sits above content */
   --scrim:        rgba(51, 39, 27, .45);   /* behind a sheet and behind the More menu */
-  --shadow-card:  0 5px 18px rgba(51, 39, 27, .03);
 
   /* -------------------------------------------------------------------------
      3 · THE SEMANTIC NAMES THE APP USES. Unchanged names on purpose: no screen
@@ -159,6 +159,7 @@
   --radius-btn:   14px;      /* v6 E1 states 14 for buttons specifically */
   --radius-pill:  999px;     /* chips, counts, badges */
   --radius-input: 11px;
+  --radius-sheet: 22px;      /* the top corners of a bottom sheet; larger than a card on purpose */
 
   /* -------------------------------------------------------------------------
      5 · TAP TARGETS — v6 E1: base ≥46, primary 48 in CTAs, chips ≥32.

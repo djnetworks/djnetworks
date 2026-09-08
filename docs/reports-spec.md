@@ -121,3 +121,39 @@ Repoint the Reports nav slot from `analysis.html` once `reports.html` exists.
   sheets — its own prompt, not an indefinite deferral.
 - **The orders.html gate** — a full new-order form for an account RLS will refuse at save — is
   real and is scope. Queue it separately.
+
+---
+
+## Addendum — 8 September, after the first build
+
+### The flat bar: delete it, don't recolour it
+
+The checker is right that `--shimmer` on `--tint-neutral` measures 1.30 and fails 3:1. The fix is
+not a new token. **Draw no bar at all for a row whose ROI is unknown.**
+
+A bar is a mark for a value. There is no value here, so any bar is decoration standing where data
+should be — and a short flat bar reads as *a small number*, which is the precise lie rule 3 exists
+to prevent. An empty trough says the same thing more quietly. Remove the whole track for those
+rows; the label carries the meaning, as it already does.
+
+This also stops MH-BEAM's genuine 0.0% from competing with a lookalike: once the unpriced rows
+have no track, the only near-empty bar on the screen is the one that honestly means zero.
+
+No new token is needed, and `--shimmer` stays out of the chart entirely.
+
+### "Always pays" — removed, and correctly
+
+Replacing the verdict with the fact underneath is right, and the reasoning is the reasoning of
+`decisions.md`: revenue posts on order **confirmation**, so a customer with three confirmed jobs
+and nothing dispatched owes ₹0 and reads as a model payer. "₹2,800.00 owed · 30 days" and
+"nothing owed · never late" are facts; "always pays" was a verdict the data cannot support.
+
+Record this in `docs/decisions.md` as a decision, not just a fix — it is the fourth consequence
+traceable to posting revenue on confirmation, and that count is the argument for revisiting the
+posting rule before the first real customer is billed.
+
+### The mockup footer was wrong
+
+It claimed repairs-per-10-jobs needed a new view. It does not — `repair_job` joins through `unit`
+to `v_unit_utilisation.times_hired`, measured in SQL before the build. My error, in the file I
+sent. Corrected here; the mockup is a layout reference and its prose is not authoritative.

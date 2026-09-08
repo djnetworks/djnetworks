@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-25" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-25" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-25">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-25">
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
 <!-- tokens.css first: it defines every custom property style.css then reads. Two <link>s and
      not an @import, because an @import inside style.css would serialise the two fetches. -->
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-25">
-<link rel="stylesheet" href="style.css?v=2026-09-08-25">
-<script src="vendor/supabase.js?v=2026-09-08-25" defer></script>
-<script src="boot.js?v=2026-09-08-25" defer></script>
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
+<link rel="stylesheet" href="style.css?v=2026-09-08-30">
+<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
+<script src="boot.js?v=2026-09-08-30" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -26,8 +26,9 @@
 <script type="module">
 import { sb, $, $$, esc, money, fmtDate, todayLocal, chrome, requireSession, stateBlock,
          errorBlock, toast, openSheet, focusField, initOffline, revealActiveTab, entryLabel,
+         confirmBlock,
          waLink, waMessage, canChasePayment, customerPicker, loadPermissions, can }
-  from './app.js?v=2026-09-08-25';
+  from './app.js?v=2026-09-08-30';
 
 $('#chrome').innerHTML = chrome('ledger.html');
 revealActiveTab();
@@ -54,11 +55,22 @@ async function boot() {
         <p class="sub">Owed and held are different numbers.</p></div>
       <button class="btn btn--primary" id="add-entry" hidden>Record something</button>
     </div>
+    <!-- §6 law 4: the durable confirmation lands here, ABOVE the render targets. Inside #body it
+         would be destroyed by the very load() the write triggers — the failure found twice on the
+         return screen before it was driven. -->
+    <div id="done"></div>
     <div id="picker"></div>
     <div id="body" class="skeleton"><div class="skeleton__row"></div></div>`;
   $('#add-entry').addEventListener('click', () => openEntry());
   await load();
 }
+
+// §6 law 4: money that has been recorded gets a DURABLE confirmation with a timestamp, not a
+// message that is gone in 3.5 seconds. Held in a variable and repainted after every load, because
+// load() rebuilds this screen and would otherwise destroy the block written a moment earlier —
+// which is exactly how it failed twice on the return screen before it was driven.
+let LAST_DONE = null;
+function paintDone() { if (LAST_DONE) confirmBlock($('#done'), LAST_DONE); }
 
 async function load() {
   try {
@@ -78,6 +90,7 @@ async function load() {
     $('#body').className = ''; $('#body').innerHTML = errorBlock(err, 'retry');
     $('#retry')?.addEventListener('click', load);
   }
+  paintDone();
 }
 
 function renderPicker() {
@@ -384,6 +397,14 @@ function openEntry() {
       toast(error.message.replace(/^.*?ERROR:\s*/, ''), 'error');
       return;
     }
+    // §6 law 4. The toast still fires — it is what moves in the corner of the eye — but the block
+    // is what is still on the screen when he looks up from the cash. Held in a variable because
+    // load() below rebuilds this screen and would wipe anything written straight to the DOM.
+    LAST_DONE = {
+      what: `${entryLabel(row.type) || row.type} · ${money(amt)}`,
+      detail: SELECTED ? (SELECTED.business_name || SELECTED.name) : '',
+      at: new Date(),
+    };
     toast('Recorded.');
     sheet.close();
     await load();

@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Load the van — DJ Network's</title>
-<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-25" sizes="32x32">
-<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-25" sizes="64x64">
-<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-25">
+<link rel="icon" href="assets/djn-icon-32.png?v=2026-09-08-30" sizes="32x32">
+<link rel="icon" href="assets/djn-icon-64.png?v=2026-09-08-30" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/djn-apple-touch-icon.png?v=2026-09-08-30">
 <meta name="theme-color" content="#2B7379">
-<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-25">
-<link rel="stylesheet" href="tokens.css?v=2026-09-08-25">
-<link rel="stylesheet" href="style.css?v=2026-09-08-25">
-<script src="vendor/supabase.js?v=2026-09-08-25" defer></script>
-<script src="boot.js?v=2026-09-08-25" defer></script>
+<link rel="manifest" href="manifest.webmanifest?v=2026-09-08-30">
+<link rel="stylesheet" href="tokens.css?v=2026-09-08-30">
+<link rel="stylesheet" href="style.css?v=2026-09-08-30">
+<script src="vendor/supabase.js?v=2026-09-08-30" defer></script>
+<script src="boot.js?v=2026-09-08-30" defer></script>
 </head>
 <body>
 <div id="chrome"></div>
@@ -27,8 +27,8 @@
 <script type="module">
 import { sb, store, $, $$, esc, fmtDate, todayLocal, chrome, requireSession, stateBlock, errorBlock,
          toast, initOffline, syncNow, revealActiveTab, loadPermissions, can, trackBadge,
-         newRequestId, guardedWrite, publicUrl }
-  from './app.js?v=2026-09-08-25';
+         newRequestId, guardedWrite, publicUrl, confirmBlock }
+  from './app.js?v=2026-09-08-30';
 
 $('#chrome').innerHTML = chrome('transfer.html');
 revealActiveTab();
@@ -74,6 +74,8 @@ async function boot() {
   $('#app').innerHTML = `
     <h1>Load the van</h1>
     <p class="sub">Our own places only. Nothing here goes to a customer.</p>
+      <!-- §6 law 4: above the render targets, so the load() this write triggers cannot wipe it. -->
+      <div id="done"></div>
     <div class="card">
       <div class="grid2">
         <div class="field"><label class="field__label" for="f-from">From *</label>
@@ -90,6 +92,12 @@ async function boot() {
     </div>`;
   await load();
 }
+
+// §6 law 4. Held in a variable and repainted after every load, because load() rebuilds the picker
+// and would otherwise wipe the block written a moment earlier — the failure mode already found and
+// fixed twice on the return screen.
+let LAST_DONE = null;
+function paintDone() { if (LAST_DONE) confirmBlock($('#done'), LAST_DONE); }
 
 async function load() {
   try {
@@ -129,6 +137,7 @@ async function load() {
     $('#body').innerHTML = errorBlock(err, 'retry');
     $('#retry')?.addEventListener('click', load);
   }
+  paintDone();
 }
 
 function paintLocs() {
@@ -244,6 +253,14 @@ async function doMove() {
   try {
     const { error } = await sb.from('movement').insert(movements);
     if (error) throw error;
+    // §6 law 4: this moves stock, which is the same class as send-out and return — both of which
+    // already leave a durable confirmation. A van load recorded and then not visible is the same
+    // "did that work?" that ends in a phone call.
+    LAST_DONE = {
+      what: `${movements.length} piece${movements.length === 1 ? '' : 's'} moved`,
+      detail: `${LOCS.find(l => l.id === FROM)?.name ?? ''} → ${LOCS.find(l => l.id === TO)?.name ?? ''}`,
+      at: new Date(),
+    };
     toast(`${movements.length} piece(s) moved to ${LOCS.find(l => l.id === TO)?.name}.`);
     PICK.clear();
     await load();

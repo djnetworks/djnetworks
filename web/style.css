@@ -15,7 +15,9 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg);
   color: var(--ink);
-  font: 16px/1.5 var(--font);
+  /* §1: 14px. Inputs are pinned to 16px separately — iOS Safari zooms the page when a
+     focused field is under 16px, and this app is used one-handed on a phone. */
+  font: 14px/1.5 var(--font);
   -webkit-text-size-adjust: 100%;
 }
 [hidden] { display: none !important; }
@@ -31,7 +33,7 @@ a { color: var(--accent); }
    edge and no affordance saying so; it is 40px now and holds nothing you have to reach for. */
 .topbar {
   display: flex; align-items: center; gap: 8px;
-  padding: 4px 12px; min-height: 40px;
+  padding: 4px 16px; min-height: 52px;
   background: var(--surface); border-bottom: 1px solid var(--line);
   /* NOT sticky, and this is why. #dept-host is a sibling of .topbar inside #chrome, so #chrome
      became the topbar's containing block and gave it exactly the strip's height as travel: measured
@@ -79,14 +81,17 @@ a { color: var(--accent); }
      backwards. Upward-cast, so it reads as sitting above the content it covers. */
   background: var(--surface); border-top: 1px solid var(--line);
   box-shadow: var(--shadow-nav);
+  /* §4: bottom nav 68px. The items are 64 and the top border is 1, so 3px of padding lands it on
+     68 before the safe-area inset — which is added below and is 0 on anything without a notch. */
+  padding-top: 3px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 /* Before permissions are known: the same 52px of reserved space, and nothing in it to aim at.
    See navMarkup() — a guessed bar re-flows and moves the target under the thumb. */
-.nav--pending { min-height: 52px; }
+.nav--pending { min-height: 68px; }
 .nav__item {
   display: grid; place-items: center; gap: 1px;
-  min-height: 52px; padding: 6px 2px;
+  min-height: 64px; padding: 8px 2px;
   border: 0; background: transparent; font: inherit; cursor: pointer;
   color: var(--ink-faint); text-decoration: none;
 }
@@ -104,14 +109,14 @@ a { color: var(--accent); }
 
 /* ---------- layout ---------- */
 /* padding-bottom clears the fixed nav; without it the last row of every list is unreachable. */
-.wrap { max-width: 1100px; margin: 0 auto; padding: 10px 12px calc(72px + env(safe-area-inset-bottom, 0px)); }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 10px 16px calc(88px + env(safe-area-inset-bottom, 0px)); }
 /* No navigation bar (the van view) means no space to reserve for one. Set by app.js when it knows. */
 body.no-nav .wrap { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .row--between { justify-content: space-between; }
 .grow { flex: 1 1 220px; }
-h1 { font-size: 19px; margin: 0 0 2px; letter-spacing: -.02em; }
-h2 { font-size: 15px; margin: 0 0 6px; }
+h1 { font-size: 24px; line-height: 1.15; margin: 0 0 2px; letter-spacing: -.02em; }
+h2 { font-size: 20px; line-height: 1.2; margin: 0 0 6px; }
 .sub { color: var(--ink-soft); font-size: 13px; margin: 0 0 8px; }
 
 /* ---------- buttons ---------- */
@@ -121,7 +126,7 @@ h2 { font-size: 15px; margin: 0 0 6px; }
      from a customer to their money), "Ask them about the N still out" 277.2x36, "Pieces screen"
      81.6x15. They only ever reached 46px where they happened to be flex items. */
   display: inline-flex; align-items: center; justify-content: center;
-  min-height: var(--tap); padding: 8px 14px; border-radius: var(--radius-btn);
+  min-height: var(--tap); padding: 0 16px; border-radius: var(--radius-btn);
   /* --edge, not --line: a button is a thing you aim at, and --line is 1.11:1 against the page. */
   border: 1px solid var(--edge); background: var(--surface); color: var(--ink);
   font: inherit; font-weight: 600; cursor: pointer;
@@ -167,7 +172,8 @@ a.btn, a.item { text-decoration: none; }
 .field__label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 2px; }
 .field__hint { display: block; font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
 .field__input, .field__select, .field__area {
-  width: 100%; min-height: var(--tap); padding: 8px 10px;
+  /* 16px, not inherited: under 16 iOS Safari zooms the page on focus (see body). */
+  width: 100%; font-size: 16px; min-height: var(--tap); padding: 11px;
   /* --edge. A field is the thing most often aimed at one-handed in sunlight, and at 1.11:1 its
      boundary was effectively invisible — you found the box by finding the label above it. */
   border: 1px solid var(--edge); border-radius: var(--radius-input);
@@ -189,7 +195,7 @@ a.btn, a.item { text-decoration: none; }
   /* v6 E2: info/section blocks and forms stay white, hairline-bordered and 16px — and FLAT. The
      shadow went with the elevation law; it is content, not something hovering over content. */
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius-card); padding: 11px 12px; margin-bottom: 8px;
+  border-radius: var(--radius-card); padding: 14px; margin-bottom: 10px;
 }
 /* A card nested inside a sheet — the ID-document block, the portal-code block, an order line.
    It was six copies of style="background:#fbfcfd", a cool grey that read as a smudge once the
@@ -245,12 +251,12 @@ a.btn, a.item { text-decoration: none; }
   .stats--count { grid-template-columns: 1fr 1fr; }
 }
 .stats .card { margin: 0; padding: 8px 10px; }
-.stat__n { overflow-wrap: anywhere;  font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stat__n { overflow-wrap: anywhere;  font-size: 24px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .stat__n--bad { color: var(--bad); }
 
 /* ---------- badges ---------- */
 .badge {
-  display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill);
+  display: inline-block; padding: 4px 8px; border-radius: var(--radius-pill);
   font-size: 12px; font-weight: 700; background: var(--tint-neutral); color: var(--ink-soft);
   /* A badge is a label, not a paragraph. As a flex item beside a long product name it was being
      squeezed until "3 day(s) over" wrapped onto three lines inside a 999px radius and rendered as
@@ -354,8 +360,9 @@ a.btn, a.item { text-decoration: none; }
 }
 .sheet__panel {
   background: var(--surface); width: min(760px, 100%); max-height: 92vh; overflow: auto;
-  border-radius: var(--radius-card) var(--radius-card) 0 0; padding: 20px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  padding: 12px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-sheet);
 }
 @media (min-width: 700px) {
   .sheet { place-items: center; }
@@ -496,7 +503,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    BOTH edges of a 390px screen, so the document scrolled sideways (scrollWidth 394 against
    clientWidth 390) and dragged the fixed nav out with it. */
 .dispatch-bar {
-  position: sticky; bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  position: sticky; bottom: calc(68px + env(safe-area-inset-bottom, 0px));
   background: var(--surface);
   border-top: 1px solid var(--line); padding: 12px;
   margin: 16px -12px 0; z-index: 10;
@@ -639,7 +646,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   transition: transform .06s ease, background-color .06s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.tappable:active { transform: scale(.985); background: var(--accent-soft); }
+.tappable:active { transform: scale(.97); background: var(--accent-soft); }
 .tappable:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 /* A container is not a control. Stated so that adding a handler to one is a visible mistake. */
 .card:not(.tappable) { cursor: default; }
@@ -688,7 +695,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   background: var(--surface);
   /* Edge-to-edge: cancel .wrap's 12px side padding, and put it back inside the row so the text
      still lines up with every heading on the page. */
-  margin: 0 -12px; padding: 11px 12px;
+  margin: 0 -16px; padding: 13px 16px;
   text-align: left; width: auto; font: inherit; color: inherit;
   border-bottom: 1px solid var(--line);
 }
@@ -707,7 +714,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
   padding: 0 2px; overflow-wrap: anywhere; line-height: 1.05;
 }
 .card-row__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
-.card-row__title { font-weight: 700; font-size: 14.5px; line-height: 1.25; }
+.card-row__title { font-weight: 700; font-size: 15px; line-height: 1.25; }
 .card-row__sub { color: var(--ink-soft); font-size: 12px; line-height: 1.35; }
 /* The order number lives here: demoted to subtext, and tappable to copy, because its whole job is
    being pasted into a WhatsApp message. */
@@ -840,7 +847,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
      <main class="wrap"> and therefore has no side padding to cancel — the -12px each side made the
      strip 24px wider than the viewport and put a horizontal scrollbar on every screen at 320px.
      .card-row's identical negative margins ARE correct, because those rows sit inside .wrap. */
-  padding: 8px 12px; margin: 0 0 10px;
+  padding: 8px 16px; margin: 0 0 10px;
   background: var(--bg); border-bottom: 1px solid var(--line);
   /* NOT sticky. #dept-host is a wrapper exactly as tall as this strip, and a sticky element cannot
      leave its containing block — so there was zero travel and it scrolled away like static content
@@ -850,7 +857,7 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 .deptbar::-webkit-scrollbar { display: none; }
 .deptbar__tab {
   flex: none; min-height: var(--tap-chip); display: inline-flex; align-items: center;
-  padding: 0 14px; border-radius: var(--radius-pill);
+  padding: 0 12px; border-radius: var(--radius-pill);
   background: var(--surface); border: 1px solid var(--line);
   color: var(--ink-soft); font-size: 13px; font-weight: 700; text-decoration: none;
   white-space: nowrap;
@@ -933,11 +940,11 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
    =========================================================================== */
 
 /* Period chips. v6 E5: chips are filters. */
-.periods { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 14px; padding: 0 12px 2px; }
+.periods { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 14px; padding: 0 16px 2px; }
 .periods::-webkit-scrollbar { display: none; }
 .periods .chip {
   flex: none; min-height: var(--tap-chip); display: inline-flex; align-items: center;
-  padding: 0 13px; border-radius: var(--radius-pill);
+  padding: 0 12px; border-radius: var(--radius-pill);
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-faint);
   font: 700 12.5px/1 inherit; white-space: nowrap; cursor: pointer;
 }
@@ -976,10 +983,10 @@ table.data th { color: var(--ink-soft); font-size: 12px; text-transform: upperca
 }
 .rsec__sub { font-size: 12px; color: var(--ink-faint); }
 .rsec__foot { margin: 9px 0 0; font-size: 12px; color: var(--ink-faint); }
-.rrows { border-top: 1px solid var(--line); margin: 0 -12px; }
+.rrows { border-top: 1px solid var(--line); margin: 0 -16px; }
 .rrow {
   display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
-  padding: 11px 12px; border-bottom: 1px solid var(--line); background: var(--surface);
+  padding: 13px 16px; border-bottom: 1px solid var(--line); background: var(--surface);
 }
 .rrow--group {
   display: block; background: var(--bg); color: var(--ink-faint);
